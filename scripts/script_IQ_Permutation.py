@@ -316,7 +316,8 @@ def process_permutation_HumanCT(idx, Mut_n_IQ_conf, Human_CT_Z2_Mat, seed, outDI
 def HumanCT_Permutation(Mut_n_IQ_conf, outDIR, n_permutations):
     n_threads = 20
 
-    Human_CT_Z2_Mat = pd.read_csv("/home/jw3514/Work/CellType_Psy/dat/HumanCTExpressionMats/Human.Cluster.Log2Mean.Z1clip5.Z2.clip3.Jan21.csv", index_col=0)
+    # Human_CT_Z2_Mat = pd.read_csv("/home/jw3514/Work/CellType_Psy/dat/HumanCTExpressionMats/Human.Cluster.Log2Mean.Z1clip5.Z2.clip3.Jan21.csv", index_col=0)
+    Human_CT_Z2_Mat = pd.read_csv("/home/jw3514/Work/CellType_Psy/dat/HumanCTExpressionMats/Human.Cluster.Log2Mean.Z1clip5.Z2.clip3.Dec30.csv", index_col=0)
     Human_CT_Z2_Mat.columns = Human_CT_Z2_Mat.columns.astype(int)
     
     if Mut_n_IQ_conf is None:
@@ -330,7 +331,7 @@ def HumanCT_Permutation(Mut_n_IQ_conf, outDIR, n_permutations):
     except Exception as e:
         print(f"Error creating directories: {str(e)}")
         raise
-          
+    np.random.seed(42)
     seeds = np.random.randint(0, 1000000, size=n_permutations)
     with Pool(n_threads) as pool:
         pool.starmap(process_permutation_HumanCT, [(idx, Mut_n_IQ_conf, Human_CT_Z2_Mat, seed, outDIR) for idx, seed in enumerate(seeds)])
@@ -357,4 +358,4 @@ if __name__ == "__main__":
     main()
 
 # Example: python script_IQ_Permutation.py --permutation_type MouseCT --Mut_n_IQ /home/jw3514/Work/CellType_Psy/dat/Pheno_Bias_vs_IQ/Mut_n_IQ_conf.csv --outDIR /home/jw3514/Work/CellType_Psy/dat/Pheno_Bias_vs_IQ/IQ_Permuts/MouseCT
-# Example: python script_IQ_Permutation.py --permutation_type HumanCT --Mut_n_IQ /home/jw3514/Work/CellType_Psy/dat/Pheno_Bias_vs_IQ/Mut_n_IQ_conf.csv --outDIR /home/jw3514/Work/CellType_Psy/dat/Pheno_Bias_vs_IQ/IQ_Permuts/HumanCT
+# Example: python script_IQ_Permutation.py --permutation_type HumanCT --Mut_n_IQ /home/jw3514/Work/CellType_Psy/dat/Pheno_Bias_vs_IQ/Mut_n_IQ_conf.csv --outDIR /home/jw3514/Work/CellType_Psy/dat/Pheno_Bias_vs_IQ/IQ_Permuts/HumanCT_Feb25

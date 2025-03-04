@@ -1,17 +1,17 @@
+SPECMAT="/home/jw3514/Work/CellType_Psy/dat/HumanCTExpressionMats/Human.Cluster.Log2Mean.Z1clip5.Z2.clip3.Dec30.csv"
+
 ###########################
 # 22q11.2 genes 
 ###########################
 
 # simulate gene weights
-# GW4SIM="/home/jw3514/Work/UNIMED/dat/Genetics/GeneWeights/Rare/GW.22q.11.46.txt"
-# GW_DIR="/home/jw3514/Work/UNIMED/dat/Genetics/GeneWeights/CTRL/RandG_w_Weights/RandGenes_46_22q/"
+# GW4SIM="/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/X22q.gw.csv"
+# GW_DIR="/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/CTRL/RandGeneWeights/RandGenes_22q/"
 # N_SIMS=10000
-# mkdir -p $OUTDIR
-#python script_run_ctrl_sim.v2.py -m gw -o $OUTDIR --n_sims $N_SIMS  -w $GW4SIM
-
-# BiasOUTDIR="/home/jw3514/Work/CellType_Psy/dat/CTRL/RandGenes/RandGene_46_22q_clip3.3_Feb17/"
-# SPECMAT="/home/jw3514/Work/CellType_Psy/dat/HumanCTExpressionMats/Human.Cluster.Log2Mean.Z1clip5.Z2.clip3.Jan21.csv"
-# GW_DIR="/home/jw3514/Work/UNIMED/dat/Genetics/GeneWeights/CTRL/RandG_w_Weights/RandGenes_46_22q/"
+# mkdir -p $GW_DIR
+# python script_run_ctrl_sim.v2.py -m gw -o $GW_DIR --n_sims $N_SIMS  -w $GW4SIM
+# # gene permutation test
+# BiasOUTDIR="/home/jw3514/Work/CellType_Psy/dat/CTRL/RandGeneBias/RandGenes_22q/"
 # mkdir -p $BiasOUTDIR
 # python script_run_ctrl_sim.v2.py -m human_ct_bias -o $BiasOUTDIR --SpecMat $SPECMAT --GW_Dir $GW_DIR
 
@@ -19,65 +19,77 @@
 # 22q11 small deletion genes 
 ###########################
 # simulate gene weights
-# GW4SIM="/home/jw3514/Work/CellType_Psy/dat3/22q.v2.gw.csv"
-# GW_DIR="/home/jw3514/Work/UNIMED/dat/Genetics/GeneWeights/CTRL/RandG_w_Weights/RandGenes_22q_small_del/"
+# GW4SIM="/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/X22q.mousemodel.gw.csv"
+# GW_DIR="/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/CTRL/RandGeneWeights/RandGenes_22q_small_del/"
 # N_SIMS=10000
 # mkdir -p $GW_DIR
 # python script_run_ctrl_sim.v2.py -m gw -o $GW_DIR --n_sims $N_SIMS  -w $GW4SIM
-
-# BiasOUTDIR="/home/jw3514/Work/CellType_Psy/dat/CTRL/RandGenes/RandGene_22q_small_del_clip3.3_Feb19/"
-# SPECMAT="/home/jw3514/Work/CellType_Psy/dat/HumanCTExpressionMats/Human.Cluster.Log2Mean.Z1clip5.Z2.clip3.Jan21.csv"
-# GW_DIR="/home/jw3514/Work/UNIMED/dat/Genetics/GeneWeights/CTRL/RandG_w_Weights/RandGenes_22q_small_del/"
+# # gene permutation test
+# BiasOUTDIR="/home/jw3514/Work/CellType_Psy/dat/CTRL/RandGeneBias/RandGenes_22q_small_del/"
 # mkdir -p $BiasOUTDIR
 # python script_run_ctrl_sim.v2.py -m human_ct_bias -o $BiasOUTDIR --SpecMat $SPECMAT --GW_Dir $GW_DIR
 
-###########################
-# 3q29 genes 
-###########################
-# simulate gene weights
-# GW4SIM="/home/jw3514/Work/CellType_Psy/dat/GeneWeights/3q29.gw.csv"
-# GW_DIR="/home/jw3514/Work/UNIMED/dat/Genetics/GeneWeights/CTRL/RandG_w_Weights/RandGenes_21_3q29/"
-# N_SIMS=10000
-# mkdir -p $GW_DIR
-# python script_run_ctrl_sim.v2.py -m gw -o $GW_DIR --n_sims $N_SIMS  -w $GW4SIM
 
-# BiasOUTDIR="/home/jw3514/Work/CellType_Psy/dat/CTRL/RandGenes/RandGene_21_3q29_clip3.3_Feb19/"
-# SPECMAT="/home/jw3514/Work/CellType_Psy/dat/HumanCTExpressionMats/Human.Cluster.Log2Mean.Z1clip5.Z2.clip3.Jan21.csv"
-# GW_DIR="/home/jw3514/Work/UNIMED/dat/Genetics/GeneWeights/CTRL/RandG_w_Weights/RandGenes_21_3q29/"
-# mkdir -p $BiasOUTDIR
-# python script_run_ctrl_sim.v2.py -m human_ct_bias -o $BiasOUTDIR --SpecMat $SPECMAT --GW_Dir $GW_DIR
-
-###########################
-# 16p11.2 genes 
-###########################
-# simulate gene weights
-# GW4SIM="/home/jw3514/Work/CellType_Psy/dat/GeneWeights/16p11.gw.csv"
-# GW_DIR="/home/jw3514/Work/UNIMED/dat/Genetics/GeneWeights/CTRL/RandG_w_Weights/RandGenes_16p11/"
-# N_SIMS=10000
-# mkdir -p $GW_DIR
-# python script_run_ctrl_sim.v2.py -m gw -o $GW_DIR --n_sims $N_SIMS  -w $GW4SIM
-
-# BiasOUTDIR="/home/jw3514/Work/CellType_Psy/dat/CTRL/RandGenes/RandGene_16p11_clip3.3_Feb19/"
-# SPECMAT="/home/jw3514/Work/CellType_Psy/dat/HumanCTExpressionMats/Human.Cluster.Log2Mean.Z1clip5.Z2.clip3.Jan21.csv"
-# GW_DIR="/home/jw3514/Work/UNIMED/dat/Genetics/GeneWeights/CTRL/RandG_w_Weights/RandGenes_16p11/"
-# mkdir -p $BiasOUTDIR
-# python script_run_ctrl_sim.v2.py -m human_ct_bias -o $BiasOUTDIR --SpecMat $SPECMAT --GW_Dir $GW_DIR
 
 ###########################
 # LIQ Top60 (51) ASD genes 
 ###########################
 # simulate gene weights
-# GW4SIM="/home/jw3514/Work/CellType_Psy/dat/GeneWeights/LIQ.top60.nopLI.gw"
-# GW_DIR="/home/jw3514/Work/UNIMED/dat/Genetics/GeneWeights/CTRL/RandG_w_Weights/RandGenes_ASD_LIQ_top60/"
+GW4SIM="/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/HIQ.top61.nopLI.gw"
+GW_DIR="/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/CTRL/RandGeneWeights/RandGenes_ASD_HIQ.top61/"
+N_SIMS=10000
+mkdir -p $GW_DIR
+python script_run_ctrl_sim.v2.py -m gw -o $GW_DIR --n_sims $N_SIMS  -w $GW4SIM
+
+BiasOUTDIR="/home/jw3514/Work/CellType_Psy/dat/CTRL/RandGeneBias/RandGenes_ASD_HIQ.top61/"
+mkdir -p $BiasOUTDIR
+python script_run_ctrl_sim.v2.py -m human_ct_bias -o $BiasOUTDIR --SpecMat $SPECMAT --GW_Dir $GW_DIR
+
+###########################
+# HIQ Top60 (51) ASD genes 
+###########################
+# # simulate gene weights
+GW4SIM="/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/LIQ.top61.nopLI.gw"
+GW_DIR="/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/CTRL/RandGeneWeights/RandGenes_ASD_LIQ.top61/"
+N_SIMS=10000
+mkdir -p $GW_DIR
+python script_run_ctrl_sim.v2.py -m gw -o $GW_DIR --n_sims $N_SIMS  -w $GW4SIM
+
+BiasOUTDIR="/home/jw3514/Work/CellType_Psy/dat/CTRL/RandGeneBias/RandGenes_ASD_LIQ.top61/"
+mkdir -p $BiasOUTDIR
+python script_run_ctrl_sim.v2.py -m human_ct_bias -o $BiasOUTDIR --SpecMat $SPECMAT --GW_Dir $GW_DIR
+
+###########################
+# DD/ID genes 
+###########################
+# # simulate gene weights
+# GW4SIM="/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/DDD.top61.gw.csv"
+# GW_DIR="/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/CTRL/RandGeneWeights/RandGenes_DDD.top61/"
 # N_SIMS=10000
 # mkdir -p $GW_DIR
 # python script_run_ctrl_sim.v2.py -m gw -o $GW_DIR --n_sims $N_SIMS  -w $GW4SIM
 
-# BiasOUTDIR="/home/jw3514/Work/CellType_Psy/dat/CTRL/RandGenes/RandGene_ASD_LIQ_top60_clip3.3_Feb20/"
-# SPECMAT="/home/jw3514/Work/CellType_Psy/dat/HumanCTExpressionMats/Human.Cluster.Log2Mean.Z1clip5.Z2.clip3.Jan21.csv"
-# GW_DIR="/home/jw3514/Work/UNIMED/dat/Genetics/GeneWeights/CTRL/RandG_w_Weights/RandGenes_ASD_LIQ_top60/"
+# BiasOUTDIR="/home/jw3514/Work/CellType_Psy/dat/CTRL/RandGeneBias/RandGenes_DDD.top61/"
 # mkdir -p $BiasOUTDIR
 # python script_run_ctrl_sim.v2.py -m human_ct_bias -o $BiasOUTDIR --SpecMat $SPECMAT --GW_Dir $GW_DIR
+
+###########################
+# VNR genes 
+###########################
+# # simulate gene weights
+# GW4SIM="/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/UKBB_VNR_Neg_GW_61.csv"
+# GW_DIR="/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/CTRL/RandGeneWeights/RandGenes_UKBB_VNR.top61/"
+# N_SIMS=10000
+# mkdir -p $GW_DIR
+# python script_run_ctrl_sim.v2.py -m gw -o $GW_DIR --n_sims $N_SIMS  -w $GW4SIM
+
+# BiasOUTDIR="/home/jw3514/Work/CellType_Psy/dat/CTRL/RandGeneBias/RandGenes_UKBB_VNR.top61/"
+# mkdir -p $BiasOUTDIR
+# python script_run_ctrl_sim.v2.py -m human_ct_bias -o $BiasOUTDIR --SpecMat $SPECMAT --GW_Dir $GW_DIR
+
+#####################################################
+# Other gene set not included in the paper
+#####################################################
 
 ###########################
 # LIQ Top500 (163) ASD genes 
