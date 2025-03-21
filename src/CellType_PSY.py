@@ -126,6 +126,72 @@ def PlotBiasContrast(X, Y, label1, label2, title=""):
     ax.set_ylabel(label2)
     #print(spearmanr(res["EFFECT_{}".format(name1)].values, res["EFFECT_{}".format(name2)].values))
 
+def PlotBiasContrast2(DF, label1, label2, name1, name2, title=""):
+    fig, ax = plt.subplots(dpi=300, figsize=(5, 5))
+
+    X = DF[label1].values; Y=DF[label2].values
+    r_all, p_all = spearmanr(X, Y)
+
+    
+    DF_neur = DF.loc[Neur_idx, :]
+    X = DF_neur[label1].values; Y=DF_neur[label2].values
+    r_neur, p_neur = spearmanr(X, Y)
+    #ax.scatter(X, Y, s=40, color="darkblue", edgecolor='black', alpha=0.7, label="Neuron")
+    ax.scatter(X, Y, s=40, lw=2, facecolor="none", edgecolor='darkblue', alpha=0.7, label="Neuron")
+    
+    #ax.set_title(title, fontsize=14, pad=15)
+    
+    xmin = min(min(X), min(Y), -max(X), -max(Y)) * 1.05
+    xmax = max(max(X), max(Y), -min(X), -min(Y)) * 1.05
+
+    # Add the diagonal line
+    ax.plot([xmin, xmax], [xmin, xmax], color="grey", linestyle="--", linewidth=1.5)
+    
+    # Add zero axes
+    ax.axhline(0, color="grey", linestyle=":", linewidth=1)
+    ax.axvline(0, color="grey", linestyle=":", linewidth=1)
+    
+    ax.set_xlim((xmin, xmax))
+    ax.set_ylim((xmin, xmax))
+    
+    
+    # Adjust text position to avoid overlap
+    text_x = xmin * 0.85
+    text_y = xmax * 0.85
+    
+    # Position text for "All Cell Types" correlation in top left
+    ax.text(text_x, text_y, 
+            s=f"SpearmanR = {r_all:.2f}\nP = {p_all:.1e} (All Cell Types)",
+            fontsize=10,
+            bbox=dict(facecolor='white', alpha=0.8, edgecolor='none'))
+    
+    # Position text for "Neuron Types" correlation below with more spacing
+    ax.text(text_x, text_y - 0.13,
+            s=f"SpearmanR = {r_neur:.2f}\nP = {p_neur:.1e} (Neuron Types)", 
+            fontsize=10, 
+            bbox=dict(facecolor='white', alpha=0.8, edgecolor='none'))
+
+    DF_nonneur = DF.loc[NonNeur_idx, :]
+    X = DF_nonneur[label1].values; Y=DF_nonneur[label2].values
+    #ax.scatter(X, Y, s=40, color="darkred", edgecolor='black', alpha=0.7, label="Non-Neuron")
+    ax.scatter(X, Y, s=40, lw=2, facecolor="none", edgecolor='darkred', alpha=0.7, label="Non-Neuron")
+
+    ax.set_xlabel(name1, fontsize=18)
+    ax.set_ylabel(name2, fontsize=18)
+    
+    # Style adjustments
+    ax.grid(True, linestyle='--', alpha=0.6)
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    
+    plt.xticks(fontsize=10)
+    plt.yticks(fontsize=10)
+    ax.legend(fontsize=15)
+    plt.tight_layout()
+    plt.show()
+
+    #print(spearmanr(res["EFFECT_{}".format(name1)].values, res["EFFECT_{}".format(name2)].values))
+    
 def PlotBiasContrast_Diff(X, Y, label1, label2, title="", loc=1):
     fig, ax = plt.subplots(dpi=120, figsize=(4.2,4))
     ax.scatter(X, Y, s=15, )
@@ -981,7 +1047,7 @@ def Plot_Bias_vs_IQ_HumanCT(STR, Mut_n_IQ_conf, HCT_Z2_MAT_HCT, ax=None, Pval=No
     if Pval is None:
         Pval = p
     if ax is None:
-        fig, ax = plt.subplots(dpi=150, figsize=(5, 4))
+        fig, ax = plt.subplots(dpi=150, figsize=(8, 4))
     ax.scatter(biases, IQs, s=50, color="#2c7bb6", edgecolor="black", alpha=0.8, zorder=10)
 
     b, a = np.polyfit(biases, IQs, deg=1)
@@ -996,8 +1062,8 @@ def Plot_Bias_vs_IQ_HumanCT(STR, Mut_n_IQ_conf, HCT_Z2_MAT_HCT, ax=None, Pval=No
 
     ax.set_title(f'{_SuperCluster} - {STR}', 
             fontsize=25, fontweight='normal')
-    ax.text(0.60, 0.85, s=f'PBS = {b:.2f}\np = {Pval:.1e}',
-            fontsize=22.5, ha='left', va='top', transform=ax.transAxes)
+    ax.text(0.40, 0.85, s=f'PBS = {b:.2f}\nP_perm_adj = {Pval:.1e}',
+            fontsize=22.0, ha='left', va='top', transform=ax.transAxes)
 
     ax.set_xlabel("Cell Type Bias", fontsize=25, fontweight='normal')
     ax.set_ylabel("Full Scale IQ", fontsize=25, fontweight='normal')

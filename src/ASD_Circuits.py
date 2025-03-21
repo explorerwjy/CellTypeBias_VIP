@@ -702,15 +702,16 @@ def Aggregate_Gene_Weights_NDD(MutFil, usepLI=False, Bmis=False, out=None):
            writer.writerow([k,v]) 
     return gene2MutN
 
-def Aggregate_Gene_Weights_SCZ_Daly(MutFil, allen_mouse_genes, usepLI=False, Bmis=False, out=None):
+def Aggregate_Gene_Weights_SCZ_Daly(MutFil, allen_mouse_genes, usepLI=False, Bmis=False, out=None, mode ="ORMC"):
     print("New")
+    assert mode in ["OR", "MC", "ORMC"]
+    print(mode)
     gene2MutN = {}
     for i, row in MutFil.iterrows():
         try:
-            #g = int(row["EntrezID"])
             g = int(i)
             if g not in allen_mouse_genes:
-                print(g, "not in allen mouse dataset")
+                print(g, "not in Expression dataset")
                 continue
         except:
             print(g, "Error converting Entrez ID")
@@ -725,8 +726,14 @@ def Aggregate_Gene_Weights_SCZ_Daly(MutFil, allen_mouse_genes, usepLI=False, Bmi
             else:
                 gene2MutN[g] = row["nLGD"] * 0.01 + row["nMis3"] * 0.01 + row["nMis2"] * 0 
         else:
-            #gene2MutN[g] = row["nLGD"] * 0.26 + row["nMis3"] * 0.25 + row["nMis2"] * 0.06
-            gene2MutN[g] = row["LGD_OR"] * 0.26 + row["Mis3_OR"] * 0.25 + row["nMis2_OR"] * 0.06
+            if mode == "OR":
+                gene2MutN[g] = row["LGD_OR"] * 0.33 + row["Mis3_OR"] * 0.27 + row["Mis2_OR"] * 0.12
+            elif mode == "MC":
+                gene2MutN[g] = row["nLGD"] * 0.33 + row["nMis3"] * 0.27 + row["nMis2"] * 0.12
+            ##elif mode == "ORMC":
+            #    gene2MutN[g] = row["nLGD"] * 0.33 + row["nMis3"] * 0.27 + row["nMis2"] * 0.12
+            #gene2MutN[g] = row["LGD_OR"] * 0.26 + row["Mis3_OR"] * 0.25 + row["nMis2_OR"] * 0.06
+            #gene2MutN[g] = row["LGD_OR"] * 0.26 + row["Mis3_OR"] * 0.25 + row["nMis2_OR"] * 0.06
     if out != None:
         writer = csv.writer(open(out, 'wt'))
         for k,v in sorted(gene2MutN.items(), key=lambda x:x[1], reverse=True):
@@ -947,7 +954,7 @@ def Sibling_Gene_Weights(MutFil, GeneSymbol2Entrez, out=None):
            writer.writerow([k,v]) 
     return gene2None, gene2MutN
 
-def Mut2GeneDF(MutDF, GeneSymbol2Entrez, pLI=True):
+def Mut2GeneDF(MutDF, GeneSymbol2Entrez, pLI=True, LGD_weight_high=0.554, Dmis_weight_high=0.333, LGD_weight_low=0.138, Dmis_weight_low=0.130, LGD_weight_nopli=0.357, Dmis_weight_nopli=0.231):
     Select_Genes = np.array(list(set(MutDF["HGNC"].values)))
     dat = []
     gene2MutN = {}
@@ -965,13 +972,11 @@ def Mut2GeneDF(MutDF, GeneSymbol2Entrez, pLI=True):
             except:
                 pLI = 0.0
             if pLI >= 0.5:
-                gene2MutN[Entrez] = N_LGD * 0.554 + N_Dmis * 0.333
+                gene2MutN[Entrez] = N_LGD * LGD_weight_high + N_Dmis * Dmis_weight_high
             else:
-                gene2MutN[Entrez] = N_LGD * 0.138 + N_Dmis * 0.130
-        #if Dmis:
-        #       gene2MutN[Entrez] = N_LGD * 1 + N_Dmis * 1
+                gene2MutN[Entrez] = N_LGD * LGD_weight_low + N_Dmis * Dmis_weight_low
         else:
-            gene2MutN[Entrez] = N_LGD * 0.357 + N_Dmis * 0.231
+            gene2MutN[Entrez] = N_LGD * LGD_weight_nopli + N_Dmis * Dmis_weight_nopli
     return gene2MutN
 
 

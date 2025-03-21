@@ -44,8 +44,10 @@ def Similarity_ASD_SCZ_HumanCT(n_processes=20):
     HCT_Z2_MAT_HCT = pd.read_csv("/home/jw3514/Work/CellType_Psy/dat/HumanCTExpressionMats/Human.Cluster.Log2Mean.Z1clip5.Z2.clip3.Dec30.csv", index_col=0)
     HCT_Z2_MAT_HCT.columns = HCT_Z2_MAT_HCT.columns.astype(int)
     CT_Z2_MAT_HC = HCT_Z2_MAT_HCT
-    ASD_GeneLofZ = pd.read_csv("/home/jw3514/Work/CellType_Psy/notebooks3/ASD_GeneLofZ.csv")
-    SCZ_GeneLofZ = pd.read_csv("/home/jw3514/Work/CellType_Psy/notebooks3/SCZ_GeneLofZ.csv")
+    #ASD_GeneLofZ = pd.read_csv("/home/jw3514/Work/CellType_Psy/notebooks3/ASD_GeneLofZ.csv")
+    #SCZ_GeneLofZ = pd.read_csv("/home/jw3514/Work/CellType_Psy/notebooks3/SCZ_GeneLofZ.csv")
+    ASD_GeneLofZ = pd.read_csv("/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/Other/ASD_GeneLofZ.LGD_Dmis_SameWeight.csv")
+    SCZ_GeneLofZ = pd.read_csv("/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/Other/SCZ_GeneLofZ.LGD_Dmis_SameWeight.csv")
     JobArrays = np.arange(1000)
     pool = multiprocessing.Pool(processes=n_processes)
     results = pool.starmap(process_Similarity_ASD_SCZ_HumanCT, [(idx, CT_Z2_MAT_HC, ASD_GeneLofZ, SCZ_GeneLofZ) for idx in JobArrays])
@@ -55,7 +57,8 @@ def Similarity_ASD_SCZ_HumanCT(n_processes=20):
     for List in results:
         ALL_RES.append(List)
     ALL_RES = np.array(ALL_RES)
-    with open("../dat/Other/ASD_SCZ_HumanCT_BiasCorrRandomGeneRemove.npy", 'wb') as f:
+    #with open("../dat/Other/ASD_SCZ_HumanCT_BiasCorrRandomGeneRemove.npy", 'wb') as f:
+    with open("../dat/Other/ASD_SCZ_MouseSTR_BiasCorrRandomGeneRemove.LGD_Dmis_SameWeight.npy", 'wb') as f:
         np.save(f, ALL_RES)
 
 def process_Similarity_ASD_SCZ_MouseSTR(idx, CT_Z2_MAT_HC, ASD_GeneLofZ, SCZ_GeneLofZ):
@@ -73,8 +76,10 @@ def process_Similarity_ASD_SCZ_MouseSTR(idx, CT_Z2_MAT_HC, ASD_GeneLofZ, SCZ_Gen
 
 def Similarity_ASD_SCZ_MouseSTR(n_processes=20):
     Mouse_STR_Z2_Mat = pd.read_csv("../../ASD_Circuits/dat/allen-mouse-exp/AllenMouseBrain_Z2bias.csv", index_col=0)
-    ASD_GeneLofZ = pd.read_csv("/home/jw3514/Work/CellType_Psy/notebooks3/ASD_GeneLofZ.csv")
-    SCZ_GeneLofZ = pd.read_csv("/home/jw3514/Work/CellType_Psy/notebooks3/SCZ_GeneLofZ.csv")
+    #ASD_GeneLofZ = pd.read_csv("/home/jw3514/Work/CellType_Psy/notebooks3/ASD_GeneLofZ.csv")
+    #SCZ_GeneLofZ = pd.read_csv("/home/jw3514/Work/CellType_Psy/notebooks3/SCZ_GeneLofZ.csv")
+    ASD_GeneLofZ = pd.read_csv("/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/Other/ASD_GeneLofZ.LGD_Dmis_SameWeight.csv")
+    SCZ_GeneLofZ = pd.read_csv("/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/Other/SCZ_GeneLofZ.LGD_Dmis_SameWeight.csv")
     JobArrays = np.arange(1000)
     pool = multiprocessing.Pool(processes=n_processes)
     results = pool.starmap(process_Similarity_ASD_SCZ_MouseSTR, [(idx, Mouse_STR_Z2_Mat, ASD_GeneLofZ, SCZ_GeneLofZ) for idx in JobArrays])
@@ -84,7 +89,8 @@ def Similarity_ASD_SCZ_MouseSTR(n_processes=20):
     for List in results:
         ALL_RES.append(List)
     ALL_RES = np.array(ALL_RES)
-    with open("ASD_SCZ_MouseSTR_BiasCorrRandomGeneRemove.npy", 'wb') as f:
+    #with open("ASD_SCZ_MouseSTR_BiasCorrRandomGeneRemove.npy", 'wb') as f:
+    with open("../dat/Other/ASD_SCZ_MouseSTR_BiasCorrRandomGeneRemove.LGD_Dmis_SameWeight.npy", 'wb') as f:
         np.save(f, ALL_RES)
 
 def GetOptions():
