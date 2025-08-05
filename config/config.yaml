@@ -1,0 +1,40 @@
+# List of gene sets to analyze
+ProjDIR: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/"  # Change to your project directory
+
+gene_sets:
+  ASD_HIQ:
+    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/HIQ.top61.nopLI.LGD_Dmis_SameWeight.gw"
+  ASD_LIQ:
+    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/LIQ.top61.nopLI.LGD_Dmis_SameWeight.gw"
+  SCZ:
+    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/SCZ.top61.nopLI.LGD_Dmis_SameWeight.exclude_Mis2.gw"
+  DDD:
+    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/DDD.top61.gw.csv"
+  22q_del:
+    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/X22q.gw.csv"
+  22q_small_del:
+    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/X22q.mousemodel.gw.csv"
+  # UKBB_VNR_Neg:
+  #   geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/UKBB_VNR_Neg_GW_61.csv"
+  # UKBB_VNR_Pos:
+  #   geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/UKBB_VNR_Pos_GW_61.csv"
+  # UKBB_EDU_Neg:
+  #   geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/UKBB_EDU_Neg_GW_61.csv"  # Negative
+  # UKBB_EDU_Pos:
+  #   geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/UKBB_EDU_Pos_GW_61.csv"  # Positive
+  # UKBB_RT_Pos:
+  #   geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/UKBB_RT_Pos_GW_61.csv"  # Positive
+  # UKBB_RT_Neg:
+  #   geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/UKBB_RT_Neg_GW_61.csv"  # Negative
+
+# Analysis types and their corresponding expression matrices
+analysis_types:
+  Raw: "dat/ExpMats/HumanCT.TPM.0.1.Filt.Spec.clip.lowexp.cut1e4.csv"
+  Centering: "dat/ExpMats/HumanCT.TPM.0.1.Filt.Spec.clip.lowexp.cut1e4.mean_centered.csv"
+  QuantileNorm: "dat/ExpMats/HumanCT.TPM.0.1.Filt.Spec.clip.lowexp.cut1e4.qn.csv"
+
+# Output directory for all results
+output_dir: "results"
+
+# Number of random weights (can customize per gene set if needed)
+n_random_weights: 10000
