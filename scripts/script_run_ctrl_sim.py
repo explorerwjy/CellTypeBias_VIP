@@ -1,13 +1,15 @@
 # Author: jywang	explorerwjy@gmail.com
 
 # ========================================================================================================
-# script_run_ctrl_sim.py
+# script_run_ctrl_sim.v3.py
 # Run control simutations for expression biases (Cell Type; Structures)
 # ========================================================================================================
 
 import argparse
 import sys
-sys.path.insert(1, '/home/jw3514/Work/CellType_Psy/src')
+import os
+ProjDIR = "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/" # Change to your project directory
+sys.path.insert(1, f'{ProjDIR}/src/')
 from CellType_PSY import *
 import time
 import json
@@ -15,82 +17,81 @@ import pickle
 import multiprocessing
 from multiprocessing import Pool
 
-def SaveDict(Dict, fname):
-    with open(fname, 'wb') as hand:
-        pickle.dump(Dict, hand)
+###########################################################################
+## Human Cell Type CTRL Generation
+###########################################################################
+
+def BiasCal_SingleCtrl_HumanCT(Random_GW_DF, SpecMat, idx):
+    GW = dict(zip(Random_GW_DF[idx].values, Random_GW_DF["GeneWeight"].values))
+    Ctrl_BiasDF = HumanCT_AvgZ_Weighted(SpecMat, GW)
+    return Ctrl_BiasDF
+
+def CtrlBiasCal_HumanCT(Random_GW_Fil, SpecMat, outfile, n_processes=20): 
+    print("HumanCT Null Bias Simulation -", Random_GW_Fil)
+
+    Random_GW_DF = pd.read_csv(Random_GW_Fil, index_col=0) # index is real gene,first column is gene weights, rest are random gene entrez
+    Task_idx = Random_GW_DF.columns.values[1:]
+    #print(Task_idx)
+
+    SpecMat = pd.read_csv(SpecMat, index_col=0)
+    SpecMat.columns = SpecMat.columns.astype(int)
+
+    pool = multiprocessing.Pool(processes=n_processes)
+    result_dfs = pool.starmap(BiasCal_SingleCtrl_HumanCT, [(Random_GW_DF, SpecMat, idx) for idx in Task_idx])
+
+    pool.close()
+    pool.join()
+    print("end multiprocessing, merging results")
+    str_ids = sorted(result_dfs[0].index.values)
+    effects_matrix = np.stack([df.loc[str_ids, "EFFECT"].values for df in result_dfs], axis=0)
+    effects_df = pd.DataFrame(effects_matrix.T, index=str_ids, columns=[str(i) for i in range(effects_matrix.shape[0])])
+    effects_df.to_csv(outfile)
+    return
+    
+
+###########################################################################
+## Mouse Cell Type CTRL Generation
+###########################################################################
+def BiasCal_SingleCtrl_MouseCT(GW_Fil, SpecMat, outDir):
+    GW = Fil2Dict(GW_Fil)
+    idx = GW_Fil.split("/")[-1].split(".")[2]
+    Ctrl_BiasDF = ABC_AvgCTZ_Weighted(SpecMat, GW, csv_fil="{}/cont.bias.{}.csv".format(outDir, idx))
     return
 
-def LoadDict(fname):
-    with open(fname, 'rb') as hand:
-        b = pickle.load(hand)
-        return b
-
-def GeneWeightSimulation(GW):
+def BiasCal_SingleCtrl_MouseCT_DN(GW_Fil, SpecMat, outDir, ISH_SC_CorrDF):
+    GW = Fil2Dict(GW_Fil)
+    GW_adj = {}
+    for k,v in GW.items():
+        if k in ISH_SC_CorrDF.index.values:
+            GW_adj[k] = v * (ISH_SC_CorrDF.loc[k, "V2_V3_CT_Corr"]**2)
+    idx = GW_Fil.split("/")[-1].split(".")[2]
+    Ctrl_BiasDF = ABC_AvgCTZ_Weighted(SpecMat, GW_adj, csv_fil="{}/cont.bias.{}.csv".format(outDir, idx))
     return
 
-def parallel_SubSampleSibling():
-    return
-
-def SubSampleSibling(WeightDF, outdir, GeneProb, n_sims=10000):
-    if not os.path.exists(outdir):
-        os.makedirs(outdir)
-    SibWeightDF = pd.read_csv("/home/jw3514/Work/ASD_Circuits/dat/Unionize_bias/sibling_weights_LGD_Dmis.csv", header=None)
-    SibGenes = SibWeightDF[0].values
-    WeightDF = pd.read_csv(WeightDF, header=None)
-    #Gene_Weights = [1] * len(WeightDF[1].values)
-    Gene_Weights = WeightDF[1].values
-
-    # Adjust Prob
-    if GeneProb != None:
-        Gene2Prob = pd.read_csv(GeneProb, index_col=0)
-        SibGenes = [g for g in Gene2Prob.index.values if g in SibGenes]
-        Gene2Prob = Gene2Prob.loc[SibGenes, :]
-        probs = Gene2Prob["Prob"].values
-        total = np.sum(probs)
-        probs = probs/total
-        probs[-1] = 1 - np.sum(probs[:-1])
-        Gene2Prob["Prob"] = probs
-
-        for i in range(n_sims):
-            Genes = np.random.choice(Gene2Prob.index.values, size=len(Gene_Weights), p=Gene2Prob["Prob"].values)
-            tmp_dict = dict(zip(Genes, Gene_Weights))
-            Dict2Fil(tmp_dict, "{}/cont.gw.{}.csv".format(outdir, i))
+def CtrlBiasCal_MouseCT(GW_Dir, SpecMat, outDir, n_processes=20, DN=True): 
+    if not os.path.exists(outDir):
+        os.makedirs(outDir)
+    Ctrl_GW_Fils = []
+    for root, dirs, file_names in os.walk(GW_Dir):
+        for file_name in file_names:
+            Ctrl_GW_Fils.append(os.path.join(root, file_name))
+    SpecMat = pd.read_csv(SpecMat, index_col=0)
+    pool = multiprocessing.Pool(processes=n_processes)
+    print(DN)
+    if DN:
+        print("Use Denoise")
+        ISH_SC_CorrDF = pd.read_csv("/home/jw3514/Work/CellType_Psy/AllenBrainCellAtlas/dat/ISH_MERFISH_Gene_CorssSTR_Corr.v2.csv", index_col=0)
+        results = pool.starmap(BiasCal_SingleCtrl_MouseCT_DN, [(GW_Fil, SpecMat, outDir, ISH_SC_CorrDF) for GW_Fil in Ctrl_GW_Fils])
     else:
-        for i in range(n_sims):
-            Genes = np.random.choice(SibGenes, size=len(Gene_Weights))
-            tmp_dict = dict(zip(Genes, Gene_Weights))
-            Dict2Fil(tmp_dict, "{}/cont.gw.{}.csv".format(outdir, i))
+        print("Dont use Denoise")
+        results = pool.starmap(BiasCal_SingleCtrl_MouseCT, [(GW_Fil, SpecMat, outDir) for GW_Fil in Ctrl_GW_Fils])
 
-def RandomGenes(WeightDF, outdir, GeneProb, n_sims=10000):
-    if not os.path.exists(outdir):
-        os.makedirs(outdir)
-    GeneSetDF = pd.read_csv("/home/jw3514/Work/ASD_Circuits/dat/allen-mouse-exp/AllenMouseBrain_Z2bias.csv", header=None)
-    Genes = Genes.values
-    WeightDF = pd.read_csv(WeightDF, header=None)
-    #Gene_Weights = [1] * len(WeightDF[1].values)
-    Gene_Weights = WeightDF[1].values
+    pool.close()
+    pool.join()
 
-    # Adjust Prob
-    if GeneProb != None:
-        Gene2Prob = pd.read_csv(GeneProb, index_col=0)
-        SibGenes = [g for g in Gene2Prob.index.values if g in SibGenes]
-        Gene2Prob = Gene2Prob.loc[SibGenes, :]
-        probs = Gene2Prob["Prob"].values
-        total = np.sum(probs)
-        probs = probs/total
-        probs[-1] = 1 - np.sum(probs[:-1])
-        Gene2Prob["Prob"] = probs
-
-        for i in range(n_sims):
-            Genes = np.random.choice(Gene2Prob.index.values, size=len(Gene_Weights), p=Gene2Prob["Prob"].values)
-            tmp_dict = dict(zip(Genes, Gene_Weights))
-            Dict2Fil(tmp_dict, "{}/cont.gw.{}.csv".format(outdir, i))
-    else:
-        for i in range(n_sims):
-            Genes = np.random.choice(Genes, size=len(Gene_Weights))
-            tmp_dict = dict(zip(Genes, Gene_Weights))
-            Dict2Fil(tmp_dict, "{}/cont.gw.{}.csv".format(outdir, i))
-
+###########################################################################
+## Mouse Structure CTRL Generation
+###########################################################################
 def BiasCal_SingleCtrl(GW_Fil, SpecMat, outDir):
     GW = Fil2Dict(GW_Fil)
     idx = GW_Fil.split("/")[-1].split(".")[2]
@@ -112,51 +113,14 @@ def CtrlBiasCal(GW_Dir, SpecMat, outDir, n_processes=20):
     pool.close()
     pool.join()
 
-def process_Similarity_ASD_SCZ(idx, CT_Z2_MAT_HC, ASD_GeneLofZ, SCZ_GeneLofZ):
-    DF1 = ASD_GeneLofZ.sample(frac=1, random_state=idx)
-    DF2 = SCZ_GeneLofZ.sample(frac=1, random_state=idx)
-    yy = []
-    for i in range(0, 31, 1):
-        tmp_ASD_GW = dict(zip(DF1["Entrez"].values[i:], DF1["GW"].values[i:]))
-        tmp_SCZ_GW = dict(zip(DF2["Entrez"].values[i:], DF2["GW"].values[i:]))
-        tmp_ASD_Bias = AvgCTZ_Weighted(CT_Z2_MAT_HC, tmp_ASD_GW, Method = 1)
-        tmp_ASD_Bias = AnnotateCTDat(tmp_ASD_Bias, Anno)
-        tmp_SCZ_Bias = AvgCTZ_Weighted(CT_Z2_MAT_HC, tmp_SCZ_GW, Method = 1)
-        tmp_SCZ_Bias = AnnotateCTDat(tmp_SCZ_Bias, Anno)
-        r,p = GetSingeCellBiasCorr(tmp_ASD_Bias, tmp_SCZ_Bias)
-        yy.append(r)
-    #print(yy)
-    return yy 
-
-def Similarity_ASD_SCZ(n_processes=20):
-    HCT_Z2_MAT_HCT = pd.read_csv("../dat/HumanCTExpressionMats/Human.CT.Exp.Entrez.log2.Z2.HCT.z1clip3.csv", index_col=0)
-    max_Z, min_Z = 3, -3
-    HCT_Z2_MAT_HCT = HCT_Z2_MAT_HCT.clip(upper=max_Z, lower=min_Z)
-    #CT_Z2_MAT_HC = pd.read_csv("../dat/HumanCellType.AllCell.HCT.Z2bias.entrez.csv", index_col=0)
-    CT_Z2_MAT_HC = HCT_Z2_MAT_HCT
-    ASD_GeneLofZ = pd.read_csv("/home/jw3514/Work/CellType_Psy/notebooks3/ASD_GeneLofZ.csv")
-    SCZ_GeneLofZ = pd.read_csv("/home/jw3514/Work/CellType_Psy/notebooks3/SCZ_GeneLofZ.csv")
-    JobArrays = np.arange(1000)
-    pool = multiprocessing.Pool(processes=n_processes)
-    results = pool.starmap(process_Similarity_ASD_SCZ, [(idx, CT_Z2_MAT_HC, ASD_GeneLofZ, SCZ_GeneLofZ) for idx in JobArrays])
-    pool.close()
-    pool.join()
-    ALL_RES = []
-    for List in results:
-        ALL_RES.append(List)
-    ALL_RES = np.array(ALL_RES)
-    with open("ASD_SCZ_BiasCorrRandomGeneRemove.npy", 'wb') as f:
-        np.save(f, ALL_RES)
-
+###########################################################################
+## Args and Main Functions
+###########################################################################
 def GetOptions():
     parser = argparse.ArgumentParser()
     parser.add_argument('-m', '--mode', type=str, help='Mode of program 1: gene weight generateion; 2. bias calculaton')
-    parser.add_argument('-o', '--outdir', type=str, help='Output directory')
-    parser.add_argument('-w', '--WeightDF', type=str, help='Weight DF for control geneset')
-    parser.add_argument('-p', '--GeneProb', default=None, help='GeneProb Filname or None if dont use')
-    parser.add_argument('--n_sims', type=int, default=10000, help='Number of ctrl simulations')
-
-    parser.add_argument('--GW_Dir', type=str, help="dirctory of ctrl gene weights")
+    parser.add_argument('-o', '--outfile', type=str, help='Output file')
+    parser.add_argument('--Ctrl_Genes_Fil', type=str, required=True, help="Filename of ctrl genes")
     parser.add_argument('--SpecMat', type=str, help="Filename of bias matrix")
     parser.add_argument('--n_processes', type=int, default=20, help="Filename of bias matrix")
     args = parser.parse_args()
@@ -164,7 +128,29 @@ def GetOptions():
 
 def main():
     args = GetOptions()
-    Similarity_ASD_SCZ()
+    mode = args.mode
+    if mode == 'bias':
+        SpecMat = args.SpecMat
+        Ctrl_Genes_Fil = args.Ctrl_Genes_Fil
+        outfile = args.outfile
+        n_processes = args.n_processes
+        CtrlBiasCal(Ctrl_Genes_Fil, SpecMat, outfile, n_processes) # 
+    if mode == 'human_ct_bias':
+        SpecMat = args.SpecMat
+        Ctrl_Genes_Fil = args.Ctrl_Genes_Fil
+        outfile = args.outfile
+        n_processes = args.n_processes
+        CtrlBiasCal_HumanCT(Ctrl_Genes_Fil, SpecMat, outfile, n_processes)
+    if mode == "mouse_ct_bias":
+        DN=args.DN
+        print(DN)
+        #DN = 0
+        GW_Dir = args.GW_Dir
+        SpecMat = args.SpecMat
+        outDir = args.outdir
+        n_processes = args.n_processes
+        CtrlBiasCal_MouseCT(Ctrl_Genes_Fil, SpecMat, outfile, n_processes, DN)
+
     return
 
 if __name__ == '__main__':
