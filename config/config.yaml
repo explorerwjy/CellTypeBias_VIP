@@ -14,24 +14,24 @@ gene_sets:
     geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/X22q.gw.csv"
   22q_small_del:
     geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/X22q.mousemodel.gw.csv"
-  # UKBB_VNR_Neg:
-  #   geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/UKBB_VNR_Neg_GW_61.csv"
-  # UKBB_VNR_Pos:
-  #   geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/UKBB_VNR_Pos_GW_61.csv"
-  # UKBB_EDU_Neg:
-  #   geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/UKBB_EDU_Neg_GW_61.csv"  # Negative
-  # UKBB_EDU_Pos:
-  #   geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/UKBB_EDU_Pos_GW_61.csv"  # Positive
-  # UKBB_RT_Pos:
-  #   geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/UKBB_RT_Pos_GW_61.csv"  # Positive
-  # UKBB_RT_Neg:
-  #   geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/UKBB_RT_Neg_GW_61.csv"  # Negative
+  UKBB_VNR_Neg:
+    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/UKBB_VNR_Neg_GW_61.csv"
+  UKBB_VNR_Pos:
+    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/UKBB_VNR_Pos_GW_61.csv"
+  UKBB_EDU_Neg:
+    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/UKBB_EDU_Neg_GW_61.csv"  # Negative
+  UKBB_EDU_Pos:
+    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/UKBB_EDU_Pos_GW_61.csv"  # Positive
+  UKBB_RT_Pos:
+    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/UKBB_RT_Pos_GW_61.csv"  # Positive
+  UKBB_RT_Neg:
+    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/UKBB_RT_Neg_GW_61.csv"  # Negative
 
 # Analysis types and their corresponding expression matrices
 analysis_types:
-  Raw: "dat/ExpMats/HumanCT.TPM.0.1.Filt.Spec.clip.lowexp.cut1e4.csv"
-  Centering: "dat/ExpMats/HumanCT.TPM.0.1.Filt.Spec.clip.lowexp.cut1e4.mean_centered.csv"
-  QuantileNorm: "dat/ExpMats/HumanCT.TPM.0.1.Filt.Spec.clip.lowexp.cut1e4.qn.csv"
+  #Raw: "dat/ExpMats/HumanCT.TPM.0.1.Filt.Spec.clip.lowexp.cut1e4.csv" # testing Plain effect on bias calculation
+  Centering: "dat/ExpMats/HumanCT.TPM.0.1.Filt.Spec.clip.lowexp.cut1e4.mean_centered.csv" # Centering Cell type by average specificity
+  #QuantileNorm: "dat/ExpMats/HumanCT.TPM.0.1.Filt.Spec.clip.lowexp.cut1e4.qn.csv" # testing QuantileNorm effect on bias calculation
 
 # Output directory for all results
 output_dir: "results"

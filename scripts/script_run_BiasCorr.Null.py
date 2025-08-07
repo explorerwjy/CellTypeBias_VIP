@@ -7,89 +7,133 @@
 
 import argparse
 import sys
-sys.path.insert(1, '/home/jw3514/Work/CellType_Psy/src')
+ProjDIR = "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/" # Change to your project directory
+sys.path.insert(1, f'{ProjDIR}/src/')
+sys.path.insert(1, '/home/jw3514/Work/UNIMED/src')
 from CellType_PSY import *
+from UNIMED import *
 import time
 import json
 import pickle
 import multiprocessing
 from multiprocessing import Pool
+import numpy as np
+import pandas as pd
+from functools import partial
 
 def SaveDict(Dict, fname):
     with open(fname, 'wb') as hand:
         pickle.dump(Dict, hand)
-    return
 
 def LoadDict(fname):
     with open(fname, 'rb') as hand:
-        b = pickle.load(hand)
-        return b
+        return pickle.load(hand)
 
-def process_Similarity_ASD_SCZ_HumanCT(idx, CT_Z2_MAT_HC, ASD_GeneLofZ, SCZ_GeneLofZ):
-    DF1 = ASD_GeneLofZ.sample(frac=1, random_state=idx)
-    DF2 = SCZ_GeneLofZ.sample(frac=1, random_state=idx)
-    yy = []
-    for i in range(0, 31, 1):
-        tmp_ASD_GW = dict(zip(DF1["Entrez"].values[i:], DF1["GW"].values[i:]))
-        tmp_SCZ_GW = dict(zip(DF2["Entrez"].values[i:], DF2["GW"].values[i:]))
-        tmp_ASD_Bias = AvgCTZ_Weighted(CT_Z2_MAT_HC, tmp_ASD_GW, Method = 1)
-        tmp_ASD_Bias = AnnotateCTDat(tmp_ASD_Bias, Anno)
-        tmp_SCZ_Bias = AvgCTZ_Weighted(CT_Z2_MAT_HC, tmp_SCZ_GW, Method = 1)
-        tmp_SCZ_Bias = AnnotateCTDat(tmp_SCZ_Bias, Anno)
-        r,p = GetSingeCellBiasCorr(tmp_ASD_Bias, tmp_SCZ_Bias)
-        yy.append(r)
-    return yy 
+def process_batch_similarity(batch_indices, CT_Z2_MAT_HC, ASD_GeneLofZ, SCZ_GeneLofZ):
+    results = []
+    for idx in batch_indices:
+        DF1 = ASD_GeneLofZ.sample(frac=1, random_state=idx)
+        DF2 = SCZ_GeneLofZ.sample(frac=1, random_state=idx)
+        
+        # Pre-compute gene-weight mappings
+        ASD_genes = DF1["Entrez"].values
+        ASD_weights = DF1["GW"].values
+        SCZ_genes = DF2["Entrez"].values
+        SCZ_weights = DF2["GW"].values
+        
+        batch_results = []
+        for i in range(0, 31, 1):
+            tmp_ASD_GW = dict(zip(ASD_genes[i:], ASD_weights[i:]))
+            tmp_SCZ_GW = dict(zip(SCZ_genes[i:], SCZ_weights[i:]))
+            
+            # Compute biases in parallel
+            tmp_ASD_Bias = HumanCT_AvgZ_Weighted(CT_Z2_MAT_HC, tmp_ASD_GW)
+            tmp_ASD_Bias = AnnotateCTDat(tmp_ASD_Bias, Anno)
+            tmp_SCZ_Bias = HumanCT_AvgZ_Weighted(CT_Z2_MAT_HC, tmp_SCZ_GW)
+            tmp_SCZ_Bias = AnnotateCTDat(tmp_SCZ_Bias, Anno)
+            
+            r,_ = GetSingeCellBiasCorr(tmp_ASD_Bias, tmp_SCZ_Bias, CTs=Neur_idx)
+            batch_results.append(r)
+        results.append(batch_results)
+    return results
 
 def Similarity_ASD_SCZ_HumanCT(n_processes=20):
-    HCT_Z2_MAT_HCT = pd.read_csv("/home/jw3514/Work/CellType_Psy/dat/HumanCTExpressionMats/Human.Cluster.Log2Mean.Z1clip5.Z2.clip3.Dec30.csv", index_col=0)
+    # Load data once
+    #HCT_Z2_MAT_HCT = pd.read_csv("/home/jw3514/Work/CellType_Psy/dat/HumanCTExpressionMats/Human.Cluster.Log2Mean.Z1clip5.Z2.clip3.Dec30.csv", index_col=0)
+    #HCT_Z2_MAT_HCT = pd.read_csv("/home/jw3514/Work/CellType_Psy/dat/Test.BiasMat/HumanCT.Spec.clip.noLowExp.cut1e4.csv", index_col=0)
+    HCT_Z2_MAT_HCT = pd.read_csv("/home/jw3514/Work/CellType_Psy/dat/HumanCTExpressionMats/HumanCT.TPM.0.1.Filt.Spec.clip.lowexp.cut1e4.csv", index_col=0)
     HCT_Z2_MAT_HCT.columns = HCT_Z2_MAT_HCT.columns.astype(int)
-    CT_Z2_MAT_HC = HCT_Z2_MAT_HCT
-    #ASD_GeneLofZ = pd.read_csv("/home/jw3514/Work/CellType_Psy/notebooks3/ASD_GeneLofZ.csv")
-    #SCZ_GeneLofZ = pd.read_csv("/home/jw3514/Work/CellType_Psy/notebooks3/SCZ_GeneLofZ.csv")
+    
     ASD_GeneLofZ = pd.read_csv("/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/Other/ASD_GeneLofZ.LGD_Dmis_SameWeight.csv")
     SCZ_GeneLofZ = pd.read_csv("/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/Other/SCZ_GeneLofZ.LGD_Dmis_SameWeight.csv")
-    JobArrays = np.arange(1000)
-    pool = multiprocessing.Pool(processes=n_processes)
-    results = pool.starmap(process_Similarity_ASD_SCZ_HumanCT, [(idx, CT_Z2_MAT_HC, ASD_GeneLofZ, SCZ_GeneLofZ) for idx in JobArrays])
-    pool.close()
-    pool.join()
-    ALL_RES = []
-    for List in results:
-        ALL_RES.append(List)
-    ALL_RES = np.array(ALL_RES)
-    #with open("../dat/Other/ASD_SCZ_HumanCT_BiasCorrRandomGeneRemove.npy", 'wb') as f:
-    with open("../dat/Other/ASD_SCZ_MouseSTR_BiasCorrRandomGeneRemove.LGD_Dmis_SameWeight.npy", 'wb') as f:
+    
+    # Split work into batches
+    total_jobs = 1000
+    batch_size = total_jobs // n_processes
+    job_batches = [np.arange(i, min(i + batch_size, total_jobs)) for i in range(0, total_jobs, batch_size)]
+    
+    # Process batches in parallel
+    with Pool(processes=n_processes) as pool:
+        results = pool.map(partial(process_batch_similarity, 
+                                 CT_Z2_MAT_HC=HCT_Z2_MAT_HCT,
+                                 ASD_GeneLofZ=ASD_GeneLofZ, 
+                                 SCZ_GeneLofZ=SCZ_GeneLofZ), 
+                         job_batches)
+    
+    # Flatten results
+    ALL_RES = np.array([item for sublist in results for item in sublist])
+    
+    # Save results
+    with open("../dat/Other/ASD_SCZ_HumanCT_BiasCorrRandomGeneRemove.LGD_Dmis_SameWeight.npy", 'wb') as f:
         np.save(f, ALL_RES)
 
-def process_Similarity_ASD_SCZ_MouseSTR(idx, CT_Z2_MAT_HC, ASD_GeneLofZ, SCZ_GeneLofZ):
-    DF1 = ASD_GeneLofZ.sample(frac=1, random_state=idx)
-    DF2 = SCZ_GeneLofZ.sample(frac=1, random_state=idx)
-    yy = []
-    for i in range(0, 31, 1):
-        tmp_ASD_GW = dict(zip(DF1["Entrez"].values[i:], DF1["GW"].values[i:]))
-        tmp_SCZ_GW = dict(zip(DF2["Entrez"].values[i:], DF2["GW"].values[i:]))
-        tmp_ASD_Bias = AvgSTRZ_Weighted(CT_Z2_MAT_HC, tmp_ASD_GW, Method = 1)
-        tmp_SCZ_Bias = AvgSTRZ_Weighted(CT_Z2_MAT_HC, tmp_SCZ_GW, Method = 1)
-        r,p = GetSingeCellBiasCorr(tmp_ASD_Bias, tmp_SCZ_Bias)
-        yy.append(r)
-    return yy 
+def process_batch_similarity_mouse(batch_indices, CT_Z2_MAT_HC, ASD_GeneLofZ, SCZ_GeneLofZ):
+    results = []
+    for idx in batch_indices:
+        DF1 = ASD_GeneLofZ.sample(frac=1, random_state=idx)
+        DF2 = SCZ_GeneLofZ.sample(frac=1, random_state=idx)
+        
+        # Pre-compute gene-weight mappings
+        ASD_genes = DF1["Entrez"].values
+        ASD_weights = DF1["GW"].values
+        SCZ_genes = DF2["Entrez"].values
+        SCZ_weights = DF2["GW"].values
+        
+        batch_results = []
+        for i in range(0, 31, 1):
+            tmp_ASD_GW = dict(zip(ASD_genes[i:], ASD_weights[i:]))
+            tmp_SCZ_GW = dict(zip(SCZ_genes[i:], SCZ_weights[i:]))
+            
+            tmp_ASD_Bias = HumanCT_AvgZ_Weighted(CT_Z2_MAT_HC, tmp_ASD_GW, Method=1)
+            tmp_SCZ_Bias = HumanCT_AvgZ_Weighted(CT_Z2_MAT_HC, tmp_SCZ_GW, Method=1)
+            
+            r,_ = GetSingeCellBiasCorr(tmp_ASD_Bias, tmp_SCZ_Bias, CTs=Neur_idx)
+            batch_results.append(r)
+        results.append(batch_results)
+    return results
 
 def Similarity_ASD_SCZ_MouseSTR(n_processes=20):
+    # Load data once
     Mouse_STR_Z2_Mat = pd.read_csv("../../ASD_Circuits/dat/allen-mouse-exp/AllenMouseBrain_Z2bias.csv", index_col=0)
-    #ASD_GeneLofZ = pd.read_csv("/home/jw3514/Work/CellType_Psy/notebooks3/ASD_GeneLofZ.csv")
-    #SCZ_GeneLofZ = pd.read_csv("/home/jw3514/Work/CellType_Psy/notebooks3/SCZ_GeneLofZ.csv")
     ASD_GeneLofZ = pd.read_csv("/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/Other/ASD_GeneLofZ.LGD_Dmis_SameWeight.csv")
     SCZ_GeneLofZ = pd.read_csv("/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/Other/SCZ_GeneLofZ.LGD_Dmis_SameWeight.csv")
-    JobArrays = np.arange(1000)
-    pool = multiprocessing.Pool(processes=n_processes)
-    results = pool.starmap(process_Similarity_ASD_SCZ_MouseSTR, [(idx, Mouse_STR_Z2_Mat, ASD_GeneLofZ, SCZ_GeneLofZ) for idx in JobArrays])
-    pool.close()
-    pool.join()
-    ALL_RES = []
-    for List in results:
-        ALL_RES.append(List)
-    ALL_RES = np.array(ALL_RES)
-    #with open("ASD_SCZ_MouseSTR_BiasCorrRandomGeneRemove.npy", 'wb') as f:
+    
+    # Split work into batches
+    total_jobs = 1000
+    batch_size = total_jobs // n_processes
+    job_batches = [np.arange(i, min(i + batch_size, total_jobs)) for i in range(0, total_jobs, batch_size)]
+    
+    # Process batches in parallel
+    with Pool(processes=n_processes) as pool:
+        results = pool.map(partial(process_batch_similarity_mouse,
+                                 CT_Z2_MAT_HC=Mouse_STR_Z2_Mat,
+                                 ASD_GeneLofZ=ASD_GeneLofZ,
+                                 SCZ_GeneLofZ=SCZ_GeneLofZ),
+                         job_batches)
+    
+    # Flatten results
+    ALL_RES = np.array([item for sublist in results for item in sublist])
+    
     with open("../dat/Other/ASD_SCZ_MouseSTR_BiasCorrRandomGeneRemove.LGD_Dmis_SameWeight.npy", 'wb') as f:
         np.save(f, ALL_RES)
 
@@ -100,7 +144,6 @@ def GetOptions():
     parser.add_argument('-w', '--WeightDF', type=str, help='Weight DF for control geneset')
     parser.add_argument('-p', '--GeneProb', default=None, help='GeneProb Filname or None if dont use')
     parser.add_argument('--n_sims', type=int, default=10000, help='Number of ctrl simulations')
-
     parser.add_argument('--GW_Dir', type=str, help="dirctory of ctrl gene weights")
     parser.add_argument('--SpecMat', type=str, help="Filename of bias matrix")
     parser.add_argument('--n_processes', type=int, default=20, help="Filename of bias matrix")

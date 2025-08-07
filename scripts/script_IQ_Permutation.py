@@ -317,8 +317,9 @@ def HumanCT_Permutation(Mut_n_IQ_conf, outDIR, n_permutations):
     n_threads = 20
 
     # Human_CT_Z2_Mat = pd.read_csv("/home/jw3514/Work/CellType_Psy/dat/HumanCTExpressionMats/Human.Cluster.Log2Mean.Z1clip5.Z2.clip3.Jan21.csv", index_col=0)
-    Human_CT_Z2_Mat = pd.read_csv("/home/jw3514/Work/CellType_Psy/dat/HumanCTExpressionMats/Human.Cluster.Log2Mean.Z1clip5.Z2.clip3.Dec30.csv", index_col=0)
-    Human_CT_Z2_Mat.columns = Human_CT_Z2_Mat.columns.astype(int)
+    #Human_CT_Z2_Mat = pd.read_csv("/home/jw3514/Work/CellType_Psy/dat/HumanCTExpressionMats/Human.Cluster.Log2Mean.Z1clip5.Z2.clip3.Dec30.csv", index_col=0)
+    HumanCT_Spec = pd.read_csv("/home/jw3514/Work/CellType_Psy/dat/HumanCTExpressionMats/HumanCT.TPM.0.1.Filt.Spec.clip.lowexp.cut1e4.csv", index_col=0)
+    HumanCT_Spec.columns = HumanCT_Spec.columns.astype(int)
     
     if Mut_n_IQ_conf is None:
         Mut_n_IQ_conf = pd.read_csv("/home/jw3514/Work/CellType_Psy/dat/Pheno_Bias_vs_IQ/Mut_n_IQ_conf.csv")
@@ -334,7 +335,7 @@ def HumanCT_Permutation(Mut_n_IQ_conf, outDIR, n_permutations):
     np.random.seed(42)
     seeds = np.random.randint(0, 1000000, size=n_permutations)
     with Pool(n_threads) as pool:
-        pool.starmap(process_permutation_HumanCT, [(idx, Mut_n_IQ_conf, Human_CT_Z2_Mat, seed, outDIR) for idx, seed in enumerate(seeds)])
+        pool.starmap(process_permutation_HumanCT, [(idx, Mut_n_IQ_conf, HumanCT_Spec, seed, outDIR) for idx, seed in enumerate(seeds)])
 
 
 def main():

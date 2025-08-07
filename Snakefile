@@ -54,7 +54,6 @@ rule compute_null_bias:
         mkdir -p $(dirname {output.bias})
         python scripts/script_run_ctrl_sim.py \
             --SpecMat {input.expr} \
-            --WeightDF {input.weights} \
             --outfile {output.bias} \
             --mode human_ct_bias \
             --Ctrl_Genes_Fil {input.weights} \
