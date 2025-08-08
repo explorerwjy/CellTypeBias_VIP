@@ -16,19 +16,53 @@ run_z2_calculation() {
 }
 # Example usage:
 
-ExpMat="/home/jw3514/Work/CellType_Psy/dat/HumanCTExpressionMats/Human.Cluster.Log2Mean.Exp.Z1.clip3.csv"
+# Zmatch version
+#ExpMat="/home/jw3514/Work/CellType_Psy/dat/Test.BiasMat/HumanCT.Spec.clip.noLowExp.cut1e4.csv"
+ExpMat="/home/jw3514/Work/CellType_Psy/dat/Test.BiasMat/HumanCT.Spec.clip.csv"
 MatchDir="/home/jw3514/Work/CellType_Psy/dat2/ExpMatch/MatchGenes.HumanCT/"
-OutDir="/home/jw3514/Work/CellType_Psy/dat/Z2.Split/Human.Cluster.Log2Mean.Z1clip3.Z2.Jan08/"
-OutFil="/home/jw3514/Work/CellType_Psy/dat/HumanCTExpressionMats/Human.Cluster.Log2Mean.Z1clip3.Z2.Jan08.csv"
-run_z2_calculation "$ExpMat" "$MatchDir" "$OutDir" "OutFil"
+OutDir="/home/jw3514/Work/CellType_Psy/dat/Z2.Split/Human.Cluster.SpecClip.Jun04/"
+OutFil="/home/jw3514/Work/CellType_Psy/dat/HumanCTExpressionMats/Human.Cluster.SpecClip.Zmatch.Jun04.csv"
+run_z2_calculation "$ExpMat" "$MatchDir" "$OutDir" "$OutFil"
 python script_CombineZ2.py "$OutDir" "$OutFil"
 
-ExpMat="/home/jw3514/Work/CellType_Psy/dat/HumanCTExpressionMats/Human.Cluster.Log2Mean.Exp.Z1.clip3.csv"
-MatchDir="/home/jw3514/Work/CellType_Psy/dat2/ExpMatch/MatchGenes.HumanCT/"
-OutDir="/home/jw3514/Work/CellType_Psy/dat/Z2.Split/Human.Cluster.Log2Mean.Z1clip3.Z2.Jan08/"
-OutFil="/home/jw3514/Work/CellType_Psy/dat/HumanCTExpressionMats/Human.Cluster.Log2Mean.Z1clip3.Z2.Jan08.csv"
-run_z2_calculation "$ExpMat" "$MatchDir" "$OutDir" "OutFil"
-python script_CombineZ2.py "$OutDir" "$OutFil"
+
+# # # Try not log2 version
+# # ExpMat="/home/jw3514/Work/CellType_Psy/dat/HumanCTExpressionMats/Human.Cluster.UMI.Exp.Z1.clip5.Apr18csv"
+# # MatchDir="/home/jw3514/Work/CellType_Psy/dat2/ExpMatch/MatchGenes.HumanCT/"
+# OutDir="/home/jw3514/Work/CellType_Psy/dat/Z2.Split/Human.Cluster.UMI.Z1clip5.Z2.Apr18/"
+# OutFil="/home/jw3514/Work/CellType_Psy/dat/HumanCTExpressionMats/Human.Cluster.UMI.Z1clip5.Z2.Apr18.csv"
+# # run_z2_calculation "$ExpMat" "$MatchDir" "$OutDir" "OutFil"
+# #python script_CombineZ2.py "$OutDir" "$OutFil"
+
+# # ExpMat="/home/jw3514/Work/CellType_Psy/dat/HumanCTExpressionMats/Human.Cluster.UMI.Exp.Z1.clip5.withFilt.Apr18.csv"
+# # MatchDir="/home/jw3514/Work/CellType_Psy/dat2/ExpMatch/MatchGenes.HumanCT/"
+# OutDir="/home/jw3514/Work/CellType_Psy/dat/Z2.Split/Human.Cluster.UMI.Z1clip5.withFilt.Z2.Apr18/"
+# OutFil="/home/jw3514/Work/CellType_Psy/dat/HumanCTExpressionMats/Human.Cluster.UMI.Z1clip5.withFilt.Z2.Apr18.csv"
+# # run_z2_calculation "$ExpMat" "$MatchDir" "$OutDir" "OutFil"
+# #python script_CombineZ2.py "$OutDir" "$OutFil"
+
+# # Zmatch version
+# ExpMat="/home/jw3514/Work/CellType_Psy/dat/HumanCTExpressionMats/Human.Cluster.UMI.Exp.withFilt.Apr18.csv"
+# MatchDir="/home/jw3514/Work/CellType_Psy/dat2/ExpMatch/MatchGenes.HumanCT/"
+# OutDir="/home/jw3514/Work/CellType_Psy/dat/Z2.Split/Human.Cluster.UMI.withFilt.ZMatch.Apr18/"
+# OutFil="/home/jw3514/Work/CellType_Psy/dat/HumanCTExpressionMats/Human.Cluster.UMI.withFilt.ZMatch.Apr18.csv"
+# #run_z2_calculation "$ExpMat" "$MatchDir" "$OutDir" "$OutFil"
+# python script_CombineZ2.py "$OutDir" "$OutFil"
+
+
+# ExpMat="/home/jw3514/Work/CellType_Psy/dat/HumanCTExpressionMats/Human.Cluster.Log2Mean.Exp.Z1.clip3.csv"
+# MatchDir="/home/jw3514/Work/CellType_Psy/dat2/ExpMatch/MatchGenes.HumanCT/"
+# OutDir="/home/jw3514/Work/CellType_Psy/dat/Z2.Split/Human.Cluster.Log2Mean.Z1clip3.Z2.Jan08/"
+# OutFil="/home/jw3514/Work/CellType_Psy/dat/HumanCTExpressionMats/Human.Cluster.Log2Mean.Z1clip3.Z2.Jan08.csv"
+# run_z2_calculation "$ExpMat" "$MatchDir" "$OutDir" "OutFil"
+# python script_CombineZ2.py "$OutDir" "$OutFil"
+
+# ExpMat="/home/jw3514/Work/CellType_Psy/dat/HumanCTExpressionMats/Human.Cluster.Log2Mean.Exp.Z1.clip3.csv"
+# MatchDir="/home/jw3514/Work/CellType_Psy/dat2/ExpMatch/MatchGenes.HumanCT/"
+# OutDir="/home/jw3514/Work/CellType_Psy/dat/Z2.Split/Human.Cluster.Log2Mean.Z1clip3.Z2.Jan08/"
+# OutFil="/home/jw3514/Work/CellType_Psy/dat/HumanCTExpressionMats/Human.Cluster.Log2Mean.Z1clip3.Z2.Jan08.csv"
+# run_z2_calculation "$ExpMat" "$MatchDir" "$OutDir" "OutFil"
+# python script_CombineZ2.py "$OutDir" "$OutFil"
 
 
 

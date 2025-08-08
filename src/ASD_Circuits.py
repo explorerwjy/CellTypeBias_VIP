@@ -59,6 +59,7 @@ def ZscoreConverting(values, mean = np.nan, std = np.nan):
     real_values = [x for x in values if x==x]
     #real_values = values 
     if mean != mean:
+        
         mean = np.mean(real_values)
     if std != std:
         std = np.std(real_values)
@@ -3898,5 +3899,4 @@ def PlotBiasDistandP(ssc, spark, tada, sib, topN = 50, labels=["ssc", "spark", "
         axs[i,j].legend()
         print("%20s\t%.3f\t%.3f\t%.3f\t%.3e"%(labels[idx], u1, u2, (u1-u2), p))
     plt.show()
-
 """
