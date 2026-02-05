@@ -20,6 +20,15 @@ Anno.drop(Anno.tail(1).index,inplace=True) # drop last n rows
 Anno.fillna('', inplace=True)
 Anno.index = [int(x) for x in Anno.index.values]
 
+def LoadGeneINFO():
+    #HGNC = pd.read_csv("../dat/genes/protein-coding_gene.txt", delimiter="\t", low_memory=False)
+    HGNC = pd.read_csv("/home/jw3514/Work/Resources/protein-coding_gene.txt", delimiter="\t", low_memory=False)
+    ENSID2Entrez = dict(zip(HGNC["ensembl_gene_id"].values, HGNC["entrez_id"].values))
+    GeneSymbol2Entrez = dict(zip(HGNC["symbol"].values, HGNC["entrez_id"].values))
+    Entrez2Symbol = dict(zip(HGNC["entrez_id"].values, HGNC["symbol"].values))
+    #allen_mouse_genes = loadgenelist("/home/jw3514/Work/ASD_Circuits/dat/allen-mouse-exp/allen-mouse-gene_entrez.txt")
+    return HGNC, ENSID2Entrez, GeneSymbol2Entrez, Entrez2Symbol 
+
 for i, row in Anno.iterrows():
     Class, NT = row["Class auto-annotation"], row["Neurotransmitter auto-annotation"]
     if NT != "":
@@ -51,6 +60,83 @@ def Fil2Dict(fil_):
     df = pd.read_csv(fil_, header=None)
     return dict(zip(df[0].values, df[1].values))
 
+def Aggregate_Gene_Weights_NDD(MutFil, Nproband=42607, BGMR=None, wLGD=0.347, wMis=0.194,usepLI=False, Bmis=False, out=None):
+    gene2MutN = {}
+    for i, row in MutFil.iterrows():
+        try:
+            g = int(row["EntrezID"])
+        except:
+            print(g, "Error converting Entrez ID")
+
+        nLGD = row["frameshift_variant"] + row["splice_acceptor_variant"] + row["splice_donor_variant"] + row["stop_gained"] + row["stop_lost"] 
+        nMis = row["missense_variant"] 
+        if BGMR is not None:
+            exp_LGD = BGMR.loc[g, "p_LGD"] * 2 * Nproband
+            exp_Mis = BGMR.loc[g, "p_misense"] * 2 * Nproband
+        else:
+            exp_LGD = 0
+            exp_Mis = 0
+        #gene2MutN[g] = nLGD * 0.347 + nMis * 0.194
+        gene2MutN[g] = (nLGD - exp_LGD) * wLGD + (nMis - exp_Mis) * wMis
+    if out != None:
+        writer = csv.writer(open(out, 'wt'))
+        for k,v in sorted(gene2MutN.items(), key=lambda x:x[1], reverse=True):
+           writer.writerow([k,v]) 
+    return gene2MutN
+
+def Aggregate_Gene_Weights_SCZ_Daly(MutFil, allen_mouse_genes, usepLI=False, Bmis=False, out=None, mode="MC", 
+                                  lgd_weight=0.33, mis3_weight=0.27, mis2_weight=0.12):
+    print("New")
+    assert mode in ["OR", "MC", "ORMC"]
+    print(mode)
+    gene2MutN = {}
+    for i, row in MutFil.iterrows():
+        try:
+            g = int(i)
+            if g not in allen_mouse_genes:
+                print(g, "not in Expression dataset")
+                continue
+        except:
+            print(g, "Error converting Entrez ID")
+        if usepLI:
+            try:
+                pLI = float(row["pLI"])
+            except:
+                print(g, "don't have pLI score on file, set to 0")
+                pLI = 0.0
+            if pLI >= 0.5:
+                gene2MutN[g] = row["nLGD"] * 0.26 + row["nMis3"] * 0.25 + row["nMis2"] * 0.06  
+            else:
+                gene2MutN[g] = row["nLGD"] * 0.01 + row["nMis3"] * 0.01 + row["nMis2"] * 0 
+        else:
+            if mode == "OR":
+                gene2MutN[g] = row["LGD_OR"] * lgd_weight + row["Mis3_OR"] * mis3_weight + row["Mis2_OR"] * mis2_weight
+            elif mode == "MC":
+                gene2MutN[g] = row["nLGD"] * lgd_weight + row["nMis3"] * mis3_weight + row["nMis2"] * mis2_weight
+            ##elif mode == "ORMC":
+            #    gene2MutN[g] = row["nLGD"] * lgd_weight + row["nMis3"] * mis3_weight + row["nMis2"] * mis2_weight
+            #gene2MutN[g] = row["LGD_OR"] * 0.26 + row["Mis3_OR"] * 0.25 + row["nMis2_OR"] * 0.06
+            #gene2MutN[g] = row["LGD_OR"] * 0.26 + row["Mis3_OR"] * 0.25 + row["nMis2_OR"] * 0.06
+    if out != None:
+        writer = csv.writer(open(out, 'wt'))
+        for k,v in sorted(gene2MutN.items(), key=lambda x:x[1], reverse=True):
+           writer.writerow([k,v]) 
+    return gene2MutN
+
+def quantileNormalize(df_input):
+    df = df_input.copy()
+    #compute rank
+    dic = {}
+    for col in df:
+        dic.update({col : np.sort(df[col])})
+    sorted_df = pd.DataFrame(dic)
+    rank = sorted_df.mean(axis = 1).tolist()
+    #sort
+    for col in df:
+        t = np.searchsorted(np.sort(df[col]), df[col])
+        df[col] = [rank[i] for i in t]
+    return df
+    
 def ZscoreConverting_V2(values, mean=np.nan, std=np.nan, low_exp = 0, min_z=-5): 
     """
     Convert values to z-scores with special handling for zeros:
@@ -131,9 +217,11 @@ def Z1Conversion_V2(ExpMat, outname="test.z1.mat", low_exp = 0, min_z=-5):
     CT_Z1_DF.to_csv(outname)
     return CT_Z1_DF
 
-def HumanCT_AvgZ_Weighted(ExpZscoreMat, Gene2Weights, csv_fil=None):
+def HumanCT_AvgZ_Weighted(ExpZscoreMat, Gene2Weights, csv_fil=None, verbose=False):
     # Filter out genes not in expression matrix
     valid_genes = [g for g in Gene2Weights.keys() if g in ExpZscoreMat.index.values]
+    if verbose:
+        print(len(valid_genes), "valid genes")
     
     # Get weights and expression values for valid genes
     weights = np.array([Gene2Weights[g] for g in valid_genes])
@@ -968,8 +1056,14 @@ def plot_mutation_bias_comparison_V2(CT, datasets, anno_df, PvalDF, TestPairs = 
         DataB = datasets[DisorderB]
         stat, pval = scipy.stats.mannwhitneyu(DataA.loc[CT_idx, "EFFECT"], 
                                               DataB.loc[CT_idx, "EFFECT"])
-        pval_corr = PvalDF[PvalDF["Pair"] == f"{DisorderA} - {DisorderB}"]
-        pval_corr = pval_corr[pval_corr["SuperCluster"] == CT]["MWU_FDR"].values[0]
+        pair_name = f"{DisorderA} - {DisorderB}"
+        pval_corr = PvalDF[PvalDF["Pair"] == pair_name]
+        if pval_corr.empty:
+            raise ValueError(f"Pair '{pair_name}' not found in PvalDF. Available pairs: {PvalDF['Pair'].unique()}")
+        pval_corr = pval_corr[pval_corr["SuperCluster"] == CT]
+        if pval_corr.empty:
+            raise ValueError(f"Pair '{pair_name}' found but no data for SuperCluster '{CT}'. Available SuperClusters for this pair: {PvalDF[PvalDF['Pair'] == pair_name]['SuperCluster'].unique()}")
+        pval_corr = pval_corr["MWU_FDR"].values[0]
         print("???",pval_corr)
         print(f"{DisorderA} vs {DisorderB}: {format_pval_scientific(pval_corr)}")
 
@@ -1080,51 +1174,51 @@ def CompareCT_ABC(Bias1, Bias2, name1="1", name2="2", name0 = "",SuperClusters=A
         plt.savefig(savefig, bbox_inches="tight")
 
 
-#################################################
-# Go terms related Functions
-#################################################
-Go2Uniprot = pk.load(open("/home/jw3514/Work/CellType_Psy/dat3/Goterms/Go2Uniprot.pk", 'rb'))
-Uniprot2Entrez = pk.load(open("/home/jw3514/Work/CellType_Psy/dat3/Goterms/Uniprot2Entrez.pk", 'rb'))
+# #################################################
+# # Go terms related Functions
+# #################################################
+# Go2Uniprot = pk.load(open("/home/jw3514/Work/CellType_Psy/dat3/Goterms/Go2Uniprot.pk", 'rb'))
+# Uniprot2Entrez = pk.load(open("/home/jw3514/Work/CellType_Psy/dat3/Goterms/Uniprot2Entrez.pk", 'rb'))
 
-def GetALLGo(go, GoID):
-    Root = go[GoID]
-    all_go = Root.get_all_children()
-    all_go.add(GoID)
-    return all_go
-def GetGeneOfGo2(go, GoID, Go2Uniprot=Go2Uniprot):
-    goset = GetALLGo(go, GoID)
-    Total_Genes = set([])
-    for i, tmpgo in enumerate(goset):
-        #print(i, tmpgo)
-        if tmpgo in Go2Uniprot:
-            geneset = set([Uniprot2Entrez.get(x, 0) for x in Go2Uniprot[tmpgo]])
-            Total_Genes = Total_Genes.union(geneset)
-    return Total_Genes
+# def GetALLGo(go, GoID):
+#     Root = go[GoID]
+#     all_go = Root.get_all_children()
+#     all_go.add(GoID)
+#     return all_go
+# def GetGeneOfGo2(go, GoID, Go2Uniprot=Go2Uniprot):
+#     goset = GetALLGo(go, GoID)
+#     Total_Genes = set([])
+#     for i, tmpgo in enumerate(goset):
+#         #print(i, tmpgo)
+#         if tmpgo in Go2Uniprot:
+#             geneset = set([Uniprot2Entrez.get(x, 0) for x in Go2Uniprot[tmpgo]])
+#             Total_Genes = Total_Genes.union(geneset)
+#     return Total_Genes
 
-def CT_Specific_GoTerm_Intersect(CellType, BG_Genes, Z2Bias, CT_Goterm, go, Anno=Anno, topN=100):
-    CT_Idx = Anno[Anno["Supercluster"]==CellType].index.values
-    tmpmat = Z2Bias.loc[BG_Genes, CT_Idx]
-    for g, row in tmpmat.iterrows():
-        tmpmat.loc[g, "Mean"] = np.mean(row)
-    tmpmat = tmpmat.sort_values("Mean", ascending=False)
-    #tmp_genes = tmpmat[tmpmat["Mean"]>1.0].index.values
-    #tmp_genes = tmpmat[(tmpmat["Mean"]>=0.5)&(tmpmat['Mean']<=1.0)].index.values
-    tmp_genes = tmpmat[(tmpmat["Mean"]>=0.3)&(tmpmat['Mean']<=0.5)].index.values
-    print(CellType, len(tmp_genes))
-    print([Entrez2Symbol[x] for x in tmp_genes])
-    RelatedGos = {}
-    CT_Goterm = CT_Goterm.sort_values(CellType, ascending=False)
-    for i, row in CT_Goterm.head(topN).iterrows():
-        GoID = i
-        GoName = row["GoName"]
-        Rho = row[CellType]
-        GoGenes = GetGeneOfGo2(go, GoID)
+# def CT_Specific_GoTerm_Intersect(CellType, BG_Genes, Z2Bias, CT_Goterm, go, Anno=Anno, topN=100):
+#     CT_Idx = Anno[Anno["Supercluster"]==CellType].index.values
+#     tmpmat = Z2Bias.loc[BG_Genes, CT_Idx]
+#     for g, row in tmpmat.iterrows():
+#         tmpmat.loc[g, "Mean"] = np.mean(row)
+#     tmpmat = tmpmat.sort_values("Mean", ascending=False)
+#     #tmp_genes = tmpmat[tmpmat["Mean"]>1.0].index.values
+#     #tmp_genes = tmpmat[(tmpmat["Mean"]>=0.5)&(tmpmat['Mean']<=1.0)].index.values
+#     tmp_genes = tmpmat[(tmpmat["Mean"]>=0.3)&(tmpmat['Mean']<=0.5)].index.values
+#     print(CellType, len(tmp_genes))
+#     print([Entrez2Symbol[x] for x in tmp_genes])
+#     RelatedGos = {}
+#     CT_Goterm = CT_Goterm.sort_values(CellType, ascending=False)
+#     for i, row in CT_Goterm.head(topN).iterrows():
+#         GoID = i
+#         GoName = row["GoName"]
+#         Rho = row[CellType]
+#         GoGenes = GetGeneOfGo2(go, GoID)
 
-        #print(GoGenes)
-        InterGenes = GoGenes.intersection(set(tmp_genes))
-        InterSymbol = [Entrez2Symbol[x] for x in InterGenes]
-        if len(InterGenes) > 0:
-            print(GoID, GoName, Rho, InterSymbol)
+#         #print(GoGenes)
+#         InterGenes = GoGenes.intersection(set(tmp_genes))
+#         InterSymbol = [Entrez2Symbol[x] for x in InterGenes]
+#         if len(InterGenes) > 0:
+#             print(GoID, GoName, Rho, InterSymbol)
 
 def GetFDRCut(DF, FDR1=0.1, FDR2=0.05):
     tmp1 = DF[DF["q-value"]<=FDR1]
@@ -1134,55 +1228,62 @@ def GetFDRCut(DF, FDR1=0.1, FDR2=0.05):
     except:
         return 0, 0
 
-def SuperClusterBias_BoxPlot(DF, title, NeuroOnly=False, sortby="mean", EffectCol="EFFECT", fdr_cut=0.05):
+def SuperClusterBias_BoxPlot(DF, title, NeuroOnly=False, sortby="mean", EffectCol="EFFECT", fdr_cut=0.05, ax=None):
     """
     Create a boxplot of mutation bias by supercluster with individual data points.
-    
+
     Args:
         DF: DataFrame containing EFFECT and Supercluster columns
         title: Title for the plot
         NeuroOnly: If True, only show neuronal cell types
         sortby: Sort by "mean" or "median" values
+        EffectCol: Column name for the effect values
+        fdr_cut: desired FDR cutoff (for plotting vertical threshold line)
+        ax: Optional matplotlib axis to plot on. If None, creates a new figure.
     """
     dat_Z2 = []
     mean_Z2 = []
-    
+
     # Select cell types based on NeuroOnly parameter
     cell_types = Neurons if NeuroOnly else ALL_CTs
-    
+
     # Collect data for each cell type
     for _CT in cell_types:
         tmp = DF[DF["Supercluster"] == _CT]
         dat_Z2.append(tmp[EffectCol].values)
-        
+
         if sortby == "median":
             mean_Z2.append(np.median(tmp[EffectCol].values))
         elif sortby == "mean":
             mean_Z2.append(np.mean(tmp[EffectCol].values))
-    
+
     mean_Z2 = np.array(mean_Z2)
-    
+
     # Sort data by the mean/median values
     sort_idx = np.argsort(mean_Z2)
     show_dat_Z2 = [dat_Z2[x] for x in sort_idx]
     show_CTs = [cell_types[x] for x in sort_idx]
-    
-    # Create figure
-    fig, ax = plt.subplots(dpi=120, figsize=(8, 8), facecolor='none')
-    fig.patch.set_alpha(0.0)
-    ax.patch.set_alpha(0.0)
-    plt.style.use('seaborn-v0_8-whitegrid')
-    
+
+    # Create figure if ax is not provided
+    if ax is None:
+        fig, ax = plt.subplots(dpi=120, figsize=(8, 8), facecolor='none')
+        fig.patch.set_alpha(0.0)
+        ax.patch.set_alpha(0.0)
+        plt.style.use('seaborn-v0_8-whitegrid')
+        show_plot = True
+    else:
+        show_plot = False
+
     # Set seaborn context for publication-quality plots
     sns.set_context("talk", font_scale=1.0)
-    
+
     # Create boxplot without fill
     bp = ax.boxplot(show_dat_Z2, labels=show_CTs, vert=False, patch_artist=False,
                     boxprops=dict(color='blue', linewidth=1.5),
                     medianprops=dict(linestyle='-', linewidth=2.5, color='firebrick'),
                     meanprops=dict(marker='D', markeredgecolor='black', markerfacecolor='firebrick'),
                     showmeans=True, widths=0.6)
-    
+
     # Add individual data points with jitter
     colors = sns.color_palette("Set2", len(show_dat_Z2))
     for i, (data, color) in enumerate(zip(show_dat_Z2, colors)):
@@ -1190,31 +1291,35 @@ def SuperClusterBias_BoxPlot(DF, title, NeuroOnly=False, sortby="mean", EffectCo
         y_pos = i + 1  # boxplot positions start at 1
         y_jitter = np.random.normal(y_pos, 0.04, size=len(data))
         ax.scatter(data, y_jitter, alpha=0.6, s=20, color=color, edgecolors='white', linewidth=0.5)
-    
+
     # Customize plot
     ax.grid(True, linestyle='--', alpha=0.3)
     ax.set_xlabel(f"{title} Mutation Bias", fontsize=14, fontweight='bold')
     #ax.set_ylabel("Supercluster", fontsize=14, fontweight='bold')
-    
+
     # Adjust tick parameters
     ax.tick_params(axis='both', which='major', labelsize=10)
     ax.tick_params(axis='y', which='major', labelsize=12)
-    
+
     # Rotate y-axis labels if needed for better readability
     plt.setp(ax.get_yticklabels(), rotation=0, ha='right')
-    if EffectCol == "-logP":
-        FDR_cut1, FDR_cut2 = GetFDRCut(DF, FDR1 = 0.1, FDR2 = 0.05)
-        # add FDR_cut line to the plot
-        if FDR_cut1 != 0:
-            ax.axvline(x=FDR_cut1, color='red', linestyle='--', linewidth=1.5, alpha=0.5)
-        if FDR_cut2 != 0:
-            ax.axvline(x=FDR_cut2, color='red', linestyle='--', linewidth=1.5)
+
+    # Plot FDR (q-value) cutoff for "-logP" display if requested
+    if EffectCol == "-logP" and "q-value" in DF.columns:
+        # Find the largest x value ("-logP") with q-value <= fdr_cut
+        df_sig = DF[DF["q-value"] <= fdr_cut]
+        if not df_sig.empty:
+            cutoff_x = df_sig["-logP"].min()
+            ax.axvline(x=cutoff_x, color='red', linestyle='--', linewidth=1.5, label=f'FDR ≤ {fdr_cut:.2g}')
+            # show legend for line if plotting
+            ax.legend()
         ax.set_xlabel(f"{title} -log10(P-value)", fontsize=14, fontweight='normal')
     else:
         ax.set_xlabel(f"{title} Mutation Bias", fontsize=14, fontweight='normal')
-    
-    plt.tight_layout()
-    plt.show()
+
+    if show_plot:
+        plt.tight_layout()
+        plt.show()
 
 # MERFISH Related Functions
 def FixSubiculum(DF):
@@ -1953,31 +2058,64 @@ def Make_HumanCT_DF(Mut_n_IQ_conf, HCT_Z2_MAT_HCT, output_file, alpha=0.05):
     return str_res_df
 
 def GetFDRCut_PBS(DF, FDR=0.05, FDR_label="p_beta_perm_FDR", Pval_label="p_beta_perm_Log"):
+    # Check if required columns exist
+    if FDR_label not in DF.columns:
+        print(f"Warning: Column '{FDR_label}' not found in DataFrame. Available columns: {list(DF.columns)}")
+        return 0
+    if Pval_label not in DF.columns:
+        print(f"Warning: Column '{Pval_label}' not found in DataFrame. Available columns: {list(DF.columns)}")
+        return 0
+    
     tmp = DF[DF[FDR_label]<=FDR]
     try:
-        return min(tmp[Pval_label].values)
+        if len(tmp) > 0:
+            return min(tmp[Pval_label].values)
+        else:
+            return 0
     except:
         return 0
 
 def SuperClusterBias_BoxPlot_CorrIQ(DF1, flip_axis=True, plot_metric="beta", figsize=(8, 10), xlabel="", sortby="mean", FDR_label="p_beta_perm_FDR", Pval_label="p_beta_perm_Log"):
-    # Prepare data
+    # Handle column name case sensitivity - check for both "Supercluster" and "SuperCluster"
+    supercluster_col = None
+    for col in ["Supercluster", "SuperCluster"]:
+        if col in DF1.columns:
+            supercluster_col = col
+            break
+    if supercluster_col is None:
+        raise ValueError("DataFrame must contain either 'Supercluster' or 'SuperCluster' column")
+    
+    # Prepare data - only include superclusters that have data
     dat_Z2 = []
     mean_Z2 = []
+    valid_CTs = []
     for _CT in Neurons:
-        tmp = DF1[DF1["Supercluster"] == _CT]
-        dat_Z2.append(tmp[plot_metric].values)
-        if sortby == "mean":
-            mean_Z2.append(np.mean(tmp[plot_metric].values))
-        elif sortby == "median":
-            mean_Z2.append(np.median(tmp[plot_metric].values))
+        tmp = DF1[DF1[supercluster_col] == _CT]
+        if len(tmp) > 0 and plot_metric in tmp.columns:
+            values = tmp[plot_metric].dropna().values
+            if len(values) > 0:  # Only add if there's at least one non-NaN value
+                dat_Z2.append(values)
+                valid_CTs.append(_CT)
+                if sortby == "mean":
+                    mean_Z2.append(np.mean(values))
+                elif sortby == "median":
+                    mean_Z2.append(np.median(values))
+                else:
+                    mean_Z2.append(np.mean(values))  # Default to mean
+    # Check if we have any data to plot
+    if len(dat_Z2) == 0:
+        print("Warning: No data found for any superclusters. Cannot create plot.")
+        return
+    
     mean_Z2 = np.array(mean_Z2)
+    
     # Sort data###
     if flip_axis:
         sort_idx = np.argsort(mean_Z2)[::-1]
     else:
         sort_idx = np.argsort(mean_Z2)
     show_dat_Z2 = [dat_Z2[x] for x in sort_idx]
-    show_CTs = [ALL_CTs[x] for x in sort_idx]
+    show_CTs = [valid_CTs[x] for x in sort_idx]
 
     # Set publication-quality style
     plt.style.use('seaborn-v0_8-paper')
@@ -1997,10 +2135,16 @@ def SuperClusterBias_BoxPlot_CorrIQ(DF1, flip_axis=True, plot_metric="beta", fig
     capprops = dict(color=box_color, linewidth=1.5)
     flierprops = dict(marker='', color=box_color, alpha=0)  # Hide outliers
 
-    # Draw boxplot
-    bp = ax.boxplot(show_dat_Z2, labels=show_CTs, vert=False, patch_artist=True,
-                    boxprops=boxprops, medianprops=medianprops,
-                    whiskerprops=whiskerprops, capprops=capprops, flierprops=flierprops)
+    # Draw boxplot - use tick_labels instead of labels for newer matplotlib versions
+    try:
+        bp = ax.boxplot(show_dat_Z2, tick_labels=show_CTs, vert=False, patch_artist=True,
+                        boxprops=boxprops, medianprops=medianprops,
+                        whiskerprops=whiskerprops, capprops=capprops, flierprops=flierprops)
+    except TypeError:
+        # Fallback for older matplotlib versions
+        bp = ax.boxplot(show_dat_Z2, labels=show_CTs, vert=False, patch_artist=True,
+                        boxprops=boxprops, medianprops=medianprops,
+                        whiskerprops=whiskerprops, capprops=capprops, flierprops=flierprops)
     
     # Fill boxes with lighter color
     for patch in bp['boxes']:
