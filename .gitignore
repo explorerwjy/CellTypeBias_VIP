@@ -1,0 +1,51 @@
+# Data files
+*.csv
+*.tsv
+*.parquet
+*.h5
+*.h5ad
+*.pkl
+*.npy
+*.npz
+*.xlsx
+*.xls
+*.rds
+dat/
+data/
+results/
+
+# Secrets
+.env
+*.pem
+credentials.*
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Jupyter
+.ipynb_checkpoints/
+
+# macOS
+.DS_Store
+._*
+
+# Snakemake
+.snakemake/
+
+# Backups & archives
+*.backup
+**/archive/
+**/bkup/
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
