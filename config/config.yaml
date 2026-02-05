@@ -2,30 +2,46 @@
 ProjDIR: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/"  # Change to your project directory
 
 gene_sets:
+  ASD_All:
+    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/Spark_Meta_EWS.GeneWeight.csv"
   ASD_HIQ:
     geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/HIQ.top61.nopLI.LGD_Dmis_SameWeight.gw"
   ASD_LIQ:
     geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/LIQ.top61.nopLI.LGD_Dmis_SameWeight.gw"
   SCZ:
     geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/SCZ.top61.nopLI.LGD_Dmis_SameWeight.exclude_Mis2.gw"
-  DDD:
+
+  DDD_61:
     geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/DDD.top61.gw.csv"
+  DDD_297:
+    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/DDD.hc.gw.csv"
   22q_del:
     geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/X22q.gw.csv"
-  22q_small_del:
-    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/X22q.mousemodel.gw.csv"
-  UKBB_VNR_Neg:
-    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/UKBB_VNR_Neg_GW_61.csv"
-  UKBB_VNR_Pos:
-    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/UKBB_VNR_Pos_GW_61.csv"
-  UKBB_EDU_Neg:
-    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/UKBB_EDU_Neg_GW_61.csv"  # Negative
-  UKBB_EDU_Pos:
-    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/UKBB_EDU_Pos_GW_61.csv"  # Positive
-  UKBB_RT_Pos:
-    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/UKBB_RT_Pos_GW_61.csv"  # Positive
-  UKBB_RT_Neg:
-    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/UKBB_RT_Neg_GW_61.csv"  # Negative
+  # 22q_small_del:
+  #   geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/X22q.mousemodel.gw.csv"
+  # UKBB_VNR_Neg:
+  #   geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/UKBB_VNR_Neg_GW_61.csv"
+  # UKBB_VNR_Pos:
+  #   geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/UKBB_VNR_Pos_GW_61.csv"
+  # UKBB_EDU_Neg:
+  #   geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/UKBB_EDU_Neg_GW_61.csv"  # Negative
+  # UKBB_EDU_Pos:
+  #   geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/UKBB_EDU_Pos_GW_61.csv"  # Positive
+  # UKBB_RT_Pos:
+  #   geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/UKBB_RT_Pos_GW_61.csv"  # Positive
+  # UKBB_RT_Neg:
+  #   geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/UKBB_RT_Neg_GW_61.csv"  # Negative
+
+  #ASD_HIQ_100:
+  #  geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/HIQ.top100.nopLI.LGD_Dmis_SameWeight.gw"
+  #ASD_LIQ_100:
+  #  geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/LIQ.top100.nopLI.LGD_Dmis_SameWeight.gw"
+  #SCZ_100:
+  #  geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/SCZ.top100.nopLI.LGD_Dmis_SameWeight.exclude_Mis2.gw"
+  #SCZ_200:
+  #  geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/SCZ.top200.nopLI.LGD_Dmis_SameWeight.exclude_Mis2.gw"
+  #SCZ_500:
+  #  geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/SCZ.top500.nopLI.LGD_Dmis_SameWeight.exclude_Mis2.gw"
 
 # Analysis types and their corresponding expression matrices
 analysis_types:
@@ -33,8 +49,183 @@ analysis_types:
   Centering: "dat/ExpMats/HumanCT.TPM.0.1.Filt.Spec.clip.lowexp.cut1e4.mean_centered.csv" # Centering Cell type by average specificity
   #QuantileNorm: "dat/ExpMats/HumanCT.TPM.0.1.Filt.Spec.clip.lowexp.cut1e4.qn.csv" # testing QuantileNorm effect on bias calculation
 
-# Output directory for all results
-output_dir: "results"
-
 # Number of random weights (can customize per gene set if needed)
 n_random_weights: 10000
+
+# Number of parallel processes for gene weight generation (default: 10)
+n_processes: 10
+
+# ============================================================================
+# MATCHING CONFIGURATIONS
+# ============================================================================
+# Define multiple matching strategies to run in parallel or individually.
+# Each configuration will generate results in its own auto-generated directory.
+#
+# HOW TO USE:
+# -----------
+# 1. Single configuration: Keep only ONE config uncommented
+#    → Snakemake will run all gene sets with that matching strategy
+#
+# 2. Multiple configurations: Uncomment MULTIPLE configs
+#    → Snakemake will run all gene sets with ALL matching strategies in parallel
+#    → Each config gets its own results directory
+#    → Useful for comparing different matching approaches
+#
+# DIRECTORY NAMING:
+# ----------------
+# Output directories are auto-generated from parameters:
+#   - phastCons_only → results/phastCons_only_mean_phastCons_Tricubic
+#   - full_model → results/full_model_WB_mean_phastCons_n_CDS_bases_PropWeight_Tricubic
+#
+# EXAMPLES:
+# ---------
+# Example 1: Test gene-by-gene vs set-level matching
+#   → Uncomment both 'phastCons_only' and 'full_model'
+#   → Results will go to separate directories
+#
+# Example 2: Compare different variable combinations
+#   → Create multiple set_level_matched configs with different matching_variables
+#   → All will run in parallel with auto-generated directory names
+# ============================================================================
+
+matching_configs:
+
+  # Configuration 1: Gene-by-gene matching on conservation only
+  # Uncomment to enable:
+  # phastCons_only:
+  #  sampling_mode: "matched"
+  #  matched_sampling:
+  #    matching_variables: ["mean_phastCons"]
+  #    kernel: "tricubic"
+  #    bandwidth: 100.0
+  #    seed: 42
+
+  # Configuration 2: Set-level matching with conservation (WB + mean_phastCons + n_CDS_bases)
+  # Currently ACTIVE:
+  # conservation_model:
+  #   sampling_mode: "set_level_matched"
+  #   set_level_matched_sampling:
+  #     matching_variables: ["n_CDS_bases", "WB", "mean_phastCons"]
+  #     use_propensity: true
+  #     propensity_kernel: "tricubic"
+  #     propensity_bandwidth: 60.0
+  #     add_noise: true
+  #     noise_scale: 10.0
+  #     relaxed_matching: true
+  #     loeuf_weight: 1
+  #     use_best_of_n: false
+  #     n_candidates: 1000
+  #     use_sis: false
+  #     use_percentile: true
+  #     temperature: 1.0
+  #     adaptive_temp: true
+  #     max_distance: 0.15
+  #     max_attempts: 1000
+  #     use_ks_test: false
+  #     ks_threshold: 0.3
+  #     seed: 42
+
+
+  # Configuration 3: Set-level matching with constraint (WB + LOEUF + n_CDS_bases)
+  # # Currently ACTIVE:
+  # constraint_model:
+  #   sampling_mode: "set_level_matched"
+  #   set_level_matched_sampling:
+  #     matching_variables: ["n_CDS_bases", "WB", "LOEUF"]
+  #     use_propensity: true
+  #     propensity_kernel: "tricubic"
+  #     propensity_bandwidth: 60.0
+  #     add_noise: true
+  #     noise_scale: 10.0
+  #     relaxed_matching: true
+  #     loeuf_weight: 1
+  #     use_best_of_n: false
+  #     n_candidates: 1000
+  #     use_sis: false
+  #     use_percentile: true
+  #     temperature: 1.0
+  #     adaptive_temp: true
+  #     max_distance: 0.15
+  #     max_attempts: 1000
+  #     use_ks_test: false
+  #     ks_threshold: 0.3
+  #     seed: 42
+
+  conservation_model:
+    sampling_mode: "set_level_matched"
+    set_level_matched_sampling:
+      matching_variables: ["n_CDS_bases", "WB", "mean_phastCons"]
+      use_propensity: false
+      propensity_kernel: "tricubic"
+      propensity_bandwidth: 60.0
+      add_noise: true
+      noise_scale: 10.0
+      relaxed_matching: true
+      loeuf_weight: 1
+      use_best_of_n: true
+      n_candidates: 1000
+      use_sis: false
+      use_percentile: true
+      temperature: 1.0
+      adaptive_temp: true
+      max_distance: 0.15
+      max_attempts: 1000
+      use_ks_test: false
+      ks_threshold: 0.3
+      seed: 42
+
+
+  conservation_model:
+    sampling_mode: "set_level_matched"
+    set_level_matched_sampling:
+      matching_variables: ["n_CDS_bases", "WB", "LOEUF"]
+      use_propensity: false
+      propensity_kernel: "tricubic"
+      propensity_bandwidth: 60.0
+      add_noise: true
+      noise_scale: 10.0
+      relaxed_matching: true
+      loeuf_weight: 1
+      use_best_of_n: true
+      n_candidates: 1000
+      use_sis: false
+      use_percentile: true
+      temperature: 1.0
+      adaptive_temp: true
+      max_distance: 0.15
+      max_attempts: 1000
+      use_ks_test: false
+      ks_threshold: 0.3
+      seed: 42
+
+  # Configuration 3: Random sampling (no matching) - for comparison
+  # Uncomment to enable:
+  #random_baseline:
+  #  sampling_mode: "random"
+  #  seed: 42
+
+  # Configuration 4: Set-level matching on WB + LOEUF only
+  # Uncomment to enable:
+  #WB_LOEUF_only:
+  #  sampling_mode: "set_level_matched"
+  #  set_level_matched_sampling:
+  #    matching_variables: ["WB", "LOEUF"]
+  #    use_propensity: true
+  #    propensity_kernel: "tricubic"
+  #    propensity_bandwidth: 60.0
+  #    relaxed_matching: true
+  #    loeuf_weight: 0.5
+  #    seed: 42
+
+  # Configuration 5: Best-of-N sampling (alternative to propensity)
+  # Uncomment to enable:
+  #best_of_1000:
+  #  sampling_mode: "set_level_matched"
+  #  set_level_matched_sampling:
+  #    matching_variables: ["n_CDS_bases", "WB", "mean_phastCons"]
+  #    use_propensity: false
+  #    use_best_of_n: true
+  #    n_candidates: 1000
+  #    use_percentile: true
+  #    loeuf_weight: 2
+  #    seed: 42
