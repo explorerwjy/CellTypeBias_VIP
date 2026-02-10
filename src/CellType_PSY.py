@@ -6,6 +6,7 @@ import scipy
 from scipy import stats
 from scipy.stats import hypergeom
 from scipy.stats import fisher_exact
+from scipy.stats import spearmanr, pearsonr
 import seaborn as sns
 import statsmodels.api as sm
 from statsmodels.stats.multitest import fdrcorrection, multipletests
