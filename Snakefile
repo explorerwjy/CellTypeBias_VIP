@@ -223,5 +223,6 @@ rule compute_bias_pvalue:
             --SpecMat {input.expr} \
             --gw {input.geneweights} \
             --Bias_Null {input.bias_null} \
-            --Bias_Out {output.bias_final}
+            --Bias_Out {output.bias_final} \
+            --Bias_Out_Supercluster {output.bias_supercluster}
         """

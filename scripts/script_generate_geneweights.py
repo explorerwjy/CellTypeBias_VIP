@@ -11,13 +11,16 @@ import os
 from pathlib import Path
 import multiprocessing
 from multiprocessing import Pool
-ProjDIR = "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/" # Change to your project directory
-sys.path.insert(1, f'{ProjDIR}/src/')
+
+# Get project directory from script location
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+ProjDIR = os.path.dirname(SCRIPT_DIR)
+sys.path.insert(1, os.path.join(ProjDIR, 'src'))
+
 from CellType_PSY import *
 
 # Import matching functions from script_match_genes_by_variables.py
-script_dir = Path(__file__).parent
-sys.path.insert(1, str(script_dir))
+sys.path.insert(1, SCRIPT_DIR)
 from script_match_genes_by_variables import (
     load_or_create_percentile_table,
     match_gene,

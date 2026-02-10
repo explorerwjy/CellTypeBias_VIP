@@ -1,7 +1,11 @@
 import sys
 import os
-ProjDIR = "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/" # Change to your project directory
-sys.path.insert(1, f'{ProjDIR}/src/')
+
+# Get project directory from script location (works regardless of where script is called from)
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+ProjDIR = os.path.dirname(SCRIPT_DIR)
+sys.path.insert(1, os.path.join(ProjDIR, 'src'))
+
 from CellType_PSY import *
 import argparse
 import pandas as pd
@@ -124,9 +128,10 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Calculate bias for a gene set using provided weights and expression matrix.")
     parser.add_argument('--SpecMat', required=True, help='Path to expression matrix (CSV)')
     parser.add_argument('--gw', required=True, help='Path to gene weights file (CSV)')
-    #parser.add_argument('--geneset', required=True, help='Name of the gene set')
-    parser.add_argument('--Bias_Out', required=True, help='Output file for bias results (TSV)')
-    parser.add_argument('--Bias_Null', required=True, help='Output file for bias results (TSV)')
+    parser.add_argument('--Bias_Out', required=True, help='Output file for cluster-level bias results (CSV)')
+    parser.add_argument('--Bias_Null', required=True, help='Path to null bias distribution (CSV)')
+    parser.add_argument('--Bias_Out_Supercluster', default=None,
+                        help='Output file for supercluster-level results (CSV). If not provided, derived from --Bias_Out')
     return parser.parse_args()
 
 def main():
@@ -146,13 +151,15 @@ def main():
     # Supercluster-level p-values
     Bias_Supercluster = AddPvalue_Supercluster(Bias, Null_Bias_values)
 
-    # Generate supercluster output filename
-    if args.Bias_Out.endswith('_bias_addP.csv'):
+    # Use explicit path if provided, otherwise derive from Bias_Out
+    if args.Bias_Out_Supercluster:
+        supercluster_out = args.Bias_Out_Supercluster
+    elif args.Bias_Out.endswith('_bias_addP.csv'):
         supercluster_out = args.Bias_Out.replace('_bias_addP.csv', '_bias_addP_supercluster.csv')
     elif args.Bias_Out.endswith('.csv'):
         supercluster_out = args.Bias_Out.replace('.csv', '_supercluster.csv')
     else:
-        supercluster_out = args.Bias_Out + '_supercluster'
+        supercluster_out = args.Bias_Out + '_supercluster.csv'
 
     Bias_Supercluster.to_csv(supercluster_out)
     print(f"Supercluster-level results saved to: {supercluster_out}")
