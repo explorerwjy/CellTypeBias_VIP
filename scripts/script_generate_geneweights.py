@@ -87,9 +87,13 @@ def worker_random_genes(sim_idx, valid_genes, n_genes, gene_probs=None, gene_poo
 
 
 def worker_matched_genes(sim_idx, entrez_ids, input_id_to_idx, weight_matrix,
-                         candidate_ids_array, valid_genes):
+                         candidate_ids_array, valid_genes, base_seed=None):
     """Worker function for gene-by-gene matched sampling."""
     import numpy as np
+
+    # Set unique random seed for this simulation (fixes parallel RNG duplication)
+    if base_seed is not None:
+        np.random.seed(base_seed + sim_idx)
 
     # Track which candidates have been used in this simulation
     available_mask = np.ones(len(candidate_ids_array), dtype=bool)
@@ -236,7 +240,7 @@ def worker_best_of_n_percentile(sim_idx, n_genes, candidate_pool_ids, candidate_
 
             # Variable-specific weighting
             # CDS_length is weighted 3x more to prioritize matching gene length
-            if var == 'CDS_length':
+            if var in ('CDS_length', 'n_CDS_bases'):
                 weight = 3.0  # Prioritize CDS matching
             else:
                 weight = 1.0  # WB and LOEUF get standard weight
@@ -418,9 +422,17 @@ def worker_sis_matched_percentile(sim_idx, n_genes, candidate_pool_ids, candidat
                 selected_values_pct[var].append(candidate_values_pct[var][selected_idx])
             available_mask[selected_idx] = False
         else:
-            # Fallback
-            selected_gene = np.random.choice(candidate_pool_ids)
+            # Fallback: sample from remaining available candidates
+            available_indices = np.where(available_mask)[0]
+            if len(available_indices) > 0:
+                selected_idx = np.random.choice(available_indices)
+            else:
+                selected_idx = np.random.randint(len(candidate_pool_ids))
+            selected_gene = candidate_pool_ids[selected_idx]
             selected_genes.append(selected_gene)
+            for var in matching_vars:
+                selected_values_pct[var].append(candidate_values_pct[var][selected_idx])
+            available_mask[selected_idx] = False
 
     # Calculate final distance for this simulation
     distance = 0
@@ -524,9 +536,17 @@ def worker_sis_matched(sim_idx, n_genes, candidate_pool_ids, candidate_values,
                 selected_values[var].append(candidate_values[var][selected_idx])
             available_mask[selected_idx] = False
         else:
-            # Fallback: no available candidates (shouldn't happen)
-            selected_gene = np.random.choice(candidate_pool_ids)
+            # Fallback: sample from remaining available candidates
+            available_indices = np.where(available_mask)[0]
+            if len(available_indices) > 0:
+                selected_idx = np.random.choice(available_indices)
+            else:
+                selected_idx = np.random.randint(len(candidate_pool_ids))
+            selected_gene = candidate_pool_ids[selected_idx]
             selected_genes.append(selected_gene)
+            for var in matching_vars:
+                selected_values[var].append(candidate_values[var][selected_idx])
+            available_mask[selected_idx] = False
 
     # Calculate final distance for this simulation
     distance = 0
@@ -622,6 +642,9 @@ def MatchedGenes(ExpMat, WeightDF, outfile, n_sims=10000,
     # Filter to valid genes in expression matrix
     master_table_complete = master_table_complete[master_table_complete.index.isin(valid_genes)]
 
+    # Remove duplicate index entries to prevent dimension mismatch
+    master_table_complete = master_table_complete[~master_table_complete.index.duplicated(keep='first')]
+
     # Find input genes in master table
     input_genes_in_master = [g for g in entrez_ids if g in master_table_complete.index]
     print(f"Input genes in master table: {len(input_genes_in_master)}/{len(entrez_ids)}")
@@ -653,7 +676,7 @@ def MatchedGenes(ExpMat, WeightDF, outfile, n_sims=10000,
     pool = multiprocessing.Pool(processes=n_processes)
     results = pool.starmap(worker_matched_genes,
                           [(i, entrez_ids, input_id_to_idx, weight_matrix,
-                            candidate_ids_array, valid_genes)
+                            candidate_ids_array, valid_genes, random_seed)
                            for i in range(n_sims)])
     pool.close()
     pool.join()
@@ -779,6 +802,9 @@ def SetLevelMatchedGenes_SIS(ExpMat, WeightDF, outfile, n_sims=10000,
 
     # Filter to valid genes in expression matrix
     master_table_complete = master_table_complete[master_table_complete.index.isin(valid_genes)]
+
+    # Remove duplicate index entries to prevent dimension mismatch
+    master_table_complete = master_table_complete[~master_table_complete.index.duplicated(keep='first')]
 
     # Find input genes in master table
     input_genes_in_master = [g for g in entrez_ids if g in master_table_complete.index]
@@ -950,6 +976,9 @@ def SetLevelMatchedGenes_SIS_Percentile(ExpMat, WeightDF, outfile, n_sims=10000,
 
     # Filter to valid genes in expression matrix
     master_table_complete = master_table_complete[master_table_complete.index.isin(valid_genes)]
+
+    # Remove duplicate index entries to prevent dimension mismatch
+    master_table_complete = master_table_complete[~master_table_complete.index.duplicated(keep='first')]
 
     # Find input genes in master table
     input_genes_in_master = [g for g in entrez_ids if g in master_table_complete.index]
@@ -1142,6 +1171,9 @@ def SetLevelMatchedGenes(ExpMat, WeightDF, outfile, n_sims=10000,
     # Filter to valid genes in expression matrix
     master_table_complete = master_table_complete[master_table_complete.index.isin(valid_genes)]
 
+    # Remove duplicate index entries to prevent dimension mismatch
+    master_table_complete = master_table_complete[~master_table_complete.index.duplicated(keep='first')]
+
     # Find input genes in master table
     input_genes_in_master = [g for g in entrez_ids if g in master_table_complete.index]
     print(f"Input genes in master table: {len(input_genes_in_master)}/{len(entrez_ids)}")
@@ -1310,6 +1342,9 @@ def SetLevelMatchedGenes_BestOfN_Percentile(ExpMat, WeightDF, outfile, n_sims=10
 
     # Filter to valid genes in expression matrix
     master_table_complete = master_table_complete[master_table_complete.index.isin(valid_genes)]
+
+    # Remove duplicate index entries to prevent dimension mismatch
+    master_table_complete = master_table_complete[~master_table_complete.index.duplicated(keep='first')]
 
     # Find input genes in master table
     input_genes_in_master = [g for g in entrez_ids if g in master_table_complete.index]
@@ -1545,6 +1580,9 @@ def PropensityWeightedGenes(ExpMat, WeightDF, outfile, n_sims=10000,
 
     # Filter to valid genes in expression matrix
     master_table_complete = master_table_complete[master_table_complete.index.isin(valid_genes)]
+
+    # Remove duplicate index entries to prevent dimension mismatch
+    master_table_complete = master_table_complete[~master_table_complete.index.duplicated(keep='first')]
 
     # Find input genes in master table
     input_genes_in_master = [g for g in entrez_ids if g in master_table_complete.index]
@@ -1885,6 +1923,9 @@ def StratifiedSamplingGenes(ExpMat, WeightDF, outfile, n_sims=10000,
     # Filter to valid genes in expression matrix
     master_table_complete = master_table_complete[master_table_complete.index.isin(valid_genes)]
 
+    # Remove duplicate index entries to prevent dimension mismatch
+    master_table_complete = master_table_complete[~master_table_complete.index.duplicated(keep='first')]
+
     # Find input genes in master table
     input_genes_in_master = [g for g in entrez_ids if g in master_table_complete.index]
     print(f"Input genes in master table: {len(input_genes_in_master)}/{len(entrez_ids)}")
@@ -2090,6 +2131,10 @@ def RandomGenes(ExpMat, WeightDF, outfile, GeneProb, n_sims=10000, n_processes=1
     Gene_Weights = ValidWeightDF[1].values
     n_genes = len(Gene_Weights)
     print(f"Input genes: {n_genes}")
+
+    # Exclude input genes from sampling pool
+    valid_genes = np.setdiff1d(valid_genes, entrez_ids)
+    print(f"Candidate pool (excluding input genes): {len(valid_genes)}")
 
     # Prepare probability distribution if provided
     gene_pool = None
