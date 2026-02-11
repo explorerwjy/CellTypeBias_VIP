@@ -15,6 +15,14 @@ gene_sets:
     geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/LIQ.top61.nopLI.LGD_Dmis_SameWeight.gw"
   DDD_61:
     geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/DDD.top61.gw.csv"
+  22q_del:
+    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/X22q.gw.csv"
+
+  # --- Negative controls (non-brain traits, expect no cell-type bias) ---
+  NegCtrl_HDL:
+    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/HDL_C.top61.gw.csv"
+  NegCtrl_Alanine:
+    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/Alanine.top61.gw.csv"
 
 analysis_types:
   Centering: "dat/ExpMats/HumanCT.TPM.0.1.Filt.Spec.clip.lowexp.cut1e4.mean_centered.csv"
