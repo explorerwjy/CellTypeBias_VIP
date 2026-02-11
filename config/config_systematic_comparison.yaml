@@ -1,0 +1,92 @@
+# Systematic comparison of ALL matching methods
+# Uses the same 3 matching variables (Reviewer 3: gene length, expression, conservation)
+# across all methods for fair comparison.
+
+ProjDIR: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/"
+
+gene_sets:
+  SCZ:
+    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/SCZ.top61.nopLI.LGD_Dmis_SameWeight.exclude_Mis2.gw"
+  ASD_All:
+    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/Spark_Meta_EWS.GeneWeight.csv"
+  ASD_HIQ:
+    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/HIQ.top61.nopLI.LGD_Dmis_SameWeight.gw"
+  ASD_LIQ:
+    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/LIQ.top61.nopLI.LGD_Dmis_SameWeight.gw"
+  DDD_61:
+    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/DDD.top61.gw.csv"
+
+analysis_types:
+  Centering: "dat/ExpMats/HumanCT.TPM.0.1.Filt.Spec.clip.lowexp.cut1e4.mean_centered.csv"
+
+n_random_weights: 10000
+n_processes: 10
+
+matching_configs:
+
+  # 1. RANDOM BASELINE (no matching)
+  systematic_random:
+    sampling_mode: "random"
+
+  # 2. GENE-BY-GENE MATCHED (kernel-weighted per-gene matching)
+  systematic_gene_by_gene:
+    sampling_mode: "matched"
+    matched_sampling:
+      matching_variables: ["n_CDS_bases", "WB", "mean_phastCons"]
+      kernel: "tricubic"
+      bandwidth: 100.0
+      seed: 42
+
+  # 3. REJECTION SAMPLING (set-level, accept/reject with distance threshold)
+  systematic_rejection:
+    sampling_mode: "set_level_matched"
+    set_level_matched_sampling:
+      matching_variables: ["n_CDS_bases", "WB", "mean_phastCons"]
+      use_propensity: false
+      use_best_of_n: false
+      use_sis: false
+      use_percentile: false
+      max_distance: 0.15
+      max_attempts: 1000
+      seed: 42
+
+  # 4. BEST-OF-N (draw 1000 random sets, pick best distributional match)
+  systematic_best_of_n:
+    sampling_mode: "set_level_matched"
+    set_level_matched_sampling:
+      matching_variables: ["n_CDS_bases", "WB", "mean_phastCons"]
+      use_propensity: false
+      use_best_of_n: true
+      n_candidates: 1000
+      use_percentile: true
+      seed: 42
+
+  # 5. PROPENSITY WEIGHTED (tricubic kernel propensity scores)
+  systematic_propensity:
+    sampling_mode: "set_level_matched"
+    set_level_matched_sampling:
+      matching_variables: ["n_CDS_bases", "WB", "mean_phastCons"]
+      use_propensity: true
+      propensity_kernel: "tricubic"
+      propensity_bandwidth: 60.0
+      add_noise: true
+      noise_scale: 10.0
+      relaxed_matching: true
+      loeuf_weight: 1
+      use_best_of_n: false
+      use_sis: false
+      use_percentile: true
+      seed: 42
+
+  # 6. SIS (Sequential Importance Sampling)
+  systematic_sis:
+    sampling_mode: "set_level_matched"
+    set_level_matched_sampling:
+      matching_variables: ["n_CDS_bases", "WB", "mean_phastCons"]
+      use_propensity: false
+      use_best_of_n: false
+      use_sis: true
+      use_percentile: true
+      temperature: 1.0
+      adaptive_temp: true
+      seed: 42

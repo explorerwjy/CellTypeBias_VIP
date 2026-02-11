@@ -174,10 +174,11 @@ matching_configs:
   #     ks_threshold: 0.3
   #     seed: 42
 
-  constraint_model:
+  # Recommended config for Reviewer 3: matches gene length, conservation, expression
+  conservation_model:
     sampling_mode: "set_level_matched"
     set_level_matched_sampling:
-      matching_variables: ["n_CDS_bases", "WB", "LOEUF"]
+      matching_variables: ["n_CDS_bases", "WB", "mean_phastCons"]
       use_propensity: false
       propensity_kernel: "tricubic"
       propensity_bandwidth: 60.0
