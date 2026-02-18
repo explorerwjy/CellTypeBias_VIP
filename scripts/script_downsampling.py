@@ -141,7 +141,8 @@ def load_annotation():
 
 
 def run_single_iteration_asd(
-    asd_data, bgmr, expr_mat, fraction, seed, N_full=SAMPLE_SIZES["ASD"]
+    asd_data, bgmr, expr_mat, fraction, seed, N_full=SAMPLE_SIZES["ASD"],
+    return_genes=False
 ):
     """
     Run a single downsampling iteration for ASD.
@@ -151,6 +152,11 @@ def run_single_iteration_asd(
     3. Select top-61 genes
     4. Compute gene weights with BGMR correction
     5. Compute cell-type bias
+
+    Parameters
+    ----------
+    return_genes : bool
+        If True, return (bias, selected_genes) tuple instead of just bias.
     """
     rng = np.random.default_rng(seed)
     N_sub = int(fraction * N_full)
@@ -213,9 +219,13 @@ def run_single_iteration_asd(
 
     # 5. Compute cell-type bias
     if len(gene_weights) == 0:
-        return None
+        return (None, set()) if return_genes else None
 
     bias = HumanCT_AvgZ_Weighted(expr_mat, gene_weights)
+    selected_genes = set(df["EntrezID"].astype(int).tolist())
+
+    if return_genes:
+        return bias["EFFECT"], selected_genes
     return bias["EFFECT"]
 
 
@@ -226,11 +236,17 @@ def run_single_iteration_scz(
     seed,
     N_case_full=SAMPLE_SIZES["SCZ_case"],
     N_ctrl=SAMPLE_SIZES["SCZ_ctrl"],
+    return_genes=False,
 ):
     """
     Run a single downsampling iteration for SCZ.
 
     Downsamples CASES ONLY, keeps controls fixed.
+
+    Parameters
+    ----------
+    return_genes : bool
+        If True, return (bias, selected_genes) tuple instead of just bias.
     """
     rng = np.random.default_rng(seed)
     N_case_sub = int(fraction * N_case_full)
@@ -285,19 +301,29 @@ def run_single_iteration_scz(
         }
 
     if len(gene_weights) == 0:
-        return None
+        return (None, set()) if return_genes else None
 
     bias = HumanCT_AvgZ_Weighted(expr_mat, gene_weights)
+    selected_genes = set(df["EntrezID"].astype(int).tolist())
+
+    if return_genes:
+        return bias["EFFECT"], selected_genes
     return bias["EFFECT"]
 
 
 def run_single_iteration_ddd(
-    ddd_data, bgmr, expr_mat, fraction, seed, N_full=SAMPLE_SIZES["DDD"]
+    ddd_data, bgmr, expr_mat, fraction, seed, N_full=SAMPLE_SIZES["DDD"],
+    return_genes=False,
 ):
     """
     Run a single downsampling iteration for DDD.
 
     Same approach as ASD but with different data source.
+
+    Parameters
+    ----------
+    return_genes : bool
+        If True, return (bias, selected_genes) tuple instead of just bias.
     """
     rng = np.random.default_rng(seed)
     N_sub = int(fraction * N_full)
@@ -359,9 +385,13 @@ def run_single_iteration_ddd(
         }
 
     if len(gene_weights) == 0:
-        return None
+        return (None, set()) if return_genes else None
 
     bias = HumanCT_AvgZ_Weighted(expr_mat, gene_weights)
+    selected_genes = set(df["EntrezID"].astype(int).tolist())
+
+    if return_genes:
+        return bias["EFFECT"], selected_genes
     return bias["EFFECT"]
 
 
@@ -418,6 +448,90 @@ def run_downsampling(disorder, fraction, n_iter, n_jobs, seed, outdir):
     print(f"Results saved to: {outfile}")
 
 
+def run_gene_overlap_analysis(disorder, fractions, n_iter, n_jobs, seed, outdir):
+    """
+    Run gene overlap analysis: compute what fraction of top-61 genes overlap
+    with the full dataset (f=1.0) at each downsampling fraction.
+    """
+    print(f"Running gene overlap analysis for {disorder}...")
+
+    # Load common data
+    bgmr = load_bgmr()
+    expr_mat = load_expression_matrix()
+
+    # Load disorder-specific data and set up run function
+    if disorder == "ASD":
+        data = load_asd_data()
+        run_func = lambda frac, s: run_single_iteration_asd(
+            data, bgmr, expr_mat, frac, s, return_genes=True
+        )
+    elif disorder == "SCZ":
+        data = load_scz_data()
+        run_func = lambda frac, s: run_single_iteration_scz(
+            data, expr_mat, frac, s, return_genes=True
+        )
+    elif disorder == "DDD":
+        data = load_ddd_data(bgmr)
+        run_func = lambda frac, s: run_single_iteration_ddd(
+            data, bgmr, expr_mat, frac, s, return_genes=True
+        )
+    else:
+        raise ValueError(f"Unknown disorder: {disorder}")
+
+    # Get full-data gene set (f=1.0) - this is deterministic
+    print("Getting full-data gene set (f=1.0)...")
+    _, full_genes = run_func(1.0, seed)
+    print(f"Full dataset has {len(full_genes)} genes")
+
+    # For each fraction, compute overlap with full gene set
+    results = []
+    for frac in fractions:
+        if frac == 1.0:
+            # At f=1.0, overlap is 100% by definition
+            results.append({
+                "fraction": frac,
+                "mean_overlap": 1.0,
+                "std_overlap": 0.0,
+                "n_iter": n_iter,
+            })
+            continue
+
+        print(f"  Fraction {frac}...")
+        seeds = [seed + i for i in range(n_iter)]
+
+        # Run iterations in parallel
+        iter_results = Parallel(n_jobs=n_jobs, verbose=0)(
+            delayed(run_func)(frac, s) for s in seeds
+        )
+
+        # Compute overlap for each iteration
+        overlaps = []
+        for result in iter_results:
+            if result is None or result[0] is None:
+                continue
+            _, genes = result
+            overlap = len(genes & full_genes) / len(full_genes)
+            overlaps.append(overlap)
+
+        if len(overlaps) > 0:
+            results.append({
+                "fraction": frac,
+                "mean_overlap": np.mean(overlaps),
+                "std_overlap": np.std(overlaps),
+                "n_iter": len(overlaps),
+            })
+
+    # Save results
+    outdir = Path(outdir)
+    outdir.mkdir(parents=True, exist_ok=True)
+    df = pd.DataFrame(results)
+    outfile = outdir / f"{disorder}_gene_overlap.csv"
+    df.to_csv(outfile, index=False)
+    print(f"Gene overlap results saved to: {outfile}")
+
+    return df
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Downsampling analysis for mutation bias stability"
@@ -432,8 +546,8 @@ def main():
     parser.add_argument(
         "--fraction",
         type=float,
-        required=True,
-        help="Fraction of data to use (0.1 to 1.0)",
+        default=None,
+        help="Fraction of data to use (0.1 to 1.0). Required unless --gene-overlap is set.",
     )
     parser.add_argument(
         "--n_iter",
@@ -459,17 +573,41 @@ def main():
         default="results/downsampling/",
         help="Output directory (default: results/downsampling/)",
     )
+    parser.add_argument(
+        "--gene-overlap",
+        action="store_true",
+        help="Run gene overlap analysis instead of bias calculation",
+    )
+    parser.add_argument(
+        "--fractions",
+        type=str,
+        default="0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0",
+        help="Comma-separated fractions for gene overlap analysis (default: 0.1 to 1.0)",
+    )
 
     args = parser.parse_args()
 
-    run_downsampling(
-        disorder=args.disorder,
-        fraction=args.fraction,
-        n_iter=args.n_iter,
-        n_jobs=args.n_jobs,
-        seed=args.seed,
-        outdir=args.outdir,
-    )
+    if args.gene_overlap:
+        fractions = [float(f) for f in args.fractions.split(",")]
+        run_gene_overlap_analysis(
+            disorder=args.disorder,
+            fractions=fractions,
+            n_iter=args.n_iter,
+            n_jobs=args.n_jobs,
+            seed=args.seed,
+            outdir=args.outdir,
+        )
+    else:
+        if args.fraction is None:
+            parser.error("--fraction is required unless --gene-overlap is set")
+        run_downsampling(
+            disorder=args.disorder,
+            fraction=args.fraction,
+            n_iter=args.n_iter,
+            n_jobs=args.n_jobs,
+            seed=args.seed,
+            outdir=args.outdir,
+        )
 
 
 if __name__ == "__main__":
