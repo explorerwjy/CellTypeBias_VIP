@@ -38,6 +38,19 @@ build/
 # Snakemake
 .snakemake/
 
+# Old/test notebooks (not tracked)
+notebooks/Old_Z2_Version/
+notebooks/Test_CutOff/
+notebooks/Test_Jon/
+notebooks/Tests/
+
+# Scratch scripts
+scripts/Commands.sh
+scripts/test/
+
+# Large binary docs (use git-lfs if needed)
+*.docx
+
 # Backups & archives
 *.backup
 **/archive/
