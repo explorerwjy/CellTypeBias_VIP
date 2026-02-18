@@ -61,6 +61,125 @@ def Fil2Dict(fil_):
     df = pd.read_csv(fil_, header=None)
     return dict(zip(df[0].values, df[1].values))
 
+
+# ---------------------------------------------------------------------------
+# Gene-level statistical tests for gene discovery (used in downsampling)
+# ---------------------------------------------------------------------------
+
+def _combine_pvalues_fisher(p1, p2):
+    """Combine two p-values using Fisher's method.
+
+    Computes -2 * (ln(p1) + ln(p2)) which follows chi-squared(df=4).
+    Handles edge cases where p=0 (returns 0) or p=1.
+    """
+    # Clamp to avoid log(0)
+    p1 = max(p1, 1e-300)
+    p2 = max(p2, 1e-300)
+    chi2_stat = -2.0 * (np.log(p1) + np.log(p2))
+    combined_p = scipy.stats.chi2.sf(chi2_stat, df=4)
+    return combined_p
+
+
+def poisson_test_denovo(obs_lgd, obs_dmis, exp_rate_lgd, exp_rate_dmis, N_probands):
+    """Poisson test for de novo mutation enrichment against background mutation rate.
+
+    Tests LGD and damaging missense **separately** against their respective
+    BGMR expected rates, then combines p-values with Fisher's method.
+    This is more appropriate than pooling counts because LGD and Dmis have
+    different background mutation rates and different effect sizes.
+
+    Parameters
+    ----------
+    obs_lgd : int
+        Observed de novo LGD (LoF) mutation count for this gene.
+    obs_dmis : int
+        Observed de novo damaging missense count for this gene.
+    exp_rate_lgd : float
+        Per-allele, per-generation LGD mutation probability (from BGMR ``p_LGD``).
+    exp_rate_dmis : float
+        Per-allele, per-generation damaging missense mutation probability
+        (from BGMR ``p_misense`` or ``prevel_0.5``).
+    N_probands : int
+        Number of probands (trios). Expected count = rate * 2 * N_probands.
+
+    Returns
+    -------
+    p_combined : float
+        Combined p-value (Fisher's method on LGD and Dmis tests).
+    p_lgd : float
+        One-sided Poisson p-value for LGD enrichment.
+    p_dmis : float
+        One-sided Poisson p-value for Dmis enrichment.
+    """
+    exp_lgd = exp_rate_lgd * 2 * N_probands
+    exp_dmis = exp_rate_dmis * 2 * N_probands
+
+    # LGD test
+    if exp_lgd > 0:
+        p_lgd = scipy.stats.poisson.sf(max(obs_lgd - 1, -1), exp_lgd)
+    else:
+        p_lgd = 1.0 if obs_lgd == 0 else 0.0
+
+    # Dmis test
+    if exp_dmis > 0:
+        p_dmis = scipy.stats.poisson.sf(max(obs_dmis - 1, -1), exp_dmis)
+    else:
+        p_dmis = 1.0 if obs_dmis == 0 else 0.0
+
+    # Combine via Fisher's method
+    p_combined = _combine_pvalues_fisher(p_lgd, p_dmis)
+    return p_combined, p_lgd, p_dmis
+
+
+def fisher_test_case_control(case_lgd, case_dmis, ctrl_lgd, ctrl_dmis, n_case, n_ctrl):
+    """One-sided Fisher exact test for case-control mutation enrichment.
+
+    Tests LGD and damaging missense **separately** for case enrichment,
+    then combines p-values with Fisher's method.
+
+    Parameters
+    ----------
+    case_lgd : int
+        LGD (PTV) mutation count in cases for this gene.
+    case_dmis : int
+        Damaging missense mutation count in cases for this gene.
+    ctrl_lgd : int
+        LGD (PTV) mutation count in controls for this gene.
+    ctrl_dmis : int
+        Damaging missense mutation count in controls for this gene.
+    n_case : int
+        Total number of cases.
+    n_ctrl : int
+        Total number of controls.
+
+    Returns
+    -------
+    p_combined : float
+        Combined p-value (Fisher's method on LGD and Dmis tests).
+    p_lgd : float
+        One-sided Fisher p-value for LGD enrichment in cases.
+    p_dmis : float
+        One-sided Fisher p-value for Dmis enrichment in cases.
+    """
+    # LGD test
+    _, p_lgd = fisher_exact(
+        [[case_lgd, n_case - case_lgd],
+         [ctrl_lgd, n_ctrl - ctrl_lgd]],
+        alternative="greater"
+    )
+
+    # Dmis test
+    _, p_dmis = fisher_exact(
+        [[case_dmis, n_case - case_dmis],
+         [ctrl_dmis, n_ctrl - ctrl_dmis]],
+        alternative="greater"
+    )
+
+    # Combine via Fisher's method
+    p_combined = _combine_pvalues_fisher(p_lgd, p_dmis)
+    return p_combined, p_lgd, p_dmis
+
+
 def Aggregate_Gene_Weights_NDD(MutFil, Nproband=42607, BGMR=None, wLGD=0.347, wMis=0.194,usepLI=False, Bmis=False, out=None):
     gene2MutN = {}
     for i, row in MutFil.iterrows():
