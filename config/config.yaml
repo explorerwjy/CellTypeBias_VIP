@@ -17,6 +17,12 @@ gene_sets:
     geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/DDD.hc.gw.csv"
   22q_del:
     geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/X22q.gw.csv"
+  SCZ_Neg:
+    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/SCZ.top61.protect.gw"
+  NegCtrl_HDL:
+    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/HDL_C.top61.gw.csv"
+  NegCtrl_Alanine:
+    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/Alanine.top61.gw.csv"
   # 22q_small_del:
   #   geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/X22q.mousemodel.gw.csv"
   # UKBB_VNR_Neg:
