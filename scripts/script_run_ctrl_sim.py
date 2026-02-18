@@ -8,8 +8,12 @@
 import argparse
 import sys
 import os
-ProjDIR = "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/" # Change to your project directory
-sys.path.insert(1, f'{ProjDIR}/src/')
+
+# Get project directory from script location
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+ProjDIR = os.path.dirname(SCRIPT_DIR)
+sys.path.insert(1, os.path.join(ProjDIR, 'src'))
+
 from CellType_PSY import *
 import time
 import json

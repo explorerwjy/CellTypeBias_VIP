@@ -3,16 +3,16 @@ ProjDIR: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/"  # Change to your pr
 
 gene_sets:
   ASD_All:
-    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/Spark_Meta_EWS.GeneWeight.csv"
+    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/Spark_Meta_EWS.GeneWeight.bgmr.csv"
   ASD_HIQ:
-    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/HIQ.top61.nopLI.LGD_Dmis_SameWeight.gw"
+    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/HIQ.top61.nopLI.LGD_Dmis_SameWeight.bgmr.gw"
   ASD_LIQ:
-    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/LIQ.top61.nopLI.LGD_Dmis_SameWeight.gw"
+    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/LIQ.top61.nopLI.LGD_Dmis_SameWeight.bgmr.gw"
   SCZ:
     geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/SCZ.top61.nopLI.LGD_Dmis_SameWeight.exclude_Mis2.gw"
 
   DDD_61:
-    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/DDD.top61.gw.csv"
+    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/DDD.top61.gw.bgmr.csv"
   DDD_297:
     geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/DDD.hc.gw.csv"
   22q_del:
@@ -151,34 +151,34 @@ matching_configs:
   #     ks_threshold: 0.3
   #     seed: 42
 
+  # conservation_model:
+  #   sampling_mode: "set_level_matched"
+  #   set_level_matched_sampling:
+  #     matching_variables: ["n_CDS_bases", "WB", "mean_phastCons"]
+  #     use_propensity: false
+  #     propensity_kernel: "tricubic"
+  #     propensity_bandwidth: 60.0
+  #     add_noise: true
+  #     noise_scale: 10.0
+  #     relaxed_matching: true
+  #     loeuf_weight: 1
+  #     use_best_of_n: true
+  #     n_candidates: 1000
+  #     use_sis: false
+  #     use_percentile: true
+  #     temperature: 1.0
+  #     adaptive_temp: true
+  #     max_distance: 0.15
+  #     max_attempts: 1000
+  #     use_ks_test: false
+  #     ks_threshold: 0.3
+  #     seed: 42
+
+  # Recommended config for Reviewer 3: matches gene length, conservation, expression
   conservation_model:
     sampling_mode: "set_level_matched"
     set_level_matched_sampling:
       matching_variables: ["n_CDS_bases", "WB", "mean_phastCons"]
-      use_propensity: false
-      propensity_kernel: "tricubic"
-      propensity_bandwidth: 60.0
-      add_noise: true
-      noise_scale: 10.0
-      relaxed_matching: true
-      loeuf_weight: 1
-      use_best_of_n: true
-      n_candidates: 1000
-      use_sis: false
-      use_percentile: true
-      temperature: 1.0
-      adaptive_temp: true
-      max_distance: 0.15
-      max_attempts: 1000
-      use_ks_test: false
-      ks_threshold: 0.3
-      seed: 42
-
-
-  conservation_model:
-    sampling_mode: "set_level_matched"
-    set_level_matched_sampling:
-      matching_variables: ["n_CDS_bases", "WB", "LOEUF"]
       use_propensity: false
       propensity_kernel: "tricubic"
       propensity_bandwidth: 60.0
