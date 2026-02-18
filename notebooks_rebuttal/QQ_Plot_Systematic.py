@@ -8,6 +8,10 @@
 #       format_name: percent
 #       format_version: '1.3'
 #       jupytext_version: 1.19.1
+#   kernelspec:
+#     display_name: gencic
+#     language: python
+#     name: python3
 # ---
 
 # %% [markdown]
@@ -99,15 +103,18 @@ METHOD_STYLE = {
 # %%
 ALL_GENE_SETS = OrderedDict(list(GENE_SETS.items()) + list(NEG_CTRL_SETS.items()))
 
-pvals = {}  # {method: {gene_set_label: array of p-values}}
+pvals = {}       # {method: {gene_set_label: array of p-values}}
+is_neuron = {}   # {method: {gene_set_label: bool array, True = neuronal}}
 for method in SHOW_METHODS:
     result_dir = ALL_METHODS[method]
     pvals[method] = {}
+    is_neuron[method] = {}
     for gs_label, gs_key in ALL_GENE_SETS.items():
         fpath = PROJ_DIR / "results" / result_dir / ANALYSIS / f"{gs_key}_bias_addP.csv"
         if fpath.exists():
             df = pd.read_csv(fpath, index_col=0)
             pvals[method][gs_label] = df["P-value"].values
+            is_neuron[method][gs_label] = (df["Class"] == "NEUR").values
         else:
             print(f"Missing: {method} / {gs_key}")
 
@@ -120,7 +127,7 @@ print(f"Loaded {n_loaded} p-value vectors "
 
 # %%
 def qq_plot(pvals_dict, gene_sets, method_style, figsize=None, title=None,
-            neg_ctrl_labels=None, ncols=None):
+            neg_ctrl_labels=None, ncols=None, neuron_dict=None):
     """
     Multi-panel QQ plot of observed vs expected -log10(p).
 
@@ -136,6 +143,10 @@ def qq_plot(pvals_dict, gene_sets, method_style, figsize=None, title=None,
         Labels to mark as negative controls (italic title, gray background)
     ncols : int or None
         Number of columns per row (default: all in one row)
+    neuron_dict : dict or None
+        {method_name: {gene_set_label: bool array}} — True = neuronal.
+        When provided, neuronal cells are plotted as circles and
+        non-neuronal cells as diamonds.
     """
     n_panels = len(gene_sets)
     if neg_ctrl_labels is None:
@@ -158,9 +169,9 @@ def qq_plot(pvals_dict, gene_sets, method_style, figsize=None, title=None,
         for method, gs_pvals in pvals_dict.items():
             if gs_label not in gs_pvals:
                 continue
-            obs_p = np.sort(gs_pvals[gs_label])
-            # Clamp floor so -log10 doesn't blow up
-            obs_p = np.maximum(obs_p, 1e-10)
+            p = gs_pvals[gs_label]
+            sort_idx = np.argsort(p)
+            obs_p = np.maximum(p[sort_idx], 1e-10)
             n = len(obs_p)
             expected = (np.arange(1, n + 1)) / (n + 1)
 
@@ -170,14 +181,35 @@ def qq_plot(pvals_dict, gene_sets, method_style, figsize=None, title=None,
             global_max = max(global_max, neg_log_exp.max(), neg_log_obs.max())
 
             style = method_style.get(method, {})
-            ax.scatter(
-                neg_log_exp, neg_log_obs,
-                s=18, alpha=0.7, linewidths=0.3, edgecolors="white",
-                color=style.get("color", "grey"),
-                marker=style.get("marker", "o"),
-                zorder=style.get("zorder", 2),
-                label=method,
-            )
+            base_color = style.get("color", "grey")
+            base_zorder = style.get("zorder", 2)
+
+            if neuron_dict is not None and method in neuron_dict and gs_label in neuron_dict[method]:
+                neur_mask = neuron_dict[method][gs_label][sort_idx]
+
+                # Neuronal cells: circles
+                ax.scatter(
+                    neg_log_exp[neur_mask], neg_log_obs[neur_mask],
+                    s=18, alpha=0.7, linewidths=0.3, edgecolors="white",
+                    color=base_color, marker="o", zorder=base_zorder,
+                    label=f"{method} (neuron)",
+                )
+                # Non-neuronal cells: diamonds
+                ax.scatter(
+                    neg_log_exp[~neur_mask], neg_log_obs[~neur_mask],
+                    s=28, alpha=0.85, linewidths=0.4, edgecolors="white",
+                    color=base_color, marker="D", zorder=base_zorder + 1,
+                    label=f"{method} (non-neuron)",
+                )
+            else:
+                ax.scatter(
+                    neg_log_exp, neg_log_obs,
+                    s=18, alpha=0.7, linewidths=0.3, edgecolors="white",
+                    color=base_color,
+                    marker=style.get("marker", "o"),
+                    zorder=base_zorder,
+                    label=method,
+                )
 
         # Diagonal and axis limits
         upper = global_max * 1.08
@@ -199,7 +231,7 @@ def qq_plot(pvals_dict, gene_sets, method_style, figsize=None, title=None,
             ax.set_title(gs_label, fontweight="bold", pad=8)
 
         if idx == n_panels - 1:
-            ax.legend(fontsize=11, framealpha=0.8, loc="lower right")
+            ax.legend(fontsize=10, framealpha=0.8, loc="lower right")
 
     # Hide unused axes
     for idx in range(n_panels, nrows * ncols):
@@ -214,7 +246,7 @@ def qq_plot(pvals_dict, gene_sets, method_style, figsize=None, title=None,
 
 
 # Main figure: disorders only
-fig = qq_plot(pvals, GENE_SETS, METHOD_STYLE,
+fig = qq_plot(pvals, GENE_SETS, METHOD_STYLE, neuron_dict=is_neuron,
               title="Cell-Type Bias P-value QQ Plots")
 
 fig.savefig(FIG_DIR / "FigS_QQ_plot.pdf", dpi=300, transparent=True,
@@ -234,7 +266,7 @@ print(f"Saved to {FIG_DIR / 'FigS_QQ_plot.pdf'}")
 # %%
 fig_nc = qq_plot(pvals, ALL_GENE_SETS, METHOD_STYLE,
                  neg_ctrl_labels=set(NEG_CTRL_SETS.keys()),
-                 ncols=4,
+                 ncols=4, neuron_dict=is_neuron,
                  title="Cell-Type Bias QQ Plots (with negative controls)")
 
 fig_nc.savefig(FIG_DIR / "FigS_QQ_plot_with_negctrl.pdf", dpi=300,
@@ -252,18 +284,21 @@ print(f"Saved to {FIG_DIR / 'FigS_QQ_plot_with_negctrl.pdf'}")
 # %%
 # Reload with all methods and all gene sets (including neg controls)
 pvals_all = {}
+is_neuron_all = {}
 for method in ALL_METHODS:
     result_dir = ALL_METHODS[method]
     pvals_all[method] = {}
+    is_neuron_all[method] = {}
     for gs_label, gs_key in ALL_GENE_SETS.items():
         fpath = PROJ_DIR / "results" / result_dir / ANALYSIS / f"{gs_key}_bias_addP.csv"
         if fpath.exists():
             df = pd.read_csv(fpath, index_col=0)
             pvals_all[method][gs_label] = df["P-value"].values
+            is_neuron_all[method][gs_label] = (df["Class"] == "NEUR").values
 
 fig_all = qq_plot(pvals_all, ALL_GENE_SETS, METHOD_STYLE,
                   neg_ctrl_labels=set(NEG_CTRL_SETS.keys()),
-                  ncols=4,
+                  ncols=4, neuron_dict=is_neuron_all,
                   title="Cell-Type Bias QQ Plots — All Null Methods")
 
 fig_all.savefig(FIG_DIR / "FigS_QQ_plot_all_methods.pdf", dpi=300,
