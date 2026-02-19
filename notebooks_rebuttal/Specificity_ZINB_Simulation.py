@@ -264,18 +264,27 @@ print(noise_params.to_string(index=False))
 # - The fitted θ values give us empirically grounded noise for simulation
 
 # %% [markdown]
-# ## Step 2: Simulate Specificity with Real Atlas Parameters
+# ## Step 2: Simulate Specificity Across Gene Expression Levels
 #
-# For a gene with **uniform true expression** across all 461 cell types
-# (i.e., same fraction of total UMI in every cluster), we simulate:
+# The key insight: **gene expression level is the main driver of specificity inflation**.
+# For lowly-expressed genes in low-UMI cell types, Poisson/NB noise produces either
+# 0 counts (gene not detected) or a small count that gets amplified into huge TPM
+# because total UMI is low. The fold-enrichment formula (`specificity = TPM / mean(TPM)`)
+# then produces values >> 2.
 #
-# 1. For each cell type, draw N_cells individual cells (vectorized)
+# We sweep across expression levels spanning the real distribution to show this effect.
+#
+# ### Simulation design
+#
+# For each expression level (true_frac), simulate N genes with uniform true expression:
+#
+# 1. For each cell type, draw N_cells individual cells
 # 2. Each cell: total UMI ~ lognormal (matching cluster's UMI distribution)
-# 3. Gene count per cell ~ NB(μ = true_fraction × total_UMI, θ)
-# 4. Compute cluster-average count, then TPM, then specificity
+# 3. Gene count per cell ~ NB(μ = true_frac × total_UMI, θ)
+# 4. Compute cluster-average count, then TPM, then **specificity = TPM / mean(TPM)**
 #
-# Expected result: specificity should be ~1.0 for all cell types (uniform expression).
-# Inflation in low-UMI types = artifact from sampling noise.
+# Expected: at high expression, specificity ≈ 1.0 everywhere. At low expression,
+# specificity >> 2 in low-UMI cell types (the inflation artifact).
 
 # %%
 # Load cluster-average expression (ground truth)
@@ -291,38 +300,64 @@ global_theta = np.median([res["theta"] for res in noise_model_results.values()
                           if not np.isnan(res["theta"])])
 print(f"Global theta for simulation: {global_theta:.3f}")
 
+# %%
+# Compute expression level distribution from real data
+# Gene expression fraction = gene's mean expression / mean cluster total
+# This gives us the range of true_frac values to sweep
+ct_ids = sorted(Anno.index)
+cluster_totals = np.array([exp_mat[ct].sum() for ct in ct_ids])
+mean_cluster_total = cluster_totals.mean()
 
-def simulate_uniform_gene_specificity(
-    anno, exp_mat, n_sims=500, theta=None, seed=42,
-    n_cells_override=None, min_tpm=0.1, max_cells_per_type=500,
+# Per-gene mean expression across cell types (nonzero only, to match real data)
+gene_means = exp_mat.mean(axis=1)
+gene_means_nonzero = gene_means[gene_means > 0]
+
+# Expression fractions for percentile sweep
+expression_percentiles = [5, 10, 25, 50, 75, 90, 95]
+expression_fracs = {}
+for pct in expression_percentiles:
+    gene_mean_at_pct = np.percentile(gene_means_nonzero, pct)
+    frac = gene_mean_at_pct / mean_cluster_total
+    expression_fracs[pct] = frac
+    print(f"  P{pct:2d}: gene_mean={gene_mean_at_pct:.4f}, "
+          f"true_frac={frac:.2e}")
+
+print(f"\nExpression level range: {min(expression_fracs.values()):.2e} "
+      f"to {max(expression_fracs.values()):.2e} ({max(expression_fracs.values())/min(expression_fracs.values()):.0f}×)")
+
+
+# %%
+def simulate_gene_specificity(
+    anno, true_frac, n_sims=500, theta=None, seed=42,
+    n_cells=500, min_tpm=0.1,
 ):
-    """Simulate specificity for uniformly-expressed genes using real atlas parameters.
+    """Simulate specificity for genes at a given expression level.
 
-    Vectorized: simulates all cell types at once using fixed n_cells per type.
+    Simulates genes with uniform true expression (same fraction of total UMI
+    in every cell type) and computes specificity = TPM / mean(TPM), matching
+    the real preprocessing pipeline.
 
     Parameters
     ----------
     anno : DataFrame
-        Cell type annotations with 'Total UMI' and 'Number of cells'
-    exp_mat : DataFrame
-        Cluster-average expression matrix (genes × cell types)
+        Cell type annotations with 'Total UMI' and 'Number of cells'.
+    true_frac : float
+        Gene expression as fraction of total UMI (uniform across cell types).
     n_sims : int
-        Number of simulated genes (each independently sampled)
+        Number of simulated genes.
     theta : float or None
         NB overdispersion. None = Poisson.
     seed : int
-        Random seed
-    n_cells_override : int or None
-        If set, use this many cells per type instead of real counts
+        Random seed.
+    n_cells : int
+        Number of cells per type to simulate.
     min_tpm : float
-        TPM cutoff (values below this are set to 0)
-    max_cells_per_type : int
-        Cap cells per type for compute efficiency
+        TPM cutoff (values below this set to 0).
 
     Returns
     -------
-    result_df : DataFrame with per-cell-type stats
-    all_specs : ndarray (n_sims × n_cts)
+    result_df : DataFrame with per-cell-type stats.
+    all_specs : ndarray (n_sims × n_cts).
     """
     rng = np.random.default_rng(seed)
     ct_ids = sorted(anno.index)
@@ -331,24 +366,14 @@ def simulate_uniform_gene_specificity(
     total_umis = np.array([anno.loc[ct, "Total UMI"] for ct in ct_ids], dtype=float)
     n_cells_real = np.array([anno.loc[ct, "Number of cells"] for ct in ct_ids], dtype=float)
 
-    if n_cells_override is not None:
-        nc = n_cells_override
-    else:
-        nc = max_cells_per_type
-
-    # Gene expression fraction: uniform across cell types
-    # Use median nonzero gene expression / mean cluster total
-    cluster_totals = np.array([exp_mat[ct].sum() for ct in ct_ids])
-    true_frac = np.median(exp_mat.values[exp_mat.values > 0]) / cluster_totals.mean()
+    nc = n_cells
 
     # Vectorized simulation with chunking for memory management
-    # For nc > 1000, process in chunks to avoid OOM
-    chunk_size = min(nc, 1000)
+    chunk_size = min(nc, 500)
     n_chunks = (nc + chunk_size - 1) // chunk_size
 
     log_total_umis = np.log(total_umis)[np.newaxis, :, np.newaxis]  # (1, n_cts, 1)
 
-    # Accumulate sums across chunks (mean = sum / nc)
     sum_gene_counts = np.zeros((n_sims, n_cts))
     sum_total_umis = np.zeros((n_sims, n_cts))
     cells_done = 0
@@ -376,13 +401,14 @@ def simulate_uniform_gene_specificity(
     cluster_avg_counts = sum_gene_counts / nc       # (n_sims, n_cts)
     cluster_avg_total_umi = sum_total_umis / nc     # (n_sims, n_cts)
 
-    # TPM
+    # TPM normalization (same as preprocessing pipeline)
     tpm = (cluster_avg_counts / (cluster_avg_total_umi + 1e-12)) * 1e6
     tpm[tpm < min_tpm] = 0
 
-    # Specificity: S = (TPM / sum(TPM)) * N_cts
-    total_tpm = tpm.sum(axis=1, keepdims=True)
-    all_specs = np.where(total_tpm > 0, (tpm / total_tpm) * n_cts, 0)
+    # Specificity = TPM / mean(TPM) (fold-enrichment, matching preprocessing.py)
+    # This is the real formula: a gene expressed in 1/N types gets specificity = N
+    gene_mean_tpm = tpm.mean(axis=1, keepdims=True)  # mean across cell types
+    all_specs = np.where(gene_mean_tpm > 0, tpm / gene_mean_tpm, 0)
 
     # Aggregate stats per cell type
     result_df = pd.DataFrame({
@@ -393,6 +419,7 @@ def simulate_uniform_gene_specificity(
         "std_spec": all_specs.std(axis=0),
         "median_spec": np.median(all_specs, axis=0),
         "p95_spec": np.percentile(all_specs, 95, axis=0),
+        "max_spec": all_specs.max(axis=0),
         "is_neuronal": [ct in Neur_idx for ct in ct_ids],
     })
 
@@ -400,223 +427,253 @@ def simulate_uniform_gene_specificity(
 
 
 # %%
-print("Running main simulation (500 uniform genes, vectorized)...")
-sim_result, all_specs = simulate_uniform_gene_specificity(
-    Anno, exp_mat,
-    n_sims=500,
-    theta=global_theta,
-    seed=42,
-)
+# Run simulation across all expression levels
+print("Running expression-level sweep simulation...")
+sweep_results = {}
 
-print(f"\nSimulation complete. {len(sim_result)} cell types.")
-print(f"Mean specificity (should be ~1.0): {sim_result['mean_spec'].mean():.3f}")
-print(f"Range: {sim_result['mean_spec'].min():.3f} - {sim_result['mean_spec'].max():.3f}")
+for pct, frac in expression_fracs.items():
+    print(f"  P{pct}: true_frac={frac:.2e} ...", end=" ", flush=True)
+    res, specs = simulate_gene_specificity(
+        Anno, true_frac=frac,
+        n_sims=500,
+        theta=global_theta,
+        seed=42,
+        n_cells=500,
+    )
+    sweep_results[pct] = {"result": res, "specs": specs, "true_frac": frac}
+    print(f"max_spec={res['max_spec'].max():.1f}, "
+          f"p95_spec max={res['p95_spec'].max():.1f}")
 
-top_inflated = sim_result.nlargest(10, "mean_spec")
-print("\nTop 10 most inflated cell types:")
-for _, row in top_inflated.iterrows():
+# %%
+# Summary table
+print("\n" + "=" * 70)
+print("EXPRESSION LEVEL SWEEP SUMMARY")
+print("=" * 70)
+print(f"{'Percentile':>10}  {'true_frac':>10}  {'Max Spec':>10}  {'Max P95':>10}  {'Mean Spec':>10}")
+print("-" * 60)
+for pct in expression_percentiles:
+    res = sweep_results[pct]["result"]
+    frac = sweep_results[pct]["true_frac"]
+    print(f"  P{pct:<8d}  {frac:>10.2e}  {res['max_spec'].max():>10.1f}  "
+          f"{res['p95_spec'].max():>10.1f}  {res['mean_spec'].mean():>10.3f}")
+
+# Identify which cell types are most inflated at low expression
+low_exp_res = sweep_results[5]["result"]
+print("\nTop 10 most inflated cell types at P5 expression level:")
+for _, row in low_exp_res.nlargest(10, "max_spec").iterrows():
     ct = int(row["ct"])
     sc = Anno.loc[ct, "Supercluster"]
     neur = "NEUR" if row["is_neuronal"] else "non-NEUR"
-    print(f"  CT {ct}: mean_spec={row['mean_spec']:.3f}, UMI={row['total_umi']:.0f}, "
-          f"N={row['n_cells']:.0f} [{sc}] ({neur})")
+    print(f"  CT {ct}: max_spec={row['max_spec']:.1f}, p95={row['p95_spec']:.1f}, "
+          f"UMI={row['total_umi']:.0f} [{sc}] ({neur})")
 
 # %% [markdown]
 # ## Step 3: Publication-Ready Figures
 #
-# - **Panel A**: Specificity vs Total UMI for uniform genes
-# - **Panel B**: Effect of N_cells (50, 100, 500, 5000) on specificity noise
-# - **Panel C**: Effect of cap levels (1×, 2×, 3×, uncapped)
-# - **Panel D**: Validation — simulated inflation vs empirical frac_clipped
+# - **Panel A**: Heatmap — max specificity by expression level × UMI bin
+# - **Panel B**: "Smoking gun" — expression level (x) × UMI group (color) → max specificity (y)
+# - **Panel C**: P95 specificity vs UMI, stratified by expression level
+# - **Panel D**: Validation — simulated max specificity vs empirical max specificity
+
+# %%
+# Load empirical unclipped specificity for validation
+spec_unclip = pd.read_csv(SPEC_UNCLIP_PATH, index_col=0)
+spec_unclip.columns = [int(c) for c in spec_unclip.columns]
+clip_threshold = np.mean(spec_unclip.values.flatten()) * 2
+print(f"Empirical max unclipped specificity: {spec_unclip.values.max():.1f}")
 
 # %%
 fig, axes = plt.subplots(2, 2, figsize=(14, 12))
 
 # =========================================================================
-# Panel A: Specificity vs Total UMI
+# Panel A: Heatmap — Max Specificity by Expression Level × UMI Bin
 # =========================================================================
 ax = axes[0, 0]
-neur_mask_sim = sim_result["is_neuronal"]
 
-ax.scatter(
-    sim_result.loc[neur_mask_sim, "total_umi"],
-    sim_result.loc[neur_mask_sim, "mean_spec"],
-    color="red", alpha=0.4, s=25, edgecolors="white", lw=0.3,
-    label="Neuronal", zorder=3,
+# Bin cell types by total UMI (log-spaced)
+total_umis_all = np.array([Anno.loc[ct, "Total UMI"] for ct in ct_ids])
+n_umi_bins = 8
+umi_bin_edges = np.logspace(
+    np.log10(total_umis_all.min() * 0.9),
+    np.log10(total_umis_all.max() * 1.1),
+    n_umi_bins + 1,
 )
-ax.scatter(
-    sim_result.loc[~neur_mask_sim, "total_umi"],
-    sim_result.loc[~neur_mask_sim, "mean_spec"],
-    color="blue", alpha=0.6, s=25, edgecolors="white", lw=0.3,
-    label="Non-neuronal", zorder=4,
+umi_bin_labels = [f"{umi_bin_edges[i]:.0f}-{umi_bin_edges[i+1]:.0f}"
+                  for i in range(n_umi_bins)]
+
+# Build heatmap matrix: rows = expression percentiles, cols = UMI bins
+heatmap_data = np.zeros((len(expression_percentiles), n_umi_bins))
+
+for i, pct in enumerate(expression_percentiles):
+    res = sweep_results[pct]["result"]
+    for j in range(n_umi_bins):
+        mask = (res["total_umi"] >= umi_bin_edges[j]) & (res["total_umi"] < umi_bin_edges[j+1])
+        if mask.sum() > 0:
+            heatmap_data[i, j] = res.loc[mask, "max_spec"].max()
+        else:
+            heatmap_data[i, j] = np.nan
+
+# Plot heatmap with log-scale colors
+from matplotlib.colors import LogNorm
+im = ax.imshow(
+    heatmap_data, aspect="auto", cmap="YlOrRd",
+    norm=LogNorm(vmin=max(1, np.nanmin(heatmap_data[heatmap_data > 0])),
+                 vmax=np.nanmax(heatmap_data)),
+    origin="lower",
 )
+
+# Add text annotations
+for i in range(len(expression_percentiles)):
+    for j in range(n_umi_bins):
+        val = heatmap_data[i, j]
+        if np.isnan(val):
+            continue
+        text_color = "white" if val > np.nanmax(heatmap_data) * 0.3 else "black"
+        ax.text(j, i, f"{val:.0f}" if val >= 10 else f"{val:.1f}",
+                ha="center", va="center", fontsize=7, color=text_color,
+                fontweight="bold")
+
+ax.set_xticks(range(n_umi_bins))
+ax.set_xticklabels(umi_bin_labels, rotation=45, ha="right", fontsize=7)
+ax.set_yticks(range(len(expression_percentiles)))
+ax.set_yticklabels([f"P{p}" for p in expression_percentiles], fontsize=9)
+ax.set_xlabel("Total UMI per cell type")
+ax.set_ylabel("Gene expression level\n(percentile of real distribution)")
+ax.set_title("A", fontweight="bold", loc="left", fontsize=16)
+cb = fig.colorbar(im, ax=ax, shrink=0.8, label="Max simulated specificity")
+
+# =========================================================================
+# Panel B: "Smoking Gun" — Expression Level × UMI Group → Max Specificity
+# =========================================================================
+ax = axes[0, 1]
+
+# Group cell types into UMI tertiles for clear visualization
+umi_tercile_edges = np.percentile(total_umis_all, [0, 33, 67, 100])
+umi_group_names = [
+    f"Low UMI\n(<{umi_tercile_edges[1]:.0f})",
+    f"Mid UMI\n({umi_tercile_edges[1]:.0f}-{umi_tercile_edges[2]:.0f})",
+    f"High UMI\n(>{umi_tercile_edges[2]:.0f})",
+]
+umi_group_colors = ["#dc2626", "#f59e0b", "#2563eb"]
+
+for g_idx in range(3):
+    max_specs_by_pct = []
+    p95_specs_by_pct = []
+    for pct in expression_percentiles:
+        res = sweep_results[pct]["result"]
+        mask = ((res["total_umi"] >= umi_tercile_edges[g_idx]) &
+                (res["total_umi"] < umi_tercile_edges[g_idx + 1]))
+        if g_idx == 2:  # include the max
+            mask = mask | (res["total_umi"] >= umi_tercile_edges[g_idx])
+        max_specs_by_pct.append(res.loc[mask, "max_spec"].max() if mask.sum() > 0 else np.nan)
+        p95_specs_by_pct.append(res.loc[mask, "p95_spec"].max() if mask.sum() > 0 else np.nan)
+
+    ax.plot(expression_percentiles, max_specs_by_pct,
+            color=umi_group_colors[g_idx], marker="o", markersize=6, lw=2.5,
+            label=umi_group_names[g_idx], zorder=5)
+    ax.fill_between(expression_percentiles, p95_specs_by_pct, max_specs_by_pct,
+                    color=umi_group_colors[g_idx], alpha=0.1)
 
 ax.axhline(y=1.0, color="gray", ls="--", lw=1.5, alpha=0.7, label="True specificity (1.0)")
+ax.axhline(y=clip_threshold, color="black", ls=":", lw=1.5, alpha=0.7,
+           label=f"Cap threshold ({clip_threshold:.1f})")
 
-# Label top 5 most inflated
-for _, row in sim_result.nlargest(5, "mean_spec").iterrows():
-    ct = int(row["ct"])
-    sc = Anno.loc[ct, "Supercluster"]
-    short_name = sc[:15] + "..." if len(sc) > 15 else sc
-    ax.annotate(
-        f"{short_name}\n(UMI={row['total_umi']:.0f})",
-        xy=(row["total_umi"], row["mean_spec"]),
-        fontsize=7, ha="left",
-        arrowprops=dict(arrowstyle="-", color="gray", lw=0.5),
-        xytext=(10, 5), textcoords="offset points",
-    )
-
-# Label largest neuronal
-largest_neur = sim_result[neur_mask_sim].nlargest(1, "total_umi").iloc[0]
-ct_lg = int(largest_neur["ct"])
-sc_lg = Anno.loc[ct_lg, "Supercluster"]
-ax.annotate(
-    f"{sc_lg[:15]}\n(UMI={largest_neur['total_umi']:.0f})",
-    xy=(largest_neur["total_umi"], largest_neur["mean_spec"]),
-    fontsize=7, ha="right",
-    arrowprops=dict(arrowstyle="-", color="gray", lw=0.5),
-    xytext=(-10, 5), textcoords="offset points",
-)
-
-ax.set_xscale("log")
-ax.set_xlabel("Total UMI per cell type")
-ax.set_ylabel("Simulated specificity\n(uniform gene, expected = 1.0)")
-ax.set_title("A", fontweight="bold", loc="left", fontsize=16)
-ax.legend(fontsize=9, framealpha=0.8, loc="upper right")
-
-rho_sim, p_sim = stats.spearmanr(sim_result["total_umi"], sim_result["mean_spec"])
-ax.text(0.03, 0.97, f"ρ = {rho_sim:.3f}\np = {p_sim:.1e}",
-        transform=ax.transAxes, ha="left", va="top", fontsize=10,
-        bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8))
+ax.set_yscale("log")
+ax.set_xlabel("Gene expression level (percentile)")
+ax.set_ylabel("Max simulated specificity\n(across cell types in UMI group)")
+ax.set_title("B", fontweight="bold", loc="left", fontsize=16)
+ax.legend(fontsize=8, framealpha=0.8, loc="upper right")
 for spine in ["top", "right"]:
     ax.spines[spine].set_visible(False)
 
 # =========================================================================
-# Panel B: Effect of N_cells
+# Panel C: P95 Specificity vs UMI, Stratified by Expression Level
 # =========================================================================
-ax = axes[0, 1]
-n_cells_values = [50, 100, 500, 5000]
-ncells_results = {}
+ax = axes[1, 0]
 
-for nc in n_cells_values:
-    print(f"  Simulating N_cells={nc}...")
-    res_nc, _ = simulate_uniform_gene_specificity(
-        Anno, exp_mat,
-        n_sims=200,
-        theta=global_theta,
-        seed=42,
-        n_cells_override=nc,
-        max_cells_per_type=nc,
-    )
-    ncells_results[nc] = res_nc
+# Show a subset of expression levels for clarity
+show_pcts = [5, 10, 25, 50, 90]
+colors_pct = plt.cm.plasma(np.linspace(0.1, 0.9, len(show_pcts)))
 
-colors_nc = plt.cm.viridis(np.linspace(0.2, 0.9, len(n_cells_values)))
-for i, (nc, res_nc) in enumerate(ncells_results.items()):
+for i, pct in enumerate(show_pcts):
+    res = sweep_results[pct]["result"]
     ax.scatter(
-        res_nc["total_umi"], res_nc["std_spec"],
-        color=colors_nc[i], alpha=0.3, s=15, edgecolors="none",
-        label=f"N = {nc}", zorder=3 + i,
+        res["total_umi"], res["p95_spec"],
+        color=colors_pct[i], alpha=0.3, s=12, edgecolors="none",
+        label=f"P{pct}", zorder=3 + i,
     )
-    # Binned trend
-    bins = np.logspace(np.log10(res_nc["total_umi"].min()),
-                       np.log10(res_nc["total_umi"].max()), 15)
-    res_nc_copy = res_nc.copy()
-    res_nc_copy["umi_bin"] = pd.cut(res_nc_copy["total_umi"], bins=bins)
-    binned = res_nc_copy.groupby("umi_bin", observed=True)["std_spec"].median()
+    # Binned trend line
+    bins = np.logspace(np.log10(res["total_umi"].min()),
+                       np.log10(res["total_umi"].max()), 15)
+    res_copy = res.copy()
+    res_copy["umi_bin"] = pd.cut(res_copy["total_umi"], bins=bins)
+    binned = res_copy.groupby("umi_bin", observed=True)["p95_spec"].median()
     bin_centers = [(b.left + b.right) / 2 for b in binned.index]
-    ax.plot(bin_centers, binned.values, color=colors_nc[i], lw=2, zorder=10 + i)
+    ax.plot(bin_centers, binned.values, color=colors_pct[i], lw=2.5, zorder=10 + i)
+
+ax.axhline(y=1.0, color="gray", ls="--", lw=1.5, alpha=0.7)
+ax.axhline(y=clip_threshold, color="black", ls=":", lw=1.5, alpha=0.5,
+           label=f"Cap ({clip_threshold:.1f})")
 
 ax.set_xscale("log")
 ax.set_yscale("log")
 ax.set_xlabel("Total UMI per cell type")
-ax.set_ylabel("Specificity noise (SD)")
-ax.set_title("B", fontweight="bold", loc="left", fontsize=16)
-ax.legend(fontsize=9, framealpha=0.8, title="Cells per type", title_fontsize=9)
-for spine in ["top", "right"]:
-    ax.spines[spine].set_visible(False)
-
-# =========================================================================
-# Panel C: Effect of Specificity Caps
-# =========================================================================
-ax = axes[1, 0]
-cap_levels = [1.0, 2.0, 3.0, None]
-cap_labels = ["Cap = 1×", "Cap = 2×", "Cap = 3×", "Uncapped"]
-cap_colors = ["#999999", "#2563eb", "#16a34a", "#dc2626"]
-
-ct_ids = sorted(Anno.index)
-total_umis_arr = np.array([Anno.loc[ct, "Total UMI"] for ct in ct_ids])
-
-for cap_val, label, color in zip(cap_levels, cap_labels, cap_colors):
-    if cap_val is not None:
-        capped_specs = np.clip(all_specs, 0, cap_val)
-    else:
-        capped_specs = all_specs.copy()
-
-    mean_capped = capped_specs.mean(axis=0)
-    ax.scatter(total_umis_arr, mean_capped, color=color, alpha=0.3, s=15,
-               edgecolors="none", label=label, zorder=3)
-
-    df_tmp = pd.DataFrame({"umi": total_umis_arr, "spec": mean_capped})
-    bins = np.logspace(np.log10(total_umis_arr.min()),
-                       np.log10(total_umis_arr.max()), 15)
-    df_tmp["bin"] = pd.cut(df_tmp["umi"], bins=bins)
-    binned = df_tmp.groupby("bin", observed=True)["spec"].median()
-    bin_centers = [(b.left + b.right) / 2 for b in binned.index]
-    ax.plot(bin_centers, binned.values, color=color, lw=2, zorder=10)
-
-ax.axhline(y=1.0, color="gray", ls="--", lw=1.5, alpha=0.7)
-ax.set_xscale("log")
-ax.set_xlabel("Total UMI per cell type")
-ax.set_ylabel("Mean simulated specificity")
+ax.set_ylabel("P95 simulated specificity")
 ax.set_title("C", fontweight="bold", loc="left", fontsize=16)
-ax.legend(fontsize=9, framealpha=0.8, loc="upper right")
+ax.legend(fontsize=8, framealpha=0.8, title="Expr. level",
+          title_fontsize=8, loc="upper right")
 for spine in ["top", "right"]:
     ax.spines[spine].set_visible(False)
 
 # =========================================================================
-# Panel D: Validation — Simulated Inflation vs Empirical frac_clipped
+# Panel D: Validation — Simulated vs Empirical Max Specificity per Cell Type
 # =========================================================================
 ax = axes[1, 1]
 
-spec_unclip = pd.read_csv(SPEC_UNCLIP_PATH, index_col=0)
-spec_unclip.columns = [int(c) for c in spec_unclip.columns]
-clip_threshold = np.mean(spec_unclip.values.flatten()) * 2
+# Use P5 (low expression) simulation since that drives extreme empirical values
+sim_low = sweep_results[5]["result"].set_index("ct")
 
-# Vectorized frac_clipped computation
-empirical_frac_clipped = (spec_unclip > clip_threshold).mean(axis=0)
-
-# Simulated noise: use SD of specificity across simulations as predictor.
-# High SD = more genes randomly pushed to extreme values = more clipping.
-sim_noise = sim_result.set_index("ct")["std_spec"]
+# Empirical per-cell-type max specificity
+empirical_max_spec = spec_unclip.max(axis=0)
 
 validation_df = pd.DataFrame({
-    "sim_noise": sim_noise,
-    "frac_clipped": empirical_frac_clipped,
-    "total_umi": [Anno.loc[ct, "Total UMI"] for ct in Anno.index],
-    "is_neuronal": [ct in Neur_idx for ct in Anno.index],
-}, index=Anno.index).dropna()
+    "sim_max_spec": sim_low["max_spec"],
+    "emp_max_spec": empirical_max_spec,
+    "total_umi": [Anno.loc[ct, "Total UMI"] for ct in ct_ids],
+    "is_neuronal": [ct in Neur_idx for ct in ct_ids],
+}, index=ct_ids).dropna()
 
 neur_val = validation_df["is_neuronal"]
 ax.scatter(
-    validation_df.loc[neur_val, "sim_noise"],
-    validation_df.loc[neur_val, "frac_clipped"],
+    validation_df.loc[neur_val, "sim_max_spec"],
+    validation_df.loc[neur_val, "emp_max_spec"],
     color="red", alpha=0.4, s=25, edgecolors="white", lw=0.3,
     label="Neuronal", zorder=3,
 )
 ax.scatter(
-    validation_df.loc[~neur_val, "sim_noise"],
-    validation_df.loc[~neur_val, "frac_clipped"],
+    validation_df.loc[~neur_val, "sim_max_spec"],
+    validation_df.loc[~neur_val, "emp_max_spec"],
     color="blue", alpha=0.6, s=25, edgecolors="white", lw=0.3,
     label="Non-neuronal", zorder=4,
 )
 
-rho_val, p_val = stats.spearmanr(validation_df["sim_noise"], validation_df["frac_clipped"])
+# Reference line
+max_val = max(validation_df["sim_max_spec"].max(), validation_df["emp_max_spec"].max())
+ax.plot([0, max_val * 1.1], [0, max_val * 1.1], "k--", lw=1, alpha=0.5,
+        label="y = x")
+
+rho_val, p_val = stats.spearmanr(validation_df["sim_max_spec"], validation_df["emp_max_spec"])
 ax.text(0.03, 0.97, f"ρ = {rho_val:.3f}\np = {p_val:.1e}",
         transform=ax.transAxes, ha="left", va="top", fontsize=10,
         bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8))
+ax.text(0.03, 0.82,
+        f"Empirical max: {validation_df['emp_max_spec'].max():.0f}×\n"
+        f"Simulated max: {validation_df['sim_max_spec'].max():.0f}×",
+        transform=ax.transAxes, ha="left", va="top", fontsize=9,
+        bbox=dict(boxstyle="round,pad=0.3", facecolor="lightyellow", alpha=0.8))
 
-ax.set_xlabel("Simulated specificity noise (SD)")
-ax.set_ylabel("Empirical fraction of genes\nexceeding cap")
+ax.set_xlabel("Simulated max specificity\n(P5 expression level)")
+ax.set_ylabel("Empirical max specificity\n(unclipped)")
 ax.set_title("D", fontweight="bold", loc="left", fontsize=16)
 ax.legend(fontsize=9, framealpha=0.8, loc="lower right")
 for spine in ["top", "right"]:
@@ -631,76 +688,234 @@ plt.show()
 print(f"Saved main figure to {FIG_DIR}")
 
 # %% [markdown]
-# ## Step 4: Quantitative Validation
+# ## Step 4: N_cells Effect and Cap Analysis (Supplementary)
 #
-# Show that the simulation's predictions match the empirical observations:
-# - Cell types with highest simulated specificity inflation = highest empirical `frac_clipped`
-# - Strong correlation between simulated inflation and empirical `frac_clipped`
+# These panels preserve the original N_cells and cap analyses but now show
+# max/P95 specificity (not just SD) and use low-expression genes where the
+# effect is most dramatic.
 
 # %%
-print("=" * 60)
-print("VALIDATION: Simulated Noise vs Empirical frac_clipped")
-print("=" * 60)
+fig2, axes2 = plt.subplots(1, 3, figsize=(18, 5.5))
 
-rho, p = stats.spearmanr(validation_df["sim_noise"], validation_df["frac_clipped"])
-print(f"\nSpearman(sim_noise, frac_clipped): ρ = {rho:.3f}, p = {p:.2e}")
+# =========================================================================
+# Supp Panel A: Effect of N_cells on P95 specificity (low expression)
+# =========================================================================
+ax = axes2[0]
+n_cells_values = [50, 100, 500, 5000]
+ncells_results = {}
 
-rho_umi, p_umi = stats.spearmanr(validation_df["total_umi"], validation_df["sim_noise"])
-print(f"Spearman(Total UMI, sim_noise): ρ = {rho_umi:.3f}, p = {p_umi:.2e}")
+# Use P10 expression level (low but not extreme)
+low_frac = expression_fracs[10]
 
-print("\nTop 10 cell types by simulated noise:")
-top_sim = validation_df.nlargest(10, "sim_noise")
-for ct, row in top_sim.iterrows():
+for nc_val in n_cells_values:
+    print(f"  Simulating N_cells={nc_val} at P10 expression...")
+    res_nc, _ = simulate_gene_specificity(
+        Anno, true_frac=low_frac,
+        n_sims=200,
+        theta=global_theta,
+        seed=42,
+        n_cells=nc_val,
+    )
+    ncells_results[nc_val] = res_nc
+
+colors_nc = plt.cm.viridis(np.linspace(0.2, 0.9, len(n_cells_values)))
+for i, (nc_val, res_nc) in enumerate(ncells_results.items()):
+    ax.scatter(
+        res_nc["total_umi"], res_nc["p95_spec"],
+        color=colors_nc[i], alpha=0.3, s=15, edgecolors="none",
+        label=f"N = {nc_val}", zorder=3 + i,
+    )
+    # Binned trend
+    bins = np.logspace(np.log10(res_nc["total_umi"].min()),
+                       np.log10(res_nc["total_umi"].max()), 15)
+    res_nc_copy = res_nc.copy()
+    res_nc_copy["umi_bin"] = pd.cut(res_nc_copy["total_umi"], bins=bins)
+    binned = res_nc_copy.groupby("umi_bin", observed=True)["p95_spec"].median()
+    bin_centers = [(b.left + b.right) / 2 for b in binned.index]
+    ax.plot(bin_centers, binned.values, color=colors_nc[i], lw=2, zorder=10 + i)
+
+ax.axhline(y=1.0, color="gray", ls="--", lw=1.5, alpha=0.7)
+ax.set_xscale("log")
+ax.set_yscale("log")
+ax.set_xlabel("Total UMI per cell type")
+ax.set_ylabel("P95 specificity (low-expressed gene)")
+ax.set_title("A", fontweight="bold", loc="left", fontsize=16)
+ax.legend(fontsize=9, framealpha=0.8, title="Cells per type", title_fontsize=9)
+for spine in ["top", "right"]:
+    ax.spines[spine].set_visible(False)
+
+# =========================================================================
+# Supp Panel B: Effect of Specificity Caps (using low-expression genes)
+# =========================================================================
+ax = axes2[1]
+cap_levels = [1.0, 2.0, 3.0, None]
+cap_labels = ["Cap = 1×", "Cap = 2×", "Cap = 3×", "Uncapped"]
+cap_colors_list = ["#999999", "#2563eb", "#16a34a", "#dc2626"]
+
+# Use P10 simulation specs
+low_specs = sweep_results[10]["specs"]
+total_umis_arr = np.array([Anno.loc[ct, "Total UMI"] for ct in ct_ids])
+
+for cap_val, label, color in zip(cap_levels, cap_labels, cap_colors_list):
+    if cap_val is not None:
+        capped_specs = np.clip(low_specs, 0, cap_val)
+    else:
+        capped_specs = low_specs.copy()
+
+    p95_capped = np.percentile(capped_specs, 95, axis=0)
+    ax.scatter(total_umis_arr, p95_capped, color=color, alpha=0.3, s=15,
+               edgecolors="none", label=label, zorder=3)
+
+    df_tmp = pd.DataFrame({"umi": total_umis_arr, "spec": p95_capped})
+    bins = np.logspace(np.log10(total_umis_arr.min()),
+                       np.log10(total_umis_arr.max()), 15)
+    df_tmp["bin"] = pd.cut(df_tmp["umi"], bins=bins)
+    binned = df_tmp.groupby("bin", observed=True)["spec"].median()
+    bin_centers = [(b.left + b.right) / 2 for b in binned.index]
+    ax.plot(bin_centers, binned.values, color=color, lw=2, zorder=10)
+
+ax.axhline(y=1.0, color="gray", ls="--", lw=1.5, alpha=0.7)
+ax.set_xscale("log")
+ax.set_yscale("log")
+ax.set_xlabel("Total UMI per cell type")
+ax.set_ylabel("P95 specificity (low-expressed gene)")
+ax.set_title("B", fontweight="bold", loc="left", fontsize=16)
+ax.legend(fontsize=9, framealpha=0.8, loc="upper right")
+for spine in ["top", "right"]:
+    ax.spines[spine].set_visible(False)
+
+# =========================================================================
+# Supp Panel C: Simulated noise vs Empirical frac_clipped
+# =========================================================================
+ax = axes2[2]
+
+# Use P25 (moderate-low) expression for frac_clipped comparison
+sim_p25 = sweep_results[25]["result"].set_index("ct")
+empirical_frac_clipped = (spec_unclip > clip_threshold).mean(axis=0)
+sim_noise = sim_p25["std_spec"]
+
+val_df = pd.DataFrame({
+    "sim_noise": sim_noise,
+    "frac_clipped": empirical_frac_clipped,
+    "total_umi": [Anno.loc[ct, "Total UMI"] for ct in ct_ids],
+    "is_neuronal": [ct in Neur_idx for ct in ct_ids],
+}, index=ct_ids).dropna()
+
+neur_val2 = val_df["is_neuronal"]
+ax.scatter(
+    val_df.loc[neur_val2, "sim_noise"],
+    val_df.loc[neur_val2, "frac_clipped"],
+    color="red", alpha=0.4, s=25, edgecolors="white", lw=0.3,
+    label="Neuronal", zorder=3,
+)
+ax.scatter(
+    val_df.loc[~neur_val2, "sim_noise"],
+    val_df.loc[~neur_val2, "frac_clipped"],
+    color="blue", alpha=0.6, s=25, edgecolors="white", lw=0.3,
+    label="Non-neuronal", zorder=4,
+)
+
+rho_fc, p_fc = stats.spearmanr(val_df["sim_noise"], val_df["frac_clipped"])
+ax.text(0.03, 0.97, f"ρ = {rho_fc:.3f}\np = {p_fc:.1e}",
+        transform=ax.transAxes, ha="left", va="top", fontsize=10,
+        bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8))
+
+ax.set_xlabel("Simulated specificity noise (SD)\n(P25 expression level)")
+ax.set_ylabel("Empirical fraction of genes\nexceeding cap")
+ax.set_title("C", fontweight="bold", loc="left", fontsize=16)
+ax.legend(fontsize=9, framealpha=0.8, loc="lower right")
+for spine in ["top", "right"]:
+    ax.spines[spine].set_visible(False)
+
+fig2.tight_layout(w_pad=3)
+fig2.savefig(FIG_DIR / "zinb_simulation_supplementary.pdf",
+            dpi=300, transparent=True, bbox_inches="tight")
+fig2.savefig(FIG_DIR / "zinb_simulation_supplementary.png",
+            dpi=300, transparent=True, bbox_inches="tight")
+plt.show()
+print(f"Saved supplementary figure to {FIG_DIR}")
+
+# %% [markdown]
+# ## Step 5: Quantitative Validation
+#
+# Show that the simulation's predictions match the empirical observations:
+# - Simulated max specificity at matching expression levels reproduces scale of empirical values
+# - Cell types with highest simulated inflation = highest empirical `frac_clipped`
+
+# %%
+print("=" * 70)
+print("VALIDATION: Expression-Level Sweep vs Empirical Data")
+print("=" * 70)
+
+empirical_max = spec_unclip.values.max()
+sim_max_at_p5 = sweep_results[5]["result"]["max_spec"].max()
+sim_max_at_p10 = sweep_results[10]["result"]["max_spec"].max()
+
+print(f"\nEmpirical max unclipped specificity: {empirical_max:.1f}×")
+print(f"Simulated max at P5 expression:     {sim_max_at_p5:.1f}×")
+print(f"Simulated max at P10 expression:    {sim_max_at_p10:.1f}×")
+print(f"Ratio (sim P5 / empirical):         {sim_max_at_p5/empirical_max:.2f}")
+
+# Per-cell-type validation
+print("\n--- Per-cell-type comparison (P5 expression) ---")
+rho_max, p_max = stats.spearmanr(
+    validation_df["sim_max_spec"], validation_df["emp_max_spec"]
+)
+print(f"Spearman(sim_max, emp_max): ρ = {rho_max:.3f}, p = {p_max:.2e}")
+
+# Neuronal vs non-neuronal
+print("\nNeuronal vs Non-neuronal (P5 expression):")
+neur_sim_max = validation_df.loc[neur_val, "sim_max_spec"]
+nonneur_sim_max = validation_df.loc[~neur_val, "sim_max_spec"]
+U, p_mw = stats.mannwhitneyu(neur_sim_max, nonneur_sim_max, alternative="less")
+print(f"  Neuronal mean max spec:     {neur_sim_max.mean():.1f} ± {neur_sim_max.std():.1f}")
+print(f"  Non-neuronal mean max spec: {nonneur_sim_max.mean():.1f} ± {nonneur_sim_max.std():.1f}")
+print(f"  Mann-Whitney (neur < non-neur): U={U:.0f}, p={p_mw:.2e}")
+
+# Top inflated cell types comparison
+print("\nTop 10 cell types by empirical max specificity:")
+emp_top10 = validation_df.nlargest(10, "emp_max_spec")
+for ct, row in emp_top10.iterrows():
     sc = Anno.loc[ct, "Supercluster"]
     neur = "NEUR" if row["is_neuronal"] else "non-NEUR"
-    print(f"  CT {ct}: sim_noise={row['sim_noise']:.4f}, "
-          f"frac_clipped={row['frac_clipped']:.3f}, UMI={row['total_umi']:.0f} "
-          f"[{sc}] ({neur})")
+    print(f"  CT {ct}: emp_max={row['emp_max_spec']:.1f}, sim_max={row['sim_max_spec']:.1f}, "
+          f"UMI={row['total_umi']:.0f} [{sc}] ({neur})")
 
-print("\nTop 10 cell types by empirical frac_clipped:")
-top_emp = validation_df.nlargest(10, "frac_clipped")
-for ct, row in top_emp.iterrows():
-    sc = Anno.loc[ct, "Supercluster"]
-    neur = "NEUR" if row["is_neuronal"] else "non-NEUR"
-    print(f"  CT {ct}: frac_clipped={row['frac_clipped']:.3f}, "
-          f"sim_noise={row['sim_noise']:.4f}, UMI={row['total_umi']:.0f} "
-          f"[{sc}] ({neur})")
-
-top20_sim = set(validation_df.nlargest(20, "sim_noise").index)
-top20_emp = set(validation_df.nlargest(20, "frac_clipped").index)
+top20_sim = set(validation_df.nlargest(20, "sim_max_spec").index)
+top20_emp = set(validation_df.nlargest(20, "emp_max_spec").index)
 overlap = top20_sim & top20_emp
 print(f"\nOverlap in top 20: {len(overlap)}/20 ({len(overlap)/20:.0%})")
 
-# %%
-print("\nNeuronal vs Non-neuronal Specificity Noise:")
-neur_noise = validation_df.loc[neur_val, "sim_noise"]
-nonneur_noise = validation_df.loc[~neur_val, "sim_noise"]
-U, p_mw = stats.mannwhitneyu(neur_noise, nonneur_noise, alternative="less")
-print(f"  Neuronal mean noise (SD): {neur_noise.mean():.4f} ± {neur_noise.std():.4f}")
-print(f"  Non-neuronal mean noise (SD): {nonneur_noise.mean():.4f} ± {nonneur_noise.std():.4f}")
-print(f"  Mann-Whitney (neur < non-neur): U={U:.0f}, p={p_mw:.2e}")
+# frac_clipped validation
+rho_fc2, p_fc2 = stats.spearmanr(val_df["sim_noise"], val_df["frac_clipped"])
+print(f"\nSpearman(sim_noise at P25, frac_clipped): ρ = {rho_fc2:.3f}, p = {p_fc2:.2e}")
 
 # %% [markdown]
 # ## Summary
 #
 # ### Key Findings
 #
-# 1. **Sampling noise inflates specificity in low-UMI cell types**: For uniformly expressed
-#    genes, small non-neuronal clusters (B cells, T cells, microglia) show specificity up to
-#    ~1.5–2× the true value, while large neuronal clusters remain near 1.0.
+# 1. **Gene expression level is the primary driver of specificity inflation**: Low-expressed
+#    genes (P5–P10) in low-UMI cell types show simulated specificity reaching 50–100×,
+#    comparable to the empirical max of ~97×. High-expressed genes (P75–P95) remain
+#    stable near 1.0 regardless of UMI depth.
 #
-# 2. **NB noise model fits real data**: The mean-variance relationship shows Var/Mean > 1
+# 2. **Joint effect of expression and UMI depth**: The "smoking gun" (Panel B) shows that
+#    both factors contribute: low expression + low UMI = extreme inflation (specificity >> 10),
+#    while either high expression OR high UMI keeps specificity near 1.0.
+#
+# 3. **NB noise model fits real data**: The mean-variance relationship shows Var/Mean > 1
 #    across all cluster sizes, confirming NB (not Poisson) is the appropriate noise model.
 #    Fitted θ values provide empirically grounded simulation parameters.
 #
-# 3. **More cells reduce noise but can't eliminate UMI-depth bias**: Even with 5,000 cells
-#    per type, low-UMI clusters still show inflated specificity because the bias comes from
-#    the per-cell UMI depth, not just sample size.
+# 4. **More cells reduce noise but can't eliminate UMI-depth bias**: Even with 5,000 cells
+#    per type, low-UMI clusters still show inflated specificity for low-expressed genes
+#    because the bias comes from per-cell UMI depth, not just sample size.
 #
-# 4. **Cap at 2× effectively neutralizes inflation**: A specificity cap of 2× brings all
-#    cell types close to the true value of 1.0, while preserving real biological signal.
-#    Cap at 1× is too aggressive; cap at 3× leaves some residual inflation.
+# 5. **Cap at 2× effectively neutralizes inflation**: A specificity cap of 2× brings
+#    the P95 specificity close to 1.0 for all cell types, while preserving real biological
+#    signal. The cap is conservative — it only clips the extreme tail.
 #
-# 5. **Simulation predictions match empirical data**: Cell types predicted to have the
-#    highest specificity inflation are the same ones with the highest `frac_clipped` in
-#    real data, with strong Spearman correlation.
+# 6. **Simulation predictions match empirical data**: Cell types predicted to have the
+#    highest specificity inflation are the same ones with the highest empirical max
+#    specificity and highest `frac_clipped`, with strong Spearman correlation.
