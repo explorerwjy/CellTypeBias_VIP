@@ -13,801 +13,416 @@
 #     name: gencic
 # ---
 
+# %% [markdown]
+# # ASD-SCZ Bias Similarity: Gene Property Dissection
+#
+# **Question:** What gene-level properties drive the shared cell-type bias pattern between ASD and SCZ?
+#
+# **Approach:** Progressively remove genes ranked by constraint (LOEUF) or expression (BrainSpan),
+# then measure how the ASD-SCZ neuronal bias correlation changes compared to random removal.
+#
+# **Key results:**
+# - Removing the most constrained genes (low LOEUF) rapidly destroys the ASD-SCZ correlation
+# - Removing by BrainSpan expression has a similar but weaker effect
+# - Constrained genes (LOEUF < 0.2) alone recapitulate the shared pattern; unconstrained genes do not
+
 # %%
 # %load_ext autoreload
 # %autoreload 2
+
 import sys
 import os
-ProjDIR = "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/" # Change to your project directory
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib.font_manager as fm
+from pathlib import Path
+from scipy import stats
+from multiprocessing import Pool
+
+ProjDIR = "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/"
 sys.path.insert(1, f'{ProjDIR}/src/')
 from CellType_PSY import *
+
 import yaml
-with open(ProjDIR + '/config/config.yaml', 'r') as file:
+with open(ProjDIR + 'config/config.yaml', 'r') as file:
     config = yaml.safe_load(file)
+
 HGNC, ENSID2Entrez, GeneSymbol2Entrez, Entrez2Symbol = LoadGeneINFO()
 
-try:
-    os.chdir(f"{ProjDIR}/notebooks/")
-    print(f"Current working directory: {os.getcwd()}")
-except FileNotFoundError as e:
-    print(f"Error: Could not change directory - {e}")
-except Exception as e:
-    print(f"Unexpected error: {e}")
+os.chdir(f"{ProjDIR}/notebooks/")
 
-# %%
-from matplotlib import rcParams, font_manager
-font_path = '/usr/share/fonts/truetype/msttcorefonts/Arial.ttf'  # Replace with the actual path
-rcParams['font.family'] = font_manager.FontProperties(fname=font_path).get_name()
-
-# %%
-import matplotlib.font_manager as fm
+# Font setup
 font_path = '/usr/share/fonts/truetype/msttcorefonts/Arial.ttf'
-fm.fontManager.addfont(font_path)  # Only if you're adding a new font file
+fm.fontManager.addfont(font_path)
 fm._load_fontmanager(try_read_cache=False)
-
-# %%
-# Load Gene Weights
-ASD_Hiq_GW_NoMutTypeDiff = Fil2Dict("../dat/GeneWeights/HIQ.top61.nopLI.LGD_Dmis_SameWeight.bgmr.gw")
-SCZ_GW_NoMutTypeDiff_Mis2 = Fil2Dict("../dat/GeneWeights/SCZ.top61.nopLI.LGD_Dmis_SameWeight.exclude_Mis2.gw") 
-
-# %%
-#ASD_GW = ASD_Hiq_GW
-ASD_GW = ASD_Hiq_GW_NoMutTypeDiff
-SCZ_GW = SCZ_GW_NoMutTypeDiff_Mis2
-
-# %%
-expression_matrix = config['analysis_types']['Centering']
-print(expression_matrix)
-HCT_Z2_MAT_HCT = pd.read_csv(ProjDIR + expression_matrix, index_col=0)
-HCT_Z2_MAT_HCT.columns = HCT_Z2_MAT_HCT.columns.astype(int)
-
-# %%
-tmp_ASD_Bias = HumanCT_AvgZ_Weighted(HCT_Z2_MAT_HCT, ASD_GW)
-tmp_ASD_Bias = AnnotateCTDat(tmp_ASD_Bias, Anno)
-
-tmp_SCZ_Bias = HumanCT_AvgZ_Weighted(HCT_Z2_MAT_HCT, SCZ_GW)
-tmp_SCZ_Bias = AnnotateCTDat(tmp_SCZ_Bias, Anno)
-
-r,p = GetSingeCellBiasCorr(tmp_ASD_Bias, tmp_SCZ_Bias, efflabel="EFFECT", CTs = Neur_idx)
-print(r,p)
+plt.style.use('seaborn-v0_8-whitegrid')
 
 # %% [markdown]
-# ## Load gnomad data
+# ## 1. Load Data
 
 # %%
+# Gene weights
+ASD_GW = Fil2Dict("../dat/GeneWeights/HIQ.top61.nopLI.LGD_Dmis_SameWeight.bgmr.gw")
+SCZ_GW = Fil2Dict("../dat/GeneWeights/SCZ.top61.nopLI.LGD_Dmis_SameWeight.exclude_Mis2.gw")
+
+# Expression matrix
+expression_matrix = config['analysis_types']['Centering']
+HCT_Z2_MAT = pd.read_csv(ProjDIR + expression_matrix, index_col=0)
+HCT_Z2_MAT.columns = HCT_Z2_MAT.columns.astype(int)
+print(f"Expression matrix: {HCT_Z2_MAT.shape[0]} genes x {HCT_Z2_MAT.shape[1]} cell types")
+
+# %%
+# Baseline ASD-SCZ correlation (all genes)
+ASD_Bias = HumanCT_AvgZ_Weighted(HCT_Z2_MAT, ASD_GW)
+ASD_Bias = AnnotateCTDat(ASD_Bias, Anno)
+
+SCZ_Bias = HumanCT_AvgZ_Weighted(HCT_Z2_MAT, SCZ_GW)
+SCZ_Bias = AnnotateCTDat(SCZ_Bias, Anno)
+
+r_baseline, p_baseline = GetSingeCellBiasCorr(ASD_Bias, SCZ_Bias, efflabel="EFFECT", CTs=Neur_idx)
+print(f"Baseline ASD-SCZ neuronal bias correlation: r={r_baseline:.3f}, p={p_baseline:.2e}")
+
+# %% [markdown]
+# ## 2. Annotate Genes with Constraint and Expression
+
+# %%
+# Load gnomAD v4 (primary) and v2 (fallback)
 gnomad4 = pd.read_csv("/home/jw3514/Work/data/gnomad/gnomad.v4.0.constraint_metrics.tsv", sep="\t")
-search_text = 'ENST'
-gnomad4 = gnomad4[(gnomad4["transcript"].str.contains(search_text))]
-gnomad4 = gnomad4[gnomad4["mane_select"]==True]
-for i, row in gnomad4.iterrows():
-    symbol = row["gene"]
-    gnomad4.loc[i, "Entrez"] = int(GeneSymbol2Entrez.get(symbol, 0))
-gnomad4 = gnomad4[gnomad4["Entrez"]!=0]
-
-gnomad4 = gnomad4[["Entrez", "gene", "transcript", "lof_hc_lc.obs", "lof_hc_lc.exp", 
-                   "lof.pLI", "lof.z_score", "mis.z_score"]]
-gnomad4_lofz_rank = gnomad4.sort_values("lof.z_score", ascending=False)
-gnomad4_lofz_rank["Entrez"] = gnomad4_lofz_rank["Entrez"].astype('int')
-
-# %%
-gnomad4 = pd.read_csv("/home/jw3514/Work/data/gnomad/gnomad.v4.0.constraint_metrics.tsv", sep="\t")
-search_text = 'ENST'
-gnomad4 = gnomad4[(gnomad4["transcript"].str.contains(search_text))]
-gnomad4 = gnomad4[gnomad4["mane_select"]==True]
-for i, row in gnomad4.iterrows():
-    symbol = row["gene"]
-    gnomad4.loc[i, "Entrez"] = int(GeneSymbol2Entrez.get(symbol, 0))
-
-# %%
-# Find genes in ASD_GW or SCZ_GW but not in gnomad4_lofz_rank
-ASD_missing = set(ASD_GW.keys()) - set(gnomad4_lofz_rank["Entrez"])
-SCZ_missing = set(SCZ_GW.keys()) - set(gnomad4_lofz_rank["Entrez"])
-
-print("ASD genes not in gnomad4_lofz_rank:", len(ASD_missing))
-print("SCZ genes not in gnomad4_lofz_rank:", len(SCZ_missing))
-
-Missing_Symbols_G4 = []
-print("\nMissing ASD genes:")
-for gene in ASD_missing:
-    print(gene, Entrez2Symbol[gene])
-    Missing_Symbols_G4.append(Entrez2Symbol[gene])
-
-print("\nMissing SCZ genes:")
-for gene in SCZ_missing:
-    print(gene, Entrez2Symbol[gene])
-    Missing_Symbols_G4.append(Entrez2Symbol[gene])
-# Original filtering
-#ASD_GeneLofZ = gnomad4_lofz_rank[gnomad4_lofz_rank["Entrez"].isin(ASD_GW.keys())]
-#SCZ_GeneLofZ = gnomad4_lofz_rank[gnomad4_lofz_rank["Entrez"].isin(SCZ_GW.keys())]
-
-# %%
-gnomad4 = pd.read_csv("/home/jw3514/Work/data/gnomad/gnomad.v4.0.constraint_metrics.tsv", sep="\t")
-search_text = 'ENST'
-gnomad4 = gnomad4[(gnomad4["transcript"].str.contains(search_text))]
-gnomad4 = gnomad4[gnomad4["mane_select"]==True]
-for i, row in gnomad4.iterrows():
-    symbol = row["gene"]
-    gnomad4.loc[i, "Entrez"] = int(GeneSymbol2Entrez.get(symbol, 0))
-gnomad4 = gnomad4[gnomad4["Entrez"]!=0]
+gnomad4 = gnomad4[(gnomad4["transcript"].str.contains('ENST')) & (gnomad4["mane_select"] == True)]
+gnomad4["Entrez"] = gnomad4["gene"].map(GeneSymbol2Entrez).fillna(0).astype(int)
+gnomad4 = gnomad4[gnomad4["Entrez"] != 0]
+gnomad4 = gnomad4[["Entrez", "gene", "lof.pLI", "lof.z_score", "lof.oe_ci.upper"]].copy()
 
 gnomad2 = pd.read_csv("/home/jw3514/Work/data/gnomad/gnomad.v2.1.1.lof_metrics.by_gene.txt", sep="\t")
-for i, row in gnomad2.iterrows():
-    symbol = row["gene"]
-    gnomad2.loc[i, "Entrez"] = int(GeneSymbol2Entrez.get(symbol, 0))
+gnomad2["Entrez"] = gnomad2["gene"].map(GeneSymbol2Entrez).fillna(0).astype(int)
+gnomad2 = gnomad2[["Entrez", "gene", "pLI", "lof_z", "oe_lof_upper"]].copy()
+gnomad2.columns = ["Entrez", "gene", "lof.pLI", "lof.z_score", "lof.oe_ci.upper"]
+
+# Merge: gnomad4 primary, fill missing from gnomad2
+gnomad = gnomad4.copy()
+missing_in_v4 = set(gnomad2["Entrez"]) - set(gnomad4["Entrez"])
+gnomad = pd.concat([gnomad, gnomad2[gnomad2["Entrez"].isin(missing_in_v4)]], ignore_index=True)
+gnomad = gnomad.drop_duplicates(subset="Entrez", keep="first")
+gnomad = gnomad.sort_values("lof.z_score", ascending=False)
+
+# Check coverage
+ASD_missing = set(ASD_GW.keys()) - set(gnomad["Entrez"])
+SCZ_missing = set(SCZ_GW.keys()) - set(gnomad["Entrez"])
+print(f"ASD genes missing from gnomAD: {len(ASD_missing)}")
+print(f"SCZ genes missing from gnomAD: {len(SCZ_missing)}")
 
 # %%
-# Create merged LOEUF DataFrame: prioritize gnomad v4, fallback to v2
-# First, prepare gnomad4 data - keep only MANE select transcripts and add Entrez IDs
-gnomad4_loeuf = gnomad4[gnomad4["mane_select"]==True].copy()
-gnomad4_loeuf["Entrez"] = gnomad4_loeuf["gene"].map(GeneSymbol2Entrez)
-gnomad4_loeuf = gnomad4_loeuf[gnomad4_loeuf["Entrez"] != 0].copy()
-
-# Create DataFrame with Entrez and LOEUF from gnomad4
-# For genes with multiple transcripts, take the first one (or could use mean/min)
-gnomad4_loeuf_df = gnomad4_loeuf[["Entrez", "gene", "lof.oe_ci.upper"]].copy()
-gnomad4_loeuf_df = gnomad4_loeuf_df.groupby("Entrez").first().reset_index()  # Take first transcript per gene
-gnomad4_loeuf_df = gnomad4_loeuf_df.rename(columns={"lof.oe_ci.upper": "LOEUF"})
-
-# Prepare gnomad2 data
-gnomad2_loeuf = gnomad2.copy()
-gnomad2_loeuf["Entrez"] = gnomad2_loeuf["gene"].map(GeneSymbol2Entrez)
-gnomad2_loeuf = gnomad2_loeuf[gnomad2_loeuf["Entrez"] != 0].copy()
-
-# Create DataFrame with Entrez and LOEUF from gnomad2
-gnomad2_loeuf_df = gnomad2_loeuf[["Entrez", "gene", "oe_lof_upper"]].copy()
-gnomad2_loeuf_df = gnomad2_loeuf_df.groupby("Entrez").first().reset_index()  # Take first entry per gene
-gnomad2_loeuf_df = gnomad2_loeuf_df.rename(columns={"oe_lof_upper": "LOEUF"})
-
-# Merge: start with gnomad4, fill missing with gnomad2
-merged_loeuf_df = gnomad4_loeuf_df[["Entrez", "gene", "LOEUF"]].copy()
-
-# Find genes in gnomad2 but not in gnomad4
-missing_entrez = set(gnomad2_loeuf_df["Entrez"]) - set(merged_loeuf_df["Entrez"])
-if len(missing_entrez) > 0:
-    missing_df = gnomad2_loeuf_df[gnomad2_loeuf_df["Entrez"].isin(missing_entrez)][["Entrez", "gene", "LOEUF"]].copy()
-    merged_loeuf_df = pd.concat([merged_loeuf_df, missing_df], ignore_index=True)
-
-# Also fill in any NaN LOEUF values from gnomad4 with gnomad2 values
-missing_loeuf_mask = merged_loeuf_df["LOEUF"].isna()
-if missing_loeuf_mask.sum() > 0:
-    missing_entrez_fill = merged_loeuf_df[missing_loeuf_mask]["Entrez"]
-    fill_values = gnomad2_loeuf_df[gnomad2_loeuf_df["Entrez"].isin(missing_entrez_fill)].set_index("Entrez")["LOEUF"]
-    merged_loeuf_df.loc[missing_loeuf_mask, "LOEUF"] = merged_loeuf_df.loc[missing_loeuf_mask, "Entrez"].map(fill_values)
-
-# Set Entrez as index for easier lookup
-merged_loeuf_df = merged_loeuf_df.set_index("Entrez")
-
-print(f"Total genes in merged LOEUF DataFrame: {len(merged_loeuf_df)}")
-print(f"Genes with LOEUF from gnomad v4: {len(gnomad4_loeuf_df)}")
-print(f"Genes with LOEUF from gnomad v2 only: {len(missing_entrez)}")
-print(f"Genes with missing LOEUF: {merged_loeuf_df['LOEUF'].isna().sum()}")
-print("\nFirst few rows:")
-print(merged_loeuf_df.head(10))
-
-
-# %%
-merged_loeuf_df.to_csv("../dat/gnomad.LOEUF.merged.csv")
-
-# %%
-gnomad4["lof.oe_ci.upper"].hist()
-
-# %%
-gnomad2["oe_lof_upper"].hist()
-
-# %%
-# Find genes in ASD_GW or SCZ_GW but not in gnomad4_lofz_rank
-ASD_missing = set(ASD_GW.keys()) - set(gnomad2["Entrez"])
-SCZ_missing = set(SCZ_GW.keys()) - set(gnomad2["Entrez"])
-
-print("ASD genes not in gnomad4_lofz_rank:", len(ASD_missing))
-print("SCZ genes not in gnomad4_lofz_rank:", len(SCZ_missing))
-
-Missing_Symbols_G2 = []
-print("\nMissing ASD genes:")
-for gene in ASD_missing:
-    print(gene, Entrez2Symbol[gene])
-    Missing_Symbols_G2.append(Entrez2Symbol[gene])
-
-print("\nMissing SCZ genes:")
-for gene in SCZ_missing:
-    print(gene, Entrez2Symbol[gene])
-    Missing_Symbols_G2.append(Entrez2Symbol[gene])
-# Original filtering
-#ASD_GeneLofZ = gnomad4_lofz_rank[gnomad4_lofz_rank["Entrez"].isin(ASD_GW.keys())]
-#SCZ_GeneLofZ = gnomad4_lofz_rank[gnomad4_lofz_rank["Entrez"].isin(SCZ_GW.keys())]
-
-
-# %%
-columns_to_keep_g2 = ["Entrez", "gene", "pLI", "lof_z", "oe_lof_upper"]
-columns_to_keep_g4 = ["Entrez", "gene", "lof.pLI", "lof.z_score", "lof.oe_ci.upper"]
-gnomad2 = gnomad2[columns_to_keep_g2]
-gnomad4 = gnomad4[columns_to_keep_g4]
-gnomad2.columns = columns_to_keep_g4
-
-
-# %%
-ASD_missing = set(ASD_GW.keys()) - set(gnomad4["Entrez"])
-SCZ_missing = set(SCZ_GW.keys()) - set(gnomad4["Entrez"])
-
-print("ASD genes not in gnomad4_lofz_rank:", len(ASD_missing))
-print("SCZ genes not in gnomad4_lofz_rank:", len(SCZ_missing))
-
-Missing_Symbols_G4 = []
-print("\nMissing ASD genes:")
-for gene in ASD_missing:
-    print(gene, Entrez2Symbol[gene])
-    Missing_Symbols_G4.append(Entrez2Symbol[gene])
-
-print("\nMissing SCZ genes:")
-for gene in SCZ_missing:
-    print(gene, Entrez2Symbol[gene])
-    Missing_Symbols_G4.append(Entrez2Symbol[gene])
-
-# %%
-rows_to_add = []
-for gene in Missing_Symbols_G4:
-    if gene in gnomad2["gene"].values:
-        row = gnomad2[gnomad2["gene"] == gene]
-        rows_to_add.append(row)
-if rows_to_add:
-    gnomad4 = pd.concat([gnomad4] + rows_to_add, ignore_index=True)
-
-# %%
-ASD_missing = set(ASD_GW.keys()) - set(gnomad4["Entrez"])
-SCZ_missing = set(SCZ_GW.keys()) - set(gnomad4["Entrez"])
-
-print("ASD genes not in gnomad4_lofz_rank:", len(ASD_missing))
-print("SCZ genes not in gnomad4_lofz_rank:", len(SCZ_missing))
-
-print("\nMissing ASD genes:")
-for gene in ASD_missing:
-    print(gene)
-
-print("\nMissing SCZ genes:")
-for gene in SCZ_missing:
-    print(gene)
-
-# %%
-gnomad4_lofz_rank = gnomad4.sort_values("lof.z_score", ascending=False)
-gnomad4_lofz_rank["Entrez"] = gnomad4_lofz_rank["Entrez"].astype('int')
-
-# %%
+# Load BrainSpan expression
 BrainSpan = pd.read_csv("/home/jw3514/Work/CellType_Psy/dat2/ExpMatch/BrainSpan.MatchDF.csv", index_col=0)
-HumanSC = pd.read_csv("/home/jw3514/Work/CellType_Psy/dat2/ExpMatch/HumanCT.MatchDF.csv", index_col=0)
 
-# %%
-ASD_GeneLofZ = gnomad4_lofz_rank[gnomad4_lofz_rank["Entrez"].isin(ASD_GW.keys())]
-SCZ_GeneLofZ = gnomad4_lofz_rank[gnomad4_lofz_rank["Entrez"].isin(SCZ_GW.keys())]
+# Build annotated gene DataFrames
+def annotate_gene_df(gw_dict, gnomad_df, brainspan_df):
+    """Create annotated DataFrame for a gene weight set."""
+    df = gnomad_df[gnomad_df["Entrez"].isin(gw_dict.keys())].copy()
+    df["GW"] = df["Entrez"].map(gw_dict)
+    df["BrainSpan"] = df["Entrez"].map(
+        lambda x: brainspan_df.loc[x, "WB"] if x in brainspan_df.index else np.nan
+    )
+    return df
 
-# %%
-# Annotate GW n Partition according to pLI
-
-# For ASD_GeneLofZ
-ASD_GeneLofZ = ASD_GeneLofZ.copy()
-ASD_GeneLofZ["GW"] = ASD_GeneLofZ["Entrez"].map(ASD_GW)
-ASD_GeneLofZ["BrainSpan"] = ASD_GeneLofZ["Entrez"].map(lambda x: BrainSpan.loc[x, "WB"] if x in BrainSpan.index else -1)
-ASD_GeneLofZ["HumanCTExp"] = ASD_GeneLofZ["Entrez"].map(lambda x: HumanSC.loc[x, "Exp"] if x in HumanSC.index else 0)
-
-# For SCZ_GeneLofZ
-SCZ_GeneLofZ = SCZ_GeneLofZ.copy()
-SCZ_GeneLofZ["GW"] = SCZ_GeneLofZ["Entrez"].map(SCZ_GW)
-SCZ_GeneLofZ["BrainSpan"] = SCZ_GeneLofZ["Entrez"].map(lambda x: BrainSpan.loc[x, "WB"] if x in BrainSpan.index else -1)
-SCZ_GeneLofZ["HumanCTExp"] = SCZ_GeneLofZ["Entrez"].map(lambda x: HumanSC.loc[x, "Exp"] if x in HumanSC.index else 0)
-
-# %%
-ASD_GeneLofZ.head(2)
-
-# %%
-SCZ_GeneLofZ.head(2)
-
-# %%
-ASD_GeneHumanExp = ASD_GeneLofZ.sort_values("HumanCTExp", ascending=False)
-SCZ_GeneHumanExp = SCZ_GeneLofZ.sort_values("HumanCTExp", ascending=False)
-
-# %%
-ASD_GeneHumanExp.head(2)
-
-# %%
-ASD_Gene_LOUEF = ASD_GeneLofZ.sort_values("lof.oe_ci.upper", ascending=False)
-SCZ_Gene_LOUEF = SCZ_GeneLofZ.sort_values("lof.oe_ci.upper", ascending=False)
-
-# %%
-ASD_GeneLofZ.to_csv("../dat/Other/ASD_GeneLofZ.LGD_Dmis_SameWeight.csv", index=False)
-SCZ_GeneLofZ.to_csv("../dat/Other/SCZ_GeneLofZ.LGD_Dmis_SameWeight.csv", index=False)
+ASD_Genes = annotate_gene_df(ASD_GW, gnomad, BrainSpan)
+SCZ_Genes = annotate_gene_df(SCZ_GW, gnomad, BrainSpan)
+print(f"ASD annotated genes: {len(ASD_Genes)}, SCZ annotated genes: {len(SCZ_Genes)}")
 
 # %% [markdown]
-# ## Gradually remove Genes ranked by pLI/LOFZ/LUOF score vs random genes, how correlation change?
+# ## 3. Fast Vectorized Bias Correlation
+#
+# Pre-compute numpy arrays for the expression matrix and neuronal cell type mask.
+# This avoids repeated DataFrame operations (AnnotateCTDat, GetSingeCellBiasCorr)
+# in the inner loop, giving ~100x speedup.
 
 # %%
-# Calculate correlation as genes are removed, sorted by LofZ (descending)
-X_LofZ, Y_LofZ = [], []
-for i in range(0, 31):
-    tmp_ASD_GW = dict(zip(ASD_GeneLofZ["Entrez"].values[i:], ASD_GeneLofZ["GW"].values[i:]))
-    tmp_SCZ_GW = dict(zip(SCZ_GeneLofZ["Entrez"].values[i:], SCZ_GeneLofZ["GW"].values[i:]))
-    
-    tmp_ASD_Bias = HumanCT_AvgZ_Weighted(HCT_Z2_MAT_HCT, tmp_ASD_GW)
-    tmp_ASD_Bias = AnnotateCTDat(tmp_ASD_Bias, Anno)
+# Pre-compute numpy structures for fast bias correlation
+expr_np = HCT_Z2_MAT.values  # (n_genes, n_cell_types)
+expr_gene_list = list(HCT_Z2_MAT.index)
+expr_gene_set = set(expr_gene_list)
+expr_gene_to_row = {g: i for i, g in enumerate(expr_gene_list)}
 
-    tmp_SCZ_Bias = HumanCT_AvgZ_Weighted(HCT_Z2_MAT_HCT, tmp_SCZ_GW)
-    tmp_SCZ_Bias = AnnotateCTDat(tmp_SCZ_Bias, Anno)
-    
-    r, p = GetSingeCellBiasCorr(tmp_ASD_Bias, tmp_SCZ_Bias, efflabel="EFFECT", CTs=Neur_idx)
-    
-    X_LofZ.append(i)
-    Y_LofZ.append(r)
+ct_cols = HCT_Z2_MAT.columns.values
+neur_col_mask = np.array([int(c) in Neur_idx for c in ct_cols])
+print(f"Neuronal cell types: {neur_col_mask.sum()} / {len(ct_cols)}")
 
-# Calculate correlation as genes are removed, sorted by LofZ (ascending)
-Y_LofZ_rev = []
-for i in range(0, 31):
-    tmp_ASD_GW = dict(zip(ASD_GeneLofZ["Entrez"].values[::-1][i:], ASD_GeneLofZ["GW"].values[::-1][i:]))
-    tmp_SCZ_GW = dict(zip(SCZ_GeneLofZ["Entrez"].values[::-1][i:], SCZ_GeneLofZ["GW"].values[::-1][i:]))
-    
-    tmp_ASD_Bias = HumanCT_AvgZ_Weighted(HCT_Z2_MAT_HCT, tmp_ASD_GW)
-    tmp_ASD_Bias = AnnotateCTDat(tmp_ASD_Bias, Anno)
 
-    tmp_SCZ_Bias = HumanCT_AvgZ_Weighted(HCT_Z2_MAT_HCT, tmp_SCZ_GW)
-    tmp_SCZ_Bias = AnnotateCTDat(tmp_SCZ_Bias, Anno)
-    
-    r, p = GetSingeCellBiasCorr(tmp_ASD_Bias, tmp_SCZ_Bias, efflabel="EFFECT", CTs=Neur_idx)
+def fast_bias_corr(asd_entrez, asd_weights, scz_entrez, scz_weights,
+                   expr_np, expr_gene_to_row, neur_col_mask):
+    """Compute ASD-SCZ neuronal bias Spearman correlation using vectorized numpy."""
+    # ASD bias vector
+    asd_rows = np.array([expr_gene_to_row[g] for g in asd_entrez])
+    asd_bias = np.average(expr_np[asd_rows], axis=0, weights=asd_weights)
 
-    Y_LofZ_rev.append(r)
+    # SCZ bias vector
+    scz_rows = np.array([expr_gene_to_row[g] for g in scz_entrez])
+    scz_bias = np.average(expr_np[scz_rows], axis=0, weights=scz_weights)
+
+    # Spearman on neuronal cell types only
+    r, _ = stats.spearmanr(asd_bias[neur_col_mask], scz_bias[neur_col_mask])
+    return r
+
+
+def prepare_gene_arrays(genes_df):
+    """Convert gene DataFrame to numpy arrays (entrez IDs, weights), filtered to expression matrix."""
+    mask = genes_df["Entrez"].isin(expr_gene_set)
+    entrez = genes_df.loc[mask, "Entrez"].values
+    weights = genes_df.loc[mask, "GW"].values
+    return entrez, weights
+
+
+def compute_removal_curve(asd_sorted_df, scz_sorted_df, n_steps=31):
+    """Compute ASD-SCZ correlation as genes are progressively removed from the top."""
+    asd_entrez, asd_weights = prepare_gene_arrays(asd_sorted_df)
+    scz_entrez, scz_weights = prepare_gene_arrays(scz_sorted_df)
+
+    correlations = []
+    for i in range(n_steps):
+        r = fast_bias_corr(
+            asd_entrez[i:], asd_weights[i:],
+            scz_entrez[i:], scz_weights[i:],
+            expr_np, expr_gene_to_row, neur_col_mask
+        )
+        correlations.append(r)
+    return correlations
 
 # %% [markdown]
-# #### Load controls
+# ## 4. Random Removal Null Distribution
+#
+# For each of 1000 permutations, randomly shuffle gene order for both ASD and SCZ,
+# progressively remove 0-30 genes, and recompute the bias correlation.
 
 # %%
-#with open('../dat/Other/ASD_SCZ_HumanCT_BiasCorrRandomGeneRemove.npy', 'rb') as f:
-with open('../dat/Other/ASD_SCZ_MouseSTR_BiasCorrRandomGeneRemove.LGD_Dmis_SameWeight.npy', 'rb') as f:
-    RandYY = np.load(f) # Randome removal of genes 
-rand_mean = RandYY.mean(axis=0)
-rand_std = RandYY.std(axis=0)
+N_REMOVAL_STEPS = 31
+N_PERMS = 1000
+N_PROCESSES = 10
+SMOOTH = False  # Set True to apply moving average smoothing to removal curves
+
+CACHE_FILE = Path("../dat/Other/ASD_SCZ_RandomGeneRemoval_Null.npy")
+
+
+def _run_random_removal_batch(args):
+    """Run random gene removal for a batch of permutation indices (worker function)."""
+    batch_indices, asd_entrez, asd_weights, scz_entrez, scz_weights, \
+        expr_np_local, gene_to_row, neur_mask, n_steps = args
+
+    n_asd = len(asd_entrez)
+    n_scz = len(scz_entrez)
+    results = np.empty((len(batch_indices), n_steps))
+
+    for bi, idx in enumerate(batch_indices):
+        rng = np.random.RandomState(idx)
+        asd_perm = rng.permutation(n_asd)
+        scz_perm = rng.permutation(n_scz)
+
+        asd_e_shuf = asd_entrez[asd_perm]
+        asd_w_shuf = asd_weights[asd_perm]
+        scz_e_shuf = scz_entrez[scz_perm]
+        scz_w_shuf = scz_weights[scz_perm]
+
+        for i in range(n_steps):
+            asd_rows = np.array([gene_to_row[g] for g in asd_e_shuf[i:]])
+            asd_bias = np.average(expr_np_local[asd_rows], axis=0, weights=asd_w_shuf[i:])
+            scz_rows = np.array([gene_to_row[g] for g in scz_e_shuf[i:]])
+            scz_bias = np.average(expr_np_local[scz_rows], axis=0, weights=scz_w_shuf[i:])
+            r, _ = stats.spearmanr(asd_bias[neur_mask], scz_bias[neur_mask])
+            results[bi, i] = r
+
+    return results
+
+
+if CACHE_FILE.exists():
+    print(f"Loading cached null from {CACHE_FILE}")
+    RandNull = np.load(CACHE_FILE)
+    print(f"Null shape: {RandNull.shape} ({RandNull.shape[0]} perms x {RandNull.shape[1]} removal steps)")
+else:
+    print(f"Computing random removal null ({N_PERMS} perms x {N_REMOVAL_STEPS} steps, {N_PROCESSES} processes)...")
+
+    # Prepare numpy arrays once
+    asd_entrez_np, asd_weights_np = prepare_gene_arrays(ASD_Genes)
+    scz_entrez_np, scz_weights_np = prepare_gene_arrays(SCZ_Genes)
+
+    batch_size = N_PERMS // N_PROCESSES
+    batches = [np.arange(i, min(i + batch_size, N_PERMS)) for i in range(0, N_PERMS, batch_size)]
+
+    # Package args for each worker
+    worker_args = [
+        (batch, asd_entrez_np, asd_weights_np, scz_entrez_np, scz_weights_np,
+         expr_np, expr_gene_to_row, neur_col_mask, N_REMOVAL_STEPS)
+        for batch in batches
+    ]
+
+    with Pool(processes=N_PROCESSES) as pool:
+        results = pool.map(_run_random_removal_batch, worker_args)
+
+    RandNull = np.vstack(results)
+
+    CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    np.save(CACHE_FILE, RandNull)
+    print(f"Saved null to {CACHE_FILE}, shape: {RandNull.shape}")
+
+rand_mean = RandNull.mean(axis=0)
+rand_std = RandNull.std(axis=0)
 
 # %% [markdown]
-# #### Plot
+# ## 5. Gene Removal by LOEUF (Constraint) — Main Result
+#
+# LOEUF (Loss-of-function Observed/Expected Upper bound Fraction) measures gene constraint.
+# Lower LOEUF = more constrained = less tolerant of LoF mutations.
 
 # %%
-fig, ax = plt.subplots(dpi=150, figsize=(9.5, 6), facecolor='none')
-fig.patch.set_alpha(0.0)
-ax.patch.set_alpha(0.0)
-plt.style.use('seaborn-v0_8-whitegrid')
+# Sort genes by LOEUF
+ASD_by_LOEUF = ASD_Genes.sort_values("lof.oe_ci.upper", ascending=True)  # most constrained first
+SCZ_by_LOEUF = SCZ_Genes.sort_values("lof.oe_ci.upper", ascending=True)
 
-# Plotting the main lines with custom markers and edge colors
-ax.plot(X_LofZ, Y_LofZ_rev, label="Remove genes ordered by lowest lofZ", color="red", linestyle='-', marker='o', markersize=8, markeredgecolor='black', markeredgewidth=1, zorder=10)
-ax.plot(X_LofZ, Y_LofZ, label="Remove genes ordered by highest lofZ", color="blue", linestyle='--', marker='s', markersize=8, markeredgecolor='black', markeredgewidth=1, zorder=10)
+# Remove most constrained first (ascending LOEUF = most constrained at top)
+Y_LOEUF_constrained_first = compute_removal_curve(ASD_by_LOEUF, SCZ_by_LOEUF)
 
-# Plotting the error bars for the random removal with custom error bar style
-ax.errorbar(X_LofZ, rand_mean, yerr=rand_std, fmt='-', color="grey", ecolor='grey', elinewidth=2, capsize=4, capthick=2, label="Random removal", zorder=5)
+# Remove least constrained first (reverse order)
+ASD_by_LOEUF_rev = ASD_Genes.sort_values("lof.oe_ci.upper", ascending=False)
+SCZ_by_LOEUF_rev = SCZ_Genes.sort_values("lof.oe_ci.upper", ascending=False)
+Y_LOEUF_unconstrained_first = compute_removal_curve(ASD_by_LOEUF_rev, SCZ_by_LOEUF_rev)
 
-# Adding labels, title, and legend with improved font properties
-ax.set_xlabel("No. Genes Removed", fontsize=25, fontweight='normal')
-ax.set_ylabel("Mutation Bias Correlation", fontsize=25, fontweight='normal')
-#plt.title("Correlation vs No. Genes Removed", fontsize=16, fontweight='bold')
-ax.legend(fontsize=18, loc='best', frameon=False)
-
-# Adding grid lines with subtle customization
-
-
-# Adjusting tick parameters for better readability
-ax.tick_params(axis='x', labelsize=15)
-ax.tick_params(axis='y', labelsize=15)
-
-# Optimizing layout for better spacing and alignment
-
-
-ax.spines['top'].set_visible(False)
-ax.spines['right'].set_visible(False)
-ax.spines['left'].set_linewidth(1.0)
-ax.spines['left'].set_color('black')
-ax.spines['bottom'].set_linewidth(1.0)
-ax.spines['bottom'].set_color('black')
-
-plt.grid(True, linestyle='--', alpha=0.4)
-plt.tight_layout()
-# Showing the plot
-plt.show()
-
+X = list(range(N_REMOVAL_STEPS))
 
 # %%
-def moving_average(data, window_size=3):
-    """
-    Smooths a 1D array using a simple moving average.
-
-    Parameters:
-    -----------
-    data : array-like
-        Input 1D array to smooth.
-    window_size : int
-        Number of points to include in the moving window (must be odd for symmetry).
-
-    Returns:
-    --------
-    smoothed : np.ndarray
-        Smoothed array of the same length as input (with edge padding).
-    """
-    if window_size < 1 or window_size % 2 == 0:
-        raise ValueError("window_size must be a positive odd integer.")
-    
-    # Create kernel and apply convolution
+# Smoothing helper
+def moving_average(data, window_size=5):
+    """Smooth 1D array with moving average (odd window)."""
     kernel = np.ones(window_size) / window_size
-    padded = np.pad(data, (window_size//2,), mode='edge')
-    smoothed = np.convolve(padded, kernel, mode='valid')
-    return smoothed
+    padded = np.pad(data, (window_size // 2,), mode='edge')
+    return np.convolve(padded, kernel, mode='valid')
 
 
 # %%
 fig, ax = plt.subplots(dpi=150, figsize=(9.5, 6), facecolor='none')
 fig.patch.set_alpha(0.0)
 ax.patch.set_alpha(0.0)
-plt.style.use('seaborn-v0_8-whitegrid')
 
-# Plotting the main lines with custom markers and edge colors
-window_size = 5
-Y_LofZ_smooth = moving_average(Y_LofZ, window_size=window_size)
-Y_LofZ_rev_smooth = moving_average(Y_LofZ_rev, window_size=window_size)
-#ax.plot(X, Y_rev_smooth, label="Remove genes ordered by lowest lofZ", color="red", linestyle='-', marker='o', markersize=8, markeredgecolor='black', markeredgewidth=1, zorder=10)
-#ax.plot(X, Y_smooth, label="Remove genes ordered by highest lofZ", color="blue", linestyle='--', marker='s', markersize=8, markeredgecolor='black', markeredgewidth=1, zorder=10)
-ax.plot(X_LofZ, Y_LofZ_rev_smooth, label="Remove genes ordered by most constrained", color="red", linestyle='-', marker='o', markersize=8, markeredgecolor='black', markeredgewidth=1, zorder=10)
-ax.plot(X_LofZ, Y_LofZ_smooth, label="Remove genes ordered by least constrained", color="blue", linestyle='--', marker='s', markersize=8, markeredgecolor='black', markeredgewidth=1, zorder=10)
+Y_constrained_plot = moving_average(Y_LOEUF_constrained_first, window_size=5) if SMOOTH else Y_LOEUF_constrained_first
+Y_unconstrained_plot = moving_average(Y_LOEUF_unconstrained_first, window_size=5) if SMOOTH else Y_LOEUF_unconstrained_first
 
-# Plotting the error bars for the random removal with custom error bar style
-ax.errorbar(X_LofZ, rand_mean, yerr=rand_std, fmt='-', color="grey", ecolor='grey', elinewidth=2, capsize=4, capthick=2, label="Random removal", zorder=5)
+ax.plot(X, Y_constrained_plot, label="Remove most constrained genes first",
+        color="red", linestyle='-', marker='o', markersize=8,
+        markeredgecolor='black', markeredgewidth=1, zorder=10)
+ax.plot(X, Y_unconstrained_plot, label="Remove least constrained genes first",
+        color="blue", linestyle='--', marker='s', markersize=8,
+        markeredgecolor='black', markeredgewidth=1, zorder=10)
+ax.errorbar(X, rand_mean, yerr=rand_std, fmt='-', color="grey", ecolor='grey',
+            elinewidth=2, capsize=4, capthick=2, label="Random removal", zorder=5)
 
-# Adding labels, title, and legend with improved font properties
-ax.set_xlabel("Number of Genes Removed", fontsize=25, fontweight='normal')
-ax.set_ylabel("Mutation Bias Correlation", fontsize=25, fontweight='normal')
-#plt.title("Correlation vs No. Genes Removed", fontsize=16, fontweight='bold')
+ax.set_xlabel("Number of Genes Removed", fontsize=25)
+ax.set_ylabel("Mutation Bias Correlation", fontsize=25)
 ax.legend(fontsize=18, loc='best', frameon=False)
-
-# Adding grid lines with subtle customization
-
-
-# Adjusting tick parameters for better readability
-ax.tick_params(axis='x', labelsize=15)
-ax.tick_params(axis='y', labelsize=15)
-
-# Optimizing layout for better spacing and alignment
-
-
+ax.tick_params(axis='both', labelsize=15)
 ax.spines['top'].set_visible(False)
 ax.spines['right'].set_visible(False)
 ax.spines['left'].set_linewidth(1.0)
 ax.spines['left'].set_color('black')
 ax.spines['bottom'].set_linewidth(1.0)
 ax.spines['bottom'].set_color('black')
-
 plt.grid(True, linestyle='--', alpha=0.4)
 plt.tight_layout()
-# Showing the plot
+plt.savefig("../results/figures/LOEUF_gene_removal_ASD_SCZ_correlation.png",
+            dpi=300, transparent=True, bbox_inches='tight')
 plt.show()
 
-
 # %%
-idx = 27
-print(GetPermutationP(RandYY[:, idx], Y_LofZ[idx], greater_than=False))
-print(GetPermutationP(RandYY[:, idx], Y_LofZ_rev[idx], greater_than=True))
-
-# %%
-idx = 24
-print(GetPermutationP(RandYY[:, idx], Y_LofZ[idx], greater_than=False))
-print(GetPermutationP(RandYY[:, idx], Y_LofZ_rev[idx], greater_than=True))
+# Permutation p-values at key removal points
+for idx in [15, 20, 25]:
+    z_c, p_c, _ = GetPermutationP(RandNull[:, idx], Y_LOEUF_constrained_first[idx], greater_than=False)
+    z_u, p_u, _ = GetPermutationP(RandNull[:, idx], Y_LOEUF_unconstrained_first[idx], greater_than=True)
+    print(f"After removing {idx} genes:")
+    print(f"  Constrained first: r={Y_LOEUF_constrained_first[idx]:.3f}, z={z_c:.2f}, p={p_c:.4f}")
+    print(f"  Unconstrained first: r={Y_LOEUF_unconstrained_first[idx]:.3f}, z={z_u:.2f}, p={p_u:.4f}")
 
 # %% [markdown]
-# #### Gradually remove Genes ranked by Expression Level vs random genes, how correlation change?
+# ## 6. Gene Removal by BrainSpan Expression — Supporting Result
 
 # %%
-X, Y = [],[]
-for i in range(0, 31, 1):
-#for i in range(1, 3, 1):
-    #print(i)
-    tmp_ASD_GW = dict(zip(ASD_GeneHumanExp["Entrez"].values[i:], ASD_GeneHumanExp["GW"].values[i:]))
-    tmp_SCZ_GW = dict(zip(SCZ_GeneHumanExp["Entrez"].values[i:], SCZ_GeneHumanExp["GW"].values[i:]))
-    
-    tmp_ASD_Bias = HumanCT_AvgZ_Weighted(HCT_Z2_MAT_HCT, tmp_ASD_GW)
-    tmp_ASD_Bias = AnnotateCTDat(tmp_ASD_Bias, Anno)
+ASD_by_BS = ASD_Genes.dropna(subset=["BrainSpan"]).sort_values("BrainSpan", ascending=False)  # highest first
+SCZ_by_BS = SCZ_Genes.dropna(subset=["BrainSpan"]).sort_values("BrainSpan", ascending=False)
 
-    tmp_SCZ_Bias = HumanCT_AvgZ_Weighted(HCT_Z2_MAT_HCT, tmp_SCZ_GW)
-    tmp_SCZ_Bias = AnnotateCTDat(tmp_SCZ_Bias, Anno)
-    
-    r,p = GetSingeCellBiasCorr(tmp_ASD_Bias, tmp_SCZ_Bias, efflabel="EFFECT", CTs = Neur_idx)
-    
-    #print(i, r)
-    X.append(i)
-    Y.append(r)
+# Remove highest expressed first
+Y_BS_high_first = compute_removal_curve(ASD_by_BS, SCZ_by_BS)
 
-# %%
-Y_rev = []
-for i in range(0, 31, 1):
-#for i in range(1, 3, 1):
-    #print(i)
-    tmp_ASD_GW = dict(zip(ASD_GeneHumanExp["Entrez"].values[::-1][i:], ASD_GeneHumanExp["GW"].values[::-1][i:]))
-    tmp_SCZ_GW = dict(zip(SCZ_GeneHumanExp["Entrez"].values[::-1][i:], SCZ_GeneHumanExp["GW"].values[::-1][i:]))
-    
-    tmp_ASD_Bias = HumanCT_AvgZ_Weighted(HCT_Z2_MAT_HCT, tmp_ASD_GW)
-    tmp_ASD_Bias = AnnotateCTDat(tmp_ASD_Bias, Anno)
-
-    tmp_SCZ_Bias = HumanCT_AvgZ_Weighted(HCT_Z2_MAT_HCT, tmp_SCZ_GW)
-    tmp_SCZ_Bias = AnnotateCTDat(tmp_SCZ_Bias, Anno)
-    
-    r,p = GetSingeCellBiasCorr(tmp_ASD_Bias, tmp_SCZ_Bias, efflabel="EFFECT", CTs = Neur_idx)
-
-    Y_rev.append(r)
-
-# %%
-import matplotlib.pyplot as plt
-
-plt.figure(dpi=150, figsize=(10, 6))
-
-# Plotting the main lines with custom markers and edge colors
-plt.plot(X, Y_rev, label="Remove from gene with lowest Expression Level", color="red", linestyle='-', marker='o', markersize=8, markeredgecolor='black', markeredgewidth=1, zorder=10)
-plt.plot(X, Y, label="Remove from gene with highest Expression Level", color="blue", linestyle='--', marker='s', markersize=8, markeredgecolor='black', markeredgewidth=1, zorder=10)
-
-# Plotting the error bars for the random removal with custom error bar style
-plt.errorbar(X, rand_mean, yerr=rand_std, fmt='-', color="grey", ecolor='grey', elinewidth=2, capsize=4, capthick=2, label="Random removal", zorder=5)
-
-# Adding labels, title, and legend with improved font properties
-plt.xlabel("No. Genes Removed", fontsize=25, fontweight='normal')
-plt.ylabel("Cell TypeBias Correlation", fontsize=25, fontweight='normal')
-#plt.title("Correlation vs No. Genes Removed", fontsize=16, fontweight='bold')
-plt.legend(fontsize=15, loc='best', frameon=False)
-
-# Adding grid lines with subtle customization
-plt.grid(True, linestyle='--', alpha=0.4)
-
-# Adjusting tick parameters for better readability
-plt.xticks(fontsize=15, fontweight='normal')
-plt.yticks(fontsize=15, fontweight='normal')
-
-# Optimizing layout for better spacing and alignment
-#plt.ylim(-0.05, 0.75)
-plt.tight_layout()
-
-# Showing the plot
-plt.show()
-
-
-# %%
-idx = 30
-print(GetPermutationP(RandYY[:, idx], Y[idx], greater_than=False))
-print(GetPermutationP(RandYY[:, idx], Y_rev[idx], greater_than=True))
-
-# %% [markdown]
-# ### BrainSpan
-
-# %%
-# Try Brain span
-ASD_GeneBSExp = ASD_GeneLofZ.sort_values("BrainSpan", ascending=False)
-SCZ_GeneBSExp = SCZ_GeneLofZ.sort_values("BrainSpan", ascending=False)
-
-# %%
-X_BrainSpan, Y_BrainSpan = [],[]
-for i in range(0, 31, 1):
-#for i in range(1, 3, 1):
-    #print(i)
-    tmp_ASD_GW = dict(zip(ASD_GeneBSExp["Entrez"].values[i:], ASD_GeneBSExp["GW"].values[i:]))
-    tmp_SCZ_GW = dict(zip(SCZ_GeneBSExp["Entrez"].values[i:], SCZ_GeneBSExp["GW"].values[i:]))
-    
-    tmp_ASD_Bias = HumanCT_AvgZ_Weighted(HCT_Z2_MAT_HCT, tmp_ASD_GW)
-    tmp_ASD_Bias = AnnotateCTDat(tmp_ASD_Bias, Anno)
-
-    tmp_SCZ_Bias = HumanCT_AvgZ_Weighted(HCT_Z2_MAT_HCT, tmp_SCZ_GW)
-    tmp_SCZ_Bias = AnnotateCTDat(tmp_SCZ_Bias, Anno)
-    
-    r,p = GetSingeCellBiasCorr(tmp_ASD_Bias, tmp_SCZ_Bias, CTs = Neur_idx)
-    
-    #print(i, r)
-    X_BrainSpan.append(i)
-    Y_BrainSpan.append(r)
-
-# %%
-Y_BrainSpan_rev = []
-for i in range(0, 31, 1):
-#for i in range(1, 3, 1):
-    #print(i)
-    tmp_ASD_GW = dict(zip(ASD_GeneBSExp["Entrez"].values[::-1][i:], ASD_GeneBSExp["GW"].values[::-1][i:]))
-    tmp_SCZ_GW = dict(zip(SCZ_GeneBSExp["Entrez"].values[::-1][i:], SCZ_GeneBSExp["GW"].values[::-1][i:]))
-    
-    tmp_ASD_Bias = HumanCT_AvgZ_Weighted(HCT_Z2_MAT_HCT, tmp_ASD_GW)
-    tmp_ASD_Bias = AnnotateCTDat(tmp_ASD_Bias, Anno)
-
-    tmp_SCZ_Bias = HumanCT_AvgZ_Weighted(HCT_Z2_MAT_HCT, tmp_SCZ_GW)
-    tmp_SCZ_Bias = AnnotateCTDat(tmp_SCZ_Bias, Anno)
-    
-    r,p = GetSingeCellBiasCorr(tmp_ASD_Bias, tmp_SCZ_Bias, CTs = Neur_idx)
-
-    Y_BrainSpan_rev.append(r)
-
-# %%
-import matplotlib.pyplot as plt
-
-plt.figure(dpi=150, figsize=(10, 6))
-
-window_size = 5
-Y_smooth = moving_average(Y_BrainSpan, window_size=window_size)
-Y_rev_smooth = moving_average(Y_BrainSpan_rev, window_size=window_size)
-# Plotting the main lines with custom markers and edge colors
-plt.plot(X_BrainSpan, Y_rev_smooth, label="Remove from gene with lowest Expression Level", color="red", linestyle='-', marker='o', markersize=8, markeredgecolor='black', markeredgewidth=1, zorder=10)
-plt.plot(X_BrainSpan, Y_smooth, label="Remove from gene with highest Expression Level", color="blue", linestyle='--', marker='s', markersize=8, markeredgecolor='black', markeredgewidth=1, zorder=10)
-
-# Plotting the error bars for the random removal with custom error bar style
-plt.errorbar(X_BrainSpan, rand_mean, yerr=rand_std, fmt='-', color="grey", ecolor='grey', elinewidth=2, capsize=4, capthick=2, label="Random removal", zorder=5)
-
-# Adding labels, title, and legend with improved font properties
-plt.xlabel("Number of Genes Removed", fontsize=25, fontweight='normal')
-plt.ylabel("Neuron Type Bias Correlation", fontsize=25, fontweight='normal')
-#plt.title("Correlation vs No. Genes Removed", fontsize=16, fontweight='bold')
-plt.legend(fontsize=15, loc='best', frameon=False)
-
-# Adding grid lines with subtle customization
-plt.grid(True, linestyle='--', alpha=0.4)
-
-# Adjusting tick parameters for better readability
-plt.xticks(fontsize=15, fontweight='bold')
-plt.yticks(fontsize=15, fontweight='bold')
-
-# Optimizing layout for better spacing and alignment
-plt.tight_layout()
-
-# Showing the plot
-plt.show()
-
-
-# %% [markdown]
-# ### Try LOEUF
-
-# %%
-X_LOEUF, Y_LOEUF = [],[]
-for i in range(0, 31, 1):
-#for i in range(1, 3, 1):
-    #print(i)
-    tmp_ASD_GW = dict(zip(ASD_Gene_LOUEF["Entrez"].values[i:], ASD_Gene_LOUEF["GW"].values[i:]))
-    tmp_SCZ_GW = dict(zip(SCZ_Gene_LOUEF["Entrez"].values[i:], SCZ_Gene_LOUEF["GW"].values[i:]))
-    
-    tmp_ASD_Bias = HumanCT_AvgZ_Weighted(HCT_Z2_MAT_HCT, tmp_ASD_GW)
-    tmp_ASD_Bias = AnnotateCTDat(tmp_ASD_Bias, Anno)
-
-    tmp_SCZ_Bias = HumanCT_AvgZ_Weighted(HCT_Z2_MAT_HCT, tmp_SCZ_GW)
-    tmp_SCZ_Bias = AnnotateCTDat(tmp_SCZ_Bias, Anno)
-    
-    r,p = GetSingeCellBiasCorr(tmp_ASD_Bias, tmp_SCZ_Bias, CTs=Neur_idx)
-    
-    #print(i, r)
-    X_LOEUF.append(i)
-    Y_LOEUF.append(r)
-
-Y_LOEUF_rev = [] # Lower LOEUF means more constrained
-for i in range(0, 31, 1):
-#for i in range(1, 3, 1):
-    #print(i)
-    tmp_ASD_GW = dict(zip(ASD_Gene_LOUEF["Entrez"].values[::-1][i:], ASD_Gene_LOUEF["GW"].values[::-1][i:]))
-    tmp_SCZ_GW = dict(zip(SCZ_Gene_LOUEF["Entrez"].values[::-1][i:], SCZ_Gene_LOUEF["GW"].values[::-1][i:]))
-    
-    tmp_ASD_Bias = HumanCT_AvgZ_Weighted(HCT_Z2_MAT_HCT, tmp_ASD_GW )
-    tmp_ASD_Bias = AnnotateCTDat(tmp_ASD_Bias, Anno)
-
-    tmp_SCZ_Bias = HumanCT_AvgZ_Weighted(HCT_Z2_MAT_HCT, tmp_SCZ_GW)
-    tmp_SCZ_Bias = AnnotateCTDat(tmp_SCZ_Bias, Anno)
-    
-    r,p = GetSingeCellBiasCorr(tmp_ASD_Bias, tmp_SCZ_Bias, CTs=Neur_idx)
-
-    Y_LOEUF_rev.append(r)
-
-# %%
-import matplotlib.pyplot as plt
-
-plt.figure(dpi=150, figsize=(9.5, 6))
-
-# Plotting the main lines with custom markers and edge colors
-plt.plot(X_LOEUF , Y_LOEUF_rev, label="Remove most constrained genes frist", color="red", linestyle='-', marker='o', markersize=8, markeredgecolor='black', markeredgewidth=1, zorder=10)
-plt.plot(X_LOEUF, Y_LOEUF, label="Remove least constrained genes first", color="blue", linestyle='--', marker='s', markersize=8, markeredgecolor='black', markeredgewidth=1, zorder=10)
-
-# Plotting the error bars for the random removal with custom error bar style
-plt.errorbar(X_LOEUF, rand_mean, yerr=rand_std, fmt='-', color="grey", ecolor='grey', elinewidth=2, capsize=4, capthick=2, label="Random removal", zorder=5)
-
-# Adding labels, title, and legend with improved font properties
-plt.xlabel("No. Genes Removed", fontsize=25, fontweight='normal')
-plt.ylabel("Mutation Bias Correlation", fontsize=25, fontweight='normal')
-#plt.title("Correlation vs No. Genes Removed", fontsize=16, fontweight='bold')
-plt.legend(fontsize=18, loc='best', frameon=False)
-
-# Adding grid lines with subtle customization
-plt.grid(True, linestyle='--', alpha=0.4)
-
-# Adjusting tick parameters for better readability
-plt.xticks(fontsize=15, fontweight='normal')
-plt.yticks(fontsize=15, fontweight='normal')
-
-# Optimizing layout for better spacing and alignment
-plt.tight_layout()
-
-# Showing the plot
-plt.show()
-
+# Remove lowest expressed first
+ASD_by_BS_rev = ASD_Genes.dropna(subset=["BrainSpan"]).sort_values("BrainSpan", ascending=True)
+SCZ_by_BS_rev = SCZ_Genes.dropna(subset=["BrainSpan"]).sort_values("BrainSpan", ascending=True)
+Y_BS_low_first = compute_removal_curve(ASD_by_BS_rev, SCZ_by_BS_rev)
 
 # %%
 fig, ax = plt.subplots(dpi=150, figsize=(9.5, 6), facecolor='none')
 fig.patch.set_alpha(0.0)
 ax.patch.set_alpha(0.0)
-plt.style.use('seaborn-v0_8-whitegrid')
 
-ax.plot(X_LOEUF , Y_LOEUF_rev, label="Remove most constrained genes frist", color="red", linestyle='-', marker='o', markersize=8, markeredgecolor='black', markeredgewidth=1, zorder=10)
-ax.plot(X_LOEUF, Y_LOEUF, label="Remove least constrained genes first", color="blue", linestyle='--', marker='s', markersize=8, markeredgecolor='black', markeredgewidth=1, zorder=10)
+Y_low_plot = moving_average(Y_BS_low_first, window_size=5) if SMOOTH else Y_BS_low_first
+Y_high_plot = moving_average(Y_BS_high_first, window_size=5) if SMOOTH else Y_BS_high_first
 
-# Plotting the error bars for the random removal with custom error bar style
-ax.errorbar(X_LOEUF, rand_mean, yerr=rand_std, fmt='-', color="grey", ecolor='grey', elinewidth=2, capsize=4, capthick=2, label="Random removal", zorder=5)
-# Adding labels, title, and legend with improved font properties
-ax.set_xlabel("Number of Genes Removed", fontsize=25, fontweight='normal')
-ax.set_ylabel("Mutation Bias Correlation", fontsize=25, fontweight='normal')
-#plt.title("Correlation vs No. Genes Removed", fontsize=16, fontweight='bold')
+ax.plot(X, Y_low_plot, label="Remove lowest expressed genes first",
+        color="red", linestyle='-', marker='o', markersize=8,
+        markeredgecolor='black', markeredgewidth=1, zorder=10)
+ax.plot(X, Y_high_plot, label="Remove highest expressed genes first",
+        color="blue", linestyle='--', marker='s', markersize=8,
+        markeredgecolor='black', markeredgewidth=1, zorder=10)
+ax.errorbar(X, rand_mean, yerr=rand_std, fmt='-', color="grey", ecolor='grey',
+            elinewidth=2, capsize=4, capthick=2, label="Random removal", zorder=5)
+
+ax.set_xlabel("Number of Genes Removed", fontsize=25)
+ax.set_ylabel("Mutation Bias Correlation", fontsize=25)
 ax.legend(fontsize=18, loc='best', frameon=False)
-
-# Adding grid lines with subtle customization
-
-
-# Adjusting tick parameters for better readability
-ax.tick_params(axis='x', labelsize=15)
-ax.tick_params(axis='y', labelsize=15)
-
-# Optimizing layout for better spacing and alignment
-
-
+ax.tick_params(axis='both', labelsize=15)
 ax.spines['top'].set_visible(False)
 ax.spines['right'].set_visible(False)
 ax.spines['left'].set_linewidth(1.0)
 ax.spines['left'].set_color('black')
 ax.spines['bottom'].set_linewidth(1.0)
 ax.spines['bottom'].set_color('black')
-
 plt.grid(True, linestyle='--', alpha=0.4)
 plt.tight_layout()
-# Showing the plot
+plt.savefig("../results/figures/BrainSpan_gene_removal_ASD_SCZ_correlation.png",
+            dpi=300, transparent=True, bbox_inches='tight')
 plt.show()
 
+# %%
+for idx in [15, 20, 25]:
+    z_low, p_low, _ = GetPermutationP(RandNull[:, idx], Y_BS_low_first[idx], greater_than=True)
+    z_high, p_high, _ = GetPermutationP(RandNull[:, idx], Y_BS_high_first[idx], greater_than=False)
+    print(f"After removing {idx} genes:")
+    print(f"  Lowest expressed first: r={Y_BS_low_first[idx]:.3f}, z={z_low:.2f}, p={p_low:.4f}")
+    print(f"  Highest expressed first: r={Y_BS_high_first[idx]:.3f}, z={z_high:.2f}, p={p_high:.4f}")
+
+# %% [markdown]
+# ## 7. Constrained vs Unconstrained Gene Subsets
 
 # %%
-idx = 25
-print(GetPermutationP(RandYY[:, idx], Y_LOEUF[idx], greater_than=True))
-print(GetPermutationP(RandYY[:, idx], Y_LOEUF_rev[idx], greater_than=False))
+LOEUF_THRESHOLD = 0.2
 
-# %%
-idx = 15
-print(GetPermutationP(RandYY[:, idx], Y_LOEUF[idx], greater_than=True))
-print(GetPermutationP(RandYY[:, idx], Y_LOEUF_rev[idx], greater_than=False))
+ASD_Constrained = ASD_Genes[ASD_Genes["lof.oe_ci.upper"] < LOEUF_THRESHOLD]
+ASD_Unconstrained = ASD_Genes[ASD_Genes["lof.oe_ci.upper"] >= LOEUF_THRESHOLD]
+SCZ_Constrained = SCZ_Genes[SCZ_Genes["lof.oe_ci.upper"] < LOEUF_THRESHOLD]
+SCZ_Unconstrained = SCZ_Genes[SCZ_Genes["lof.oe_ci.upper"] >= LOEUF_THRESHOLD]
 
-# %%
-# Double check if splition is correct
-ASD_Gene_Constrained = ASD_Gene_LOUEF[ASD_Gene_LOUEF["lof.oe_ci.upper"] < 0.2]
-ASD_Gene_Unconstrained = ASD_Gene_LOUEF[ASD_Gene_LOUEF["lof.oe_ci.upper"] >= 0.2]
+print(f"ASD: {len(ASD_Constrained)} constrained, {len(ASD_Unconstrained)} unconstrained (threshold={LOEUF_THRESHOLD})")
+print(f"SCZ: {len(SCZ_Constrained)} constrained, {len(SCZ_Unconstrained)} unconstrained")
 
-SCZ_Gene_Constrained = SCZ_Gene_LOUEF[SCZ_Gene_LOUEF["lof.oe_ci.upper"] < 0.5]
-SCZ_Gene_Unconstrained = SCZ_Gene_LOUEF[SCZ_Gene_LOUEF["lof.oe_ci.upper"] >= 0.5]
+# Constrained genes only
+gw_asd_c = dict(zip(ASD_Constrained["Entrez"], ASD_Constrained["GW"]))
+gw_scz_c = dict(zip(SCZ_Constrained["Entrez"], SCZ_Constrained["GW"]))
+bias_asd_c = AnnotateCTDat(HumanCT_AvgZ_Weighted(HCT_Z2_MAT, gw_asd_c), Anno)
+bias_scz_c = AnnotateCTDat(HumanCT_AvgZ_Weighted(HCT_Z2_MAT, gw_scz_c), Anno)
+r_c, p_c = GetSingeCellBiasCorr(bias_asd_c, bias_scz_c, efflabel="EFFECT", CTs=Neur_idx)
+print(f"\nConstrained genes (LOEUF < {LOEUF_THRESHOLD}): r={r_c:.3f}, p={p_c:.2e}")
 
-print(len(ASD_Gene_Constrained), len(ASD_Gene_Unconstrained))
-print(len(SCZ_Gene_Constrained), len(SCZ_Gene_Unconstrained))
-
-# %%
-tmp_ASD_GW = dict(zip(ASD_Gene_Constrained["Entrez"].values, ASD_Gene_Constrained["GW"].values))
-tmp_SCZ_GW = dict(zip(SCZ_Gene_Constrained["Entrez"].values, SCZ_Gene_Constrained["GW"].values))
-
-tmp_ASD_Bias = HumanCT_AvgZ_Weighted(HCT_Z2_MAT_HCT, tmp_ASD_GW)
-tmp_ASD_Bias = AnnotateCTDat(tmp_ASD_Bias, Anno)
-
-tmp_SCZ_Bias = HumanCT_AvgZ_Weighted(HCT_Z2_MAT_HCT, tmp_SCZ_GW)
-tmp_SCZ_Bias = AnnotateCTDat(tmp_SCZ_Bias, Anno)
-
-r,p = GetSingeCellBiasCorr(tmp_ASD_Bias, tmp_SCZ_Bias, CTs=Neur_idx)
-print(r, p )
-
-# %%
-tmp_ASD_GW = dict(zip(ASD_Gene_Unconstrained["Entrez"].values, ASD_Gene_Unconstrained["GW"].values))
-tmp_SCZ_GW = dict(zip(SCZ_Gene_Unconstrained["Entrez"].values, SCZ_Gene_Unconstrained["GW"].values))
-
-tmp_ASD_Bias = HumanCT_AvgZ_Weighted(HCT_Z2_MAT_HCT, tmp_ASD_GW)
-tmp_ASD_Bias = AnnotateCTDat(tmp_ASD_Bias, Anno)
-
-tmp_SCZ_Bias = HumanCT_AvgZ_Weighted(HCT_Z2_MAT_HCT, tmp_SCZ_GW)
-tmp_SCZ_Bias = AnnotateCTDat(tmp_SCZ_Bias, Anno)
-
-r,p = GetSingeCellBiasCorr(tmp_ASD_Bias, tmp_SCZ_Bias, CTs=Neur_idx)
-print(r, p ) # Constrained genes are more similar, Unconstrained genes are more different
+# Unconstrained genes only
+gw_asd_u = dict(zip(ASD_Unconstrained["Entrez"], ASD_Unconstrained["GW"]))
+gw_scz_u = dict(zip(SCZ_Unconstrained["Entrez"], SCZ_Unconstrained["GW"]))
+bias_asd_u = AnnotateCTDat(HumanCT_AvgZ_Weighted(HCT_Z2_MAT, gw_asd_u), Anno)
+bias_scz_u = AnnotateCTDat(HumanCT_AvgZ_Weighted(HCT_Z2_MAT, gw_scz_u), Anno)
+r_u, p_u = GetSingeCellBiasCorr(bias_asd_u, bias_scz_u, efflabel="EFFECT", CTs=Neur_idx)
+print(f"Unconstrained genes (LOEUF >= {LOEUF_THRESHOLD}): r={r_u:.3f}, p={p_u:.2e}")
+print(f"\nBaseline (all genes): r={r_baseline:.3f}")
 
 # %%

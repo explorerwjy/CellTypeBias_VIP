@@ -174,7 +174,7 @@ See `docs/MATCHING_MODES.md` for details.
 | `notebook_preprocessing.ipynb` | Expression data preprocessing |
 | `Bias_Mutation_Weights.ipynb` | Generate gene weights from mutation data |
 | `notebook_SpecBias.ipynb` | Interactive bias calculation |
-| `Similarity_ASD_SCZ.spec.ipynb` | ASD-SCZ bias correlation analysis |
+| `Similarity_ASD_SCZ.spec.ipynb` | ASD-SCZ bias similarity: gene removal by LOEUF/BrainSpan with random null |
 | `Number_Gene_Effect.ipynb` | Gene set size robustness |
 | `Phenotype.UKBB.ipynb` | UKBB phenotype analysis |
 | `notebook_PBS_FSIQ.ipynb` | IQ-bias correlation |
