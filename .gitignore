@@ -39,6 +39,7 @@ build/
 .snakemake/
 
 # Old/test notebooks (not tracked)
+notebooks/Old/
 notebooks/Old_Z2_Version/
 notebooks/Test_CutOff/
 notebooks/Test_Jon/
