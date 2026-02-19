@@ -90,10 +90,10 @@ GENE_SETS = ["SCZ", "ASD_All", "ASD_HIQ", "ASD_LIQ", "DDD_61"]
 # Gene weight file paths
 GW_PATHS = {
     "SCZ": PROJ_DIR / "dat/GeneWeights/SCZ.top61.nopLI.LGD_Dmis_SameWeight.exclude_Mis2.gw",
-    "ASD_All": PROJ_DIR / "dat/GeneWeights/Spark_Meta_EWS.GeneWeight.csv",
-    "ASD_HIQ": PROJ_DIR / "dat/GeneWeights/HIQ.top61.nopLI.LGD_Dmis_SameWeight.gw",
-    "ASD_LIQ": PROJ_DIR / "dat/GeneWeights/LIQ.top61.nopLI.LGD_Dmis_SameWeight.gw",
-    "DDD_61": PROJ_DIR / "dat/GeneWeights/DDD.top61.gw.csv",
+    "ASD_All": PROJ_DIR / "dat/GeneWeights/Spark_Meta_EWS.GeneWeight.bgmr.csv",
+    "ASD_HIQ": PROJ_DIR / "dat/GeneWeights/HIQ.top61.nopLI.LGD_Dmis_SameWeight.bgmr.gw",
+    "ASD_LIQ": PROJ_DIR / "dat/GeneWeights/LIQ.top61.nopLI.LGD_Dmis_SameWeight.bgmr.gw",
+    "DDD_61": PROJ_DIR / "dat/GeneWeights/DDD.top61.gw.bgmr.csv",
 }
 
 # Key superclusters for the manuscript

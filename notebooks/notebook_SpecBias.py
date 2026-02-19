@@ -91,8 +91,8 @@ if not os.path.exists(Bias_Save_Dir): # make dir if not exists
 # ### HIQ & LIQ ASD
 
 # %%
-HIQ_GW = Fil2Dict("{}/HIQ.top61.nopLI.LGD_Dmis_SameWeight.gw".format(GeneWeightDIR))
-LIQ_GW = Fil2Dict("{}/LIQ.top61.nopLI.LGD_Dmis_SameWeight.gw".format(GeneWeightDIR))
+HIQ_GW = Fil2Dict("{}/HIQ.top61.nopLI.LGD_Dmis_SameWeight.bgmr.gw".format(GeneWeightDIR))
+LIQ_GW = Fil2Dict("{}/LIQ.top61.nopLI.LGD_Dmis_SameWeight.bgmr.gw".format(GeneWeightDIR))
 print(len(HIQ_GW), len(LIQ_GW))
 
 # %% hidden=true
@@ -522,7 +522,7 @@ plot_vip_effect_comparison(high_loeuf_22q_bias_sub)
 # DDD_hc_Bias_top61.to_csv("{}/HCT.DDDHC.Spec.top61.csv".format(Bias_Save_Dir))
 
 # %%
-DDD_top61_GW = Fil2Dict("{}/DDD.top61.gw".format(GeneWeightDIR))
+DDD_top61_GW = Fil2Dict("{}/DDD.top61.gw.bgmr.csv".format(GeneWeightDIR))
 DDD_hc_Bias_top61 = HumanCT_AvgZ_Weighted(HumanCT_Z2_HCT, DDD_top61_GW)
 DDD_hc_Bias_top61 = AnnotateCTDat(DDD_hc_Bias_top61, Anno)
 DDD_hc_Bias_top61.to_csv("{}/HCT.DDDHC.Spec.top61".format(Bias_Save_Dir))

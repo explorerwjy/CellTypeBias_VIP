@@ -622,8 +622,8 @@ print(f"Missing cap values: {[c for c in CAP_VALUES if c not in cap_expression_f
 # (Only if expression matrices exist — they must be pre-generated via preprocessing.py --clip X)
 GW_FILES = {
     "SCZ": PROJ_DIR / "dat" / "GeneWeights" / "SCZ.top61.nopLI.LGD_Dmis_SameWeight.exclude_Mis2.gw",
-    "ASD_LIQ": PROJ_DIR / "dat" / "GeneWeights" / "LIQ.top61.nopLI.LGD_Dmis_SameWeight.gw",
-    "DDD_61": PROJ_DIR / "dat" / "GeneWeights" / "DDD.top61.gw.csv",
+    "ASD_LIQ": PROJ_DIR / "dat" / "GeneWeights" / "LIQ.top61.nopLI.LGD_Dmis_SameWeight.bgmr.gw",
+    "DDD_61": PROJ_DIR / "dat" / "GeneWeights" / "DDD.top61.gw.bgmr.csv",
 }
 
 cap_results = {}

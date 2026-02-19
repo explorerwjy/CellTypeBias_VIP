@@ -47,7 +47,7 @@ fm._load_fontmanager(try_read_cache=False)
 
 # %%
 # Load Gene Weights
-ASD_Hiq_GW_NoMutTypeDiff = Fil2Dict("../dat/GeneWeights/HIQ.top61.nopLI.LGD_Dmis_SameWeight.gw")
+ASD_Hiq_GW_NoMutTypeDiff = Fil2Dict("../dat/GeneWeights/HIQ.top61.nopLI.LGD_Dmis_SameWeight.bgmr.gw")
 SCZ_GW_NoMutTypeDiff_Mis2 = Fil2Dict("../dat/GeneWeights/SCZ.top61.nopLI.LGD_Dmis_SameWeight.exclude_Mis2.gw") 
 
 # %%

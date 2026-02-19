@@ -78,8 +78,8 @@ VIP_Anno = pd.read_csv("../notebooks/VIP_Anno.csv", index_col=0)
 
 # %%
 GeneWeightDIR = "../dat/GeneWeights/"
-HIQ_GW = Fil2Dict("{}/HIQ.top61.nopLI.LGD_Dmis_SameWeight.gw".format(GeneWeightDIR))
-LIQ_GW = Fil2Dict("{}/LIQ.top61.nopLI.LGD_Dmis_SameWeight.gw".format(GeneWeightDIR))
+HIQ_GW = Fil2Dict("{}/HIQ.top61.nopLI.LGD_Dmis_SameWeight.bgmr.gw".format(GeneWeightDIR))
+LIQ_GW = Fil2Dict("{}/LIQ.top61.nopLI.LGD_Dmis_SameWeight.bgmr.gw".format(GeneWeightDIR))
 SCZ_GW = Fil2Dict("{}/SCZ.top61.nopLI.LGD_Dmis_SameWeight.exclude_Mis2.gw".format(GeneWeightDIR))
 
 # %%
@@ -343,7 +343,7 @@ for g in ["DRD1", "DRD2", "DRD3", "DRD4"]:
             print(f"  Cluster ID {ct_idx} ({subtype}): {spec_val:.4f}")
     else:
         print("  No CGE interneuron subtypes with expression specificity > 0.5")
-    
+
 
 # %%
 VIP_Anno
