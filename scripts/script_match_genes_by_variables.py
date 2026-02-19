@@ -16,15 +16,13 @@ from pathlib import Path
 
 import sys
 import os
-ProjDIR = "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/" # Change to your project directory
-sys.path.insert(1, f'{ProjDIR}/src/')
-from CellType_PSY import *
 
-# Add src to path for imports
+# Derive ProjDIR from script location
 script_dir = Path(__file__).parent
 proj_dir = script_dir.parent
+ProjDIR = str(proj_dir) + "/"
 sys.path.insert(1, str(proj_dir / 'src'))
-from CellType_PSY import LoadGeneINFO
+from CellType_PSY import *
 
 
 def convert_to_percentiles(df, columns):

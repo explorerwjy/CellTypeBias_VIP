@@ -1,5 +1,6 @@
 # List of gene sets to analyze
 ProjDIR: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/"  # Change to your project directory
+results_base: "results/main_results"  # Base directory for pipeline outputs
 
 gene_sets:
   ASD_All:
@@ -90,142 +91,22 @@ n_processes: 10
 
 matching_configs:
 
-  # Configuration 1: Gene-by-gene matching on conservation only
-  # Uncomment to enable:
-  # phastCons_only:
-  #  sampling_mode: "matched"
-  #  matched_sampling:
-  #    matching_variables: ["mean_phastCons"]
-  #    kernel: "tricubic"
-  #    bandwidth: 100.0
-  #    seed: 42
+  # 1. Random sampling (unmatched control)
+  random:
+    sampling_mode: "random"
+    seed: 42
 
-  # Configuration 2: Set-level matching with conservation (WB + mean_phastCons + n_CDS_bases)
-  # Currently ACTIVE:
-  # conservation_model:
-  #   sampling_mode: "set_level_matched"
-  #   set_level_matched_sampling:
-  #     matching_variables: ["n_CDS_bases", "WB", "mean_phastCons"]
-  #     use_propensity: true
-  #     propensity_kernel: "tricubic"
-  #     propensity_bandwidth: 60.0
-  #     add_noise: true
-  #     noise_scale: 10.0
-  #     relaxed_matching: true
-  #     loeuf_weight: 1
-  #     use_best_of_n: false
-  #     n_candidates: 1000
-  #     use_sis: false
-  #     use_percentile: true
-  #     temperature: 1.0
-  #     adaptive_temp: true
-  #     max_distance: 0.15
-  #     max_attempts: 1000
-  #     use_ks_test: false
-  #     ks_threshold: 0.3
-  #     seed: 42
-
-
-  # Configuration 3: Set-level matching with constraint (WB + LOEUF + n_CDS_bases)
-  # # Currently ACTIVE:
-  # constraint_model:
-  #   sampling_mode: "set_level_matched"
-  #   set_level_matched_sampling:
-  #     matching_variables: ["n_CDS_bases", "WB", "LOEUF"]
-  #     use_propensity: true
-  #     propensity_kernel: "tricubic"
-  #     propensity_bandwidth: 60.0
-  #     add_noise: true
-  #     noise_scale: 10.0
-  #     relaxed_matching: true
-  #     loeuf_weight: 1
-  #     use_best_of_n: false
-  #     n_candidates: 1000
-  #     use_sis: false
-  #     use_percentile: true
-  #     temperature: 1.0
-  #     adaptive_temp: true
-  #     max_distance: 0.15
-  #     max_attempts: 1000
-  #     use_ks_test: false
-  #     ks_threshold: 0.3
-  #     seed: 42
-
-  # conservation_model:
-  #   sampling_mode: "set_level_matched"
-  #   set_level_matched_sampling:
-  #     matching_variables: ["n_CDS_bases", "WB", "mean_phastCons"]
-  #     use_propensity: false
-  #     propensity_kernel: "tricubic"
-  #     propensity_bandwidth: 60.0
-  #     add_noise: true
-  #     noise_scale: 10.0
-  #     relaxed_matching: true
-  #     loeuf_weight: 1
-  #     use_best_of_n: true
-  #     n_candidates: 1000
-  #     use_sis: false
-  #     use_percentile: true
-  #     temperature: 1.0
-  #     adaptive_temp: true
-  #     max_distance: 0.15
-  #     max_attempts: 1000
-  #     use_ks_test: false
-  #     ks_threshold: 0.3
-  #     seed: 42
-
-  # Recommended config for Reviewer 3: matches gene length, conservation, expression
-  conservation_model:
+  # 2. Best-of-N matched control (matches gene length, conservation, expression)
+  matched:
     sampling_mode: "set_level_matched"
     set_level_matched_sampling:
       matching_variables: ["n_CDS_bases", "WB", "mean_phastCons"]
       use_propensity: false
-      propensity_kernel: "tricubic"
-      propensity_bandwidth: 60.0
-      add_noise: true
-      noise_scale: 10.0
-      relaxed_matching: true
-      loeuf_weight: 1
       use_best_of_n: true
       n_candidates: 1000
-      use_sis: false
       use_percentile: true
-      temperature: 1.0
-      adaptive_temp: true
       max_distance: 0.15
       max_attempts: 1000
       use_ks_test: false
       ks_threshold: 0.3
       seed: 42
-
-  # Configuration 3: Random sampling (no matching) - for comparison
-  # Uncomment to enable:
-  #random_baseline:
-  #  sampling_mode: "random"
-  #  seed: 42
-
-  # Configuration 4: Set-level matching on WB + LOEUF only
-  # Uncomment to enable:
-  #WB_LOEUF_only:
-  #  sampling_mode: "set_level_matched"
-  #  set_level_matched_sampling:
-  #    matching_variables: ["WB", "LOEUF"]
-  #    use_propensity: true
-  #    propensity_kernel: "tricubic"
-  #    propensity_bandwidth: 60.0
-  #    relaxed_matching: true
-  #    loeuf_weight: 0.5
-  #    seed: 42
-
-  # Configuration 5: Best-of-N sampling (alternative to propensity)
-  # Uncomment to enable:
-  #best_of_1000:
-  #  sampling_mode: "set_level_matched"
-  #  set_level_matched_sampling:
-  #    matching_variables: ["n_CDS_bases", "WB", "mean_phastCons"]
-  #    use_propensity: false
-  #    use_best_of_n: true
-  #    n_candidates: 1000
-  #    use_percentile: true
-  #    loeuf_weight: 2
-  #    seed: 42

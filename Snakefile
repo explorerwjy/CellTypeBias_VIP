@@ -9,6 +9,7 @@ MATCHING_CONFIGS = config["matching_configs"]
 PROJDIR = config["ProjDIR"]
 N_WEIGHTS = config["n_random_weights"]
 N_PROCESSES = config.get("n_processes", 10)
+RESULTS_BASE = config.get("results_base", "results")
 
 # Function to auto-generate output directory based on matching parameters
 def build_output_dir(config_name, sampling_mode, matched_params={}, set_level_params={}):
@@ -21,7 +22,7 @@ def build_output_dir(config_name, sampling_mode, matched_params={}, set_level_pa
         - set_level_matched with propensity -> results/set_level_matched_CDS_WB_LOEUF_PropWeight_Tricubic
         - set_level_matched with best-of-N -> results/set_level_matched_CDS_WB_LOEUF_Best1000
     """
-    base = "results"
+    base = RESULTS_BASE
 
     if sampling_mode == "random":
         return f"{base}/{config_name}"
