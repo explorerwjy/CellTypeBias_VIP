@@ -18,20 +18,16 @@ gene_sets:
     geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/DDD.hc.gw.csv"
   22q_del:
     geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/X22q.gw.csv"
-  # 22q_small_del:
-  #   geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/X22q.mousemodel.gw.csv"
-  # UKBB_VNR_Neg:
-  #   geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/UKBB_VNR_Neg_GW_61.csv"
-  # UKBB_VNR_Pos:
-  #   geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/UKBB_VNR_Pos_GW_61.csv"
-  # UKBB_EDU_Neg:
-  #   geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/UKBB_EDU_Neg_GW_61.csv"  # Negative
-  # UKBB_EDU_Pos:
-  #   geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/UKBB_EDU_Pos_GW_61.csv"  # Positive
-  # UKBB_RT_Pos:
-  #   geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/UKBB_RT_Pos_GW_61.csv"  # Positive
-  # UKBB_RT_Neg:
-  #   geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/UKBB_RT_Neg_GW_61.csv"  # Negative
+  22q_small_del:
+    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/X22q.mousemodel.gw.csv"
+  UKBB_VNR_Neg:
+    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/UKBB_VNR_Neg_GW_61.csv"
+  UKBB_VNR_Pos:
+    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/UKBB_VNR_Pos_GW_61.csv"
+  UKBB_EDU_Neg:
+    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/UKBB_EDU_Neg_GW_61.csv"
+  UKBB_EDU_Pos:
+    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/UKBB_EDU_Pos_GW_61.csv"
 
   #ASD_HIQ_100:
   #  geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/HIQ.top100.nopLI.LGD_Dmis_SameWeight.gw"
