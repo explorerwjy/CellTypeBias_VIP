@@ -102,7 +102,7 @@ axes = axes.flatten()
 
 # Plot each dataset on its own subplot
 SuperClusterBias_BoxPlot(ASD_All_Bias, "ASD", NeuroOnly=False, sortby="mean", EffectCol="-logP", fdr_cut=fdr_cut, ax=axes[0])
-SuperClusterBias_BoxPlot(HighIQ_ASD_Bias, "ASD", NeuroOnly=False, sortby="mean", EffectCol="-logP", fdr_cut=fdr_cut, ax=axes[1])
+SuperClusterBias_BoxPlot(HighIQ_ASD_Bias, "ASD w/o ID", NeuroOnly=False, sortby="mean", EffectCol="-logP", fdr_cut=fdr_cut, ax=axes[1])
 SuperClusterBias_BoxPlot(LowIQ_ASD_Bias, "ASD with ID", NeuroOnly=False, sortby="mean", EffectCol="-logP", fdr_cut=fdr_cut, ax=axes[2])
 #SuperClusterBias_BoxPlot(X22q_Bias, "22q11.2", NeuroOnly=False, sortby="mean", EffectCol="-logP", fdr_cut=fdr_cut, ax=axes[3])
 SuperClusterBias_BoxPlot(SCZ_Bias, "SCZ", NeuroOnly=False, sortby="mean", EffectCol="-logP", fdr_cut=fdr_cut, ax=axes[4])
@@ -151,7 +151,7 @@ axes = axes.flatten()
 
 # Plot each dataset on its own subplot
 SuperClusterBias_BoxPlot(ASD_All_Bias, "ASD", NeuroOnly=False, sortby="mean", EffectCol="-logP", fdr_cut=fdr_cut, ax=axes[0])
-SuperClusterBias_BoxPlot(HighIQ_ASD_Bias, "ASD", NeuroOnly=False, sortby="mean", EffectCol="-logP", fdr_cut=fdr_cut, ax=axes[1])
+SuperClusterBias_BoxPlot(HighIQ_ASD_Bias, "ASD w/o ID", NeuroOnly=False, sortby="mean", EffectCol="-logP", fdr_cut=fdr_cut, ax=axes[1])
 SuperClusterBias_BoxPlot(LowIQ_ASD_Bias, "ASD with ID", NeuroOnly=False, sortby="mean", EffectCol="-logP", fdr_cut=fdr_cut, ax=axes[2])
 #SuperClusterBias_BoxPlot(X22q_Bias, "22q11.2", NeuroOnly=False, sortby="mean", EffectCol="-logP", fdr_cut=fdr_cut, ax=axes[3])
 SuperClusterBias_BoxPlot(SCZ_Bias, "SCZ", NeuroOnly=False, sortby="mean", EffectCol="-logP", fdr_cut=fdr_cut, ax=axes[4])
@@ -197,8 +197,8 @@ plt.show()
 gene_sets_config = {
     'SCZ': {'file': 'SCZ_random_geneweights.csv', 'display_name': 'SCZ'},
     'ASD_All': {'file': 'ASD_All_random_geneweights.csv', 'display_name': 'ASD'},
-    'ASD_HIQ': {'file': 'ASD_HIQ_random_geneweights.csv', 'display_name': 'ASD (High IQ)'},
-    'ASD_LIQ': {'file': 'ASD_LIQ_random_geneweights.csv', 'display_name': 'ASD (Low IQ)'},
+    'ASD_HIQ': {'file': 'ASD_HIQ_random_geneweights.csv', 'display_name': 'ASD w/o ID'},
+    'ASD_LIQ': {'file': 'ASD_LIQ_random_geneweights.csv', 'display_name': 'ASD with ID'},
     'X22q': {'file': '22q_del_random_geneweights.csv', 'display_name': '22q11.2'},
     'DDD': {'file': ['DDD_61_random_geneweights.csv', 'DDD_random_geneweights.csv'], 'display_name': 'DD/ID'},
 }
@@ -1541,7 +1541,7 @@ ASD_LIQ_DF = ASD_LIQ_100_Bias
 SCZ_DF = SCZ_Bias
 
 # %%
-name1="ASD"
+name1="ASD w/o ID"
 name2="SCZ"
 EffLabel = "EFFECT"
 ASD_SCZ_Contrast = compare_biases(ASD_HIQ_DF, SCZ_DF, name1=name1, name2=name2, efflabel=EffLabel)
@@ -1549,7 +1549,7 @@ ASD_SCZ_Contrast_Neurons = ASD_SCZ_Contrast[ASD_SCZ_Contrast.index.isin(Neurons)
 plot_bias_comparison(ASD_SCZ_Contrast_Neurons, name1, name2, p_test="Mann_Whitney_FDR", legend_anchor=(0.15, 0.9))
 
 # %%
-name1="LIQ_ASD"
+name1="ASD with ID"
 name2="SCZ"
 EffLabel = "EFFECT"
 LIQ_ASD_SCZ_Contrast = compare_biases(ASD_LIQ_DF, SCZ_DF, name1=name1, name2=name2, efflabel=EffLabel,neurons=Neurons)
@@ -1559,11 +1559,10 @@ plot_bias_comparison(LIQ_ASD_SCZ_Contrast_Neurons, name1, name2, p_test="Mann_Wh
 
 
 # %%
-name1="ASD"
+name1="ASD w/o ID"
 name2="ASD with ID"
 EffLabel = "EFFECT"
-#HIQ_LIQ_ASD_Contrast  = compare_biases(HighIQ_ASD_Bias, LowIQ_ASD_Bias, name1="ASD", name2="ASD with ID", efflabel="EFFECT", neurons=ALL_CTs)
-HIQ_LIQ_ASD_Contrast  = compare_biases(ASD_HIQ_DF, ASD_LIQ_DF, name1="ASD", name2="ASD with ID", efflabel=EffLabel, neurons=ALL_CTs)
+HIQ_LIQ_ASD_Contrast  = compare_biases(ASD_HIQ_DF, ASD_LIQ_DF, name1="ASD w/o ID", name2="ASD with ID", efflabel=EffLabel, neurons=ALL_CTs)
 # Set index to CT column before filtering to avoid SettingWithCopyWarning
 HIQ_LIQ_ASD_Contrast_Neurons = HIQ_LIQ_ASD_Contrast[HIQ_LIQ_ASD_Contrast.index.isin(Neurons)]
 plot_bias_comparison(HIQ_LIQ_ASD_Contrast_Neurons, name1, name2, p_test="Mann_Whitney_FDR", legend_anchor=(0.9, 1.0)) 

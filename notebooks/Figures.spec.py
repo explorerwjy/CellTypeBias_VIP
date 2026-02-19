@@ -65,7 +65,7 @@ EDU_Neg_Bias = pd.read_csv(UKBB_Dir + "UKBB_EDU_Neg_bias_addP.csv", index_col=0)
 SuperClusterBias_BoxPlot(ASD_All_Bias, "ASD", NeuroOnly=False, sortby="mean", EffectCol="-logP", fdr_cut=0.05)
 
 # %%
-SuperClusterBias_BoxPlot(HighIQ_ASD_Bias, "ASD", NeuroOnly=False, sortby="mean", EffectCol="-logP", fdr_cut=0.1)
+SuperClusterBias_BoxPlot(HighIQ_ASD_Bias, "ASD w/o ID", NeuroOnly=False, sortby="mean", EffectCol="-logP", fdr_cut=0.1)
 SuperClusterBias_BoxPlot(LowIQ_ASD_Bias, "ASD with ID", NeuroOnly=False, sortby="mean", EffectCol="-logP")
 SuperClusterBias_BoxPlot(X22q_Bias, "22q11.2", NeuroOnly=False, sortby="mean", EffectCol="-logP", fdr_cut=0.1)
 SuperClusterBias_BoxPlot(SCZ_Bias, "SCZ", NeuroOnly=False, sortby="mean", EffectCol="-logP")
@@ -81,50 +81,50 @@ SuperClusterBias_BoxPlot(DDD_Bias, "DD/ID", NeuroOnly=False, sortby="mean", Effe
 # #### Bias Correlation
 
 # %% hidden=true
-HIQ_ASD_SCZ, fig = CompareCT(HighIQ_ASD_Bias, SCZ_Bias, "ASD","SCZ", effectlabel="EFFECT",  SuperClusters=ALL_CTs)
-LIQ_ASD_SCZ, fig = CompareCT(LowIQ_ASD_Bias, SCZ_Bias, "ASD","SCZ", effectlabel="EFFECT",  SuperClusters=ALL_CTs)
-HIQ_LIQ_ASD, fig = CompareCT(HighIQ_ASD_Bias, LowIQ_ASD_Bias, "ASD","ASD with ID", effectlabel="EFFECT",  SuperClusters=ALL_CTs)
+HIQ_ASD_SCZ, fig = CompareCT(HighIQ_ASD_Bias, SCZ_Bias, "ASD w/o ID","SCZ", effectlabel="EFFECT",  SuperClusters=ALL_CTs)
+LIQ_ASD_SCZ, fig = CompareCT(LowIQ_ASD_Bias, SCZ_Bias, "ASD with ID","SCZ", effectlabel="EFFECT",  SuperClusters=ALL_CTs)
+HIQ_LIQ_ASD, fig = CompareCT(HighIQ_ASD_Bias, LowIQ_ASD_Bias, "ASD w/o ID","ASD with ID", effectlabel="EFFECT",  SuperClusters=ALL_CTs)
 
 # %%
 eff_label = "EFFECT"
-PlotBiasContrast(HIQ_ASD_SCZ, label1 = "{}_ASD".format(eff_label), label2 = "{}_SCZ".format(eff_label), 
-                 name1 = "ASD Mutation Bias", name2 = "SCZ Mutation Bias", 
+PlotBiasContrast(HIQ_ASD_SCZ, label1 = "{}_ASD w/o ID".format(eff_label), label2 = "{}_SCZ".format(eff_label),
+                 name1 = "ASD w/o ID Mutation Bias", name2 = "SCZ Mutation Bias",
                 title = "", neur_only=True)
 
 # %%
 eff_label = "EFFECT"
-PlotBiasContrast(HIQ_ASD_SCZ, label1 = "{}_ASD".format(eff_label), label2 = "{}_SCZ".format(eff_label), 
-                 name1 = "ASD Mutation Bias", name2 = "SCZ Mutation Bias", 
+PlotBiasContrast(HIQ_ASD_SCZ, label1 = "{}_ASD w/o ID".format(eff_label), label2 = "{}_SCZ".format(eff_label),
+                 name1 = "ASD w/o ID Mutation Bias", name2 = "SCZ Mutation Bias",
                 title = "", neur_only=True)
 
 # %%
 
 # %%
 eff_label = "EFFECT"
-PlotBiasContrast(LIQ_ASD_SCZ, label1 = "{}_ASD".format(eff_label), label2 = "{}_SCZ".format(eff_label), 
-                 name1 = "ASD Mutation Bias", name2 = "SCZ Mutation Bias", 
+PlotBiasContrast(LIQ_ASD_SCZ, label1 = "{}_ASD with ID".format(eff_label), label2 = "{}_SCZ".format(eff_label),
+                 name1 = "ASD with ID Mutation Bias", name2 = "SCZ Mutation Bias",
                 title = "")
 
 # %%
 
 eff_label = "EFFECT"
-PlotBiasContrast(HIQ_ASD_SCZ, label1 = "{}_ASD".format(eff_label), label2 = "{}_SCZ".format(eff_label), 
-                 name1 = "ASD Mutation Bias", name2 = "SCZ Mutation Bias", 
+PlotBiasContrast(HIQ_ASD_SCZ, label1 = "{}_ASD w/o ID".format(eff_label), label2 = "{}_SCZ".format(eff_label),
+                 name1 = "ASD w/o ID Mutation Bias", name2 = "SCZ Mutation Bias",
                 title = "")
 
 # %% [markdown]
 # #### Overall Contrasts
 
 # %%
-name1="ASD"
+name1="ASD w/o ID"
 name2="SCZ"
 EffLabel = "EFFECT"
-ASD_SCZ_Contrast = compare_biases(HighIQ_ASD_Bias, SCZ_Bias, name1="ASD", name2="SCZ", efflabel=EffLabel)
+ASD_SCZ_Contrast = compare_biases(HighIQ_ASD_Bias, SCZ_Bias, name1="ASD w/o ID", name2="SCZ", efflabel=EffLabel)
 ASD_SCZ_Contrast_Neurons = ASD_SCZ_Contrast[ASD_SCZ_Contrast.index.isin(Neurons)]
 plot_bias_comparison(ASD_SCZ_Contrast_Neurons, name1, name2, p_test="Mann_Whitney_FDR", legend_anchor=(0.15, 0.9))
 
 # %%
-name1="LIQ_ASD"
+name1="ASD with ID"
 name2="SCZ"
 EffLabel = "EFFECT"
 LIQ_ASD_SCZ_Contrast = compare_biases(LowIQ_ASD_Bias, SCZ_Bias, name1=name1, name2=name2, efflabel=EffLabel,neurons=Neurons)
@@ -134,11 +134,10 @@ plot_bias_comparison(LIQ_ASD_SCZ_Contrast_Neurons, name1, name2, p_test="Mann_Wh
 
 
 # %%
-name1="ASD"
+name1="ASD w/o ID"
 name2="ASD with ID"
 EffLabel = "EFFECT"
-#HIQ_LIQ_ASD_Contrast  = compare_biases(HighIQ_ASD_Bias, LowIQ_ASD_Bias, name1="ASD", name2="ASD with ID", efflabel="EFFECT", neurons=ALL_CTs)
-HIQ_LIQ_ASD_Contrast  = compare_biases(HighIQ_ASD_Bias, LowIQ_ASD_Bias, name1="ASD", name2="ASD with ID", efflabel=EffLabel, neurons=ALL_CTs)
+HIQ_LIQ_ASD_Contrast  = compare_biases(HighIQ_ASD_Bias, LowIQ_ASD_Bias, name1="ASD w/o ID", name2="ASD with ID", efflabel=EffLabel, neurons=ALL_CTs)
 # Set index to CT column before filtering to avoid SettingWithCopyWarning
 HIQ_LIQ_ASD_Contrast_Neurons = HIQ_LIQ_ASD_Contrast[HIQ_LIQ_ASD_Contrast.index.isin(Neurons)]
 plot_bias_comparison(HIQ_LIQ_ASD_Contrast_Neurons, name1, name2, p_test="Mann_Whitney_FDR", legend_anchor=(0.9, 1.0)) 
@@ -151,53 +150,53 @@ plot_bias_comparison(HIQ_LIQ_ASD_Contrast_Neurons, name1, name2, p_test="Mann_Wh
 # %%
 EffLabel = "EFFECT"
 CompareSingleCT(HighIQ_ASD_Bias, SCZ_Bias,  "Hippocampal CA1-3",  ASD_SCZ_Contrast,
-                    "ASD Mutation Bias", "SCZ Mutation Bias", efflabel=EffLabel, loc=(0.15, 0.12))
+                    "ASD w/o ID Mutation Bias", "SCZ Mutation Bias", efflabel=EffLabel, loc=(0.15, 0.12))
 CompareSingleCT(HighIQ_ASD_Bias, SCZ_Bias, "Upper-layer intratelencephalic",  ASD_SCZ_Contrast,
-                    "ASD Mutation Bias", "SCZ Mutation Bias", efflabel=EffLabel, pval="Mann_Whitney_FDR", loc=(0.15, 0.12))
-CompareSingleCT(HighIQ_ASD_Bias, SCZ_Bias, "Deep-layer intratelencephalic",   ASD_SCZ_Contrast, 
-                    "ASD Mutation Bias", "SCZ Mutation Bias", loc=(0.1, 0.3), pval="Mann_Whitney_FDR")
+                    "ASD w/o ID Mutation Bias", "SCZ Mutation Bias", efflabel=EffLabel, pval="Mann_Whitney_FDR", loc=(0.15, 0.12))
+CompareSingleCT(HighIQ_ASD_Bias, SCZ_Bias, "Deep-layer intratelencephalic",   ASD_SCZ_Contrast,
+                    "ASD w/o ID Mutation Bias", "SCZ Mutation Bias", loc=(0.1, 0.3), pval="Mann_Whitney_FDR")
 CompareSingleCT(HighIQ_ASD_Bias, SCZ_Bias, "Amygdala excitatory",  ASD_SCZ_Contrast,
-                    "ASD Mutation Bias", "SCZ Mutation Bias", efflabel=EffLabel, loc=(0.15, 0.29))
+                    "ASD w/o ID Mutation Bias", "SCZ Mutation Bias", efflabel=EffLabel, loc=(0.15, 0.29))
 CompareSingleCT(HighIQ_ASD_Bias, SCZ_Bias, "Medium spiny neuron",  ASD_SCZ_Contrast,
-                     "ASD Mutation Bias", "SCZ Mutation Bias", efflabel=EffLabel, pval="Mann_Whitney_FDR", loc=(0.05, 0.23))
+                     "ASD w/o ID Mutation Bias", "SCZ Mutation Bias", efflabel=EffLabel, pval="Mann_Whitney_FDR", loc=(0.05, 0.23))
 CompareSingleCT(HighIQ_ASD_Bias, SCZ_Bias, "Deep-layer corticothalamic and 6b",  ASD_SCZ_Contrast,
-                     "ASD Mutation Bias", "SCZ Mutation Bias", efflabel=EffLabel, loc=(0.1, 0.05))
+                     "ASD w/o ID Mutation Bias", "SCZ Mutation Bias", efflabel=EffLabel, loc=(0.1, 0.05))
 CompareSingleCT(HighIQ_ASD_Bias, SCZ_Bias, "MGE interneuron",   ASD_SCZ_Contrast,
-                    "ASD Mutation Bias", "SCZ Mutation Bias", loc=(0.1, 0.05))
+                    "ASD w/o ID Mutation Bias", "SCZ Mutation Bias", loc=(0.1, 0.05))
 
 # %%
 CompareSingleCT(HighIQ_ASD_Bias, SCZ_Bias, "MGE interneuron",   ASD_SCZ_Contrast,
-                    "ASD Mutation Bias", "SCZ Mutation Bias", loc=(0.1, 0.05))
+                    "ASD w/o ID Mutation Bias", "SCZ Mutation Bias", loc=(0.1, 0.05))
 CompareSingleCT(LowIQ_ASD_Bias, SCZ_Bias, "MGE interneuron",   LIQ_ASD_SCZ_Contrast,
-                    "ASD Mutation Bias", "SCZ Mutation Bias", loc=(0.1, 0.05))
+                    "ASD with ID Mutation Bias", "SCZ Mutation Bias", loc=(0.1, 0.05))
 
 # %%
 CompareSingleCT(HighIQ_ASD_Bias, SCZ_Bias, "CGE interneuron",   ASD_SCZ_Contrast,
-                    "ASD Mutation Bias (Higher IQ)", "SCZ Mutation Bias", loc=(0.1, 0.05))
+                    "ASD w/o ID Mutation Bias", "SCZ Mutation Bias", loc=(0.1, 0.05))
 CompareSingleCT(LowIQ_ASD_Bias, SCZ_Bias, "CGE interneuron",   LIQ_ASD_SCZ_Contrast,
-                    "ASD Mutation Bias (Lower IQ)", "SCZ Mutation Bias", loc=(0.1, 0.25))
+                    "ASD with ID Mutation Bias", "SCZ Mutation Bias", loc=(0.1, 0.25))
 
 # %% [markdown] jp-MarkdownHeadingCollapsed=true
 # ### SCZ HIQ 22q VIP
 
 # %%
-CompareSingleCT(HighIQ_ASD_Bias, SCZ_Bias, "CGE interneuron",   ASD_SCZ_Contrast, "ASD Mutation Bias", 
+CompareSingleCT(HighIQ_ASD_Bias, SCZ_Bias, "CGE interneuron",   ASD_SCZ_Contrast, "ASD w/o ID Mutation Bias",
                     "SCZ Mutation Bias", efflabel=EffLabel, loc=(0.12, 0.05))
-CompareSingleCT(LowIQ_ASD_Bias, SCZ_Bias, "CGE interneuron",  LIQ_ASD_SCZ_Contrast, "Lower IQ ASD Mutation Bias", 
+CompareSingleCT(LowIQ_ASD_Bias, SCZ_Bias, "CGE interneuron",  LIQ_ASD_SCZ_Contrast, "ASD with ID Mutation Bias",
                     "SCZ Mutation Bias", efflabel=EffLabel, loc=(0.08, 0.21))
-CompareSingleCT(HighIQ_ASD_Bias, LowIQ_ASD_Bias, "CGE interneuron", HIQ_LIQ_ASD_Contrast_Neurons, "ASD Mutation Bias", 
+CompareSingleCT(HighIQ_ASD_Bias, LowIQ_ASD_Bias, "CGE interneuron", HIQ_LIQ_ASD_Contrast_Neurons, "ASD w/o ID Mutation Bias",
                     "ASD with ID\nMutation Bias", loc=(0.12, 0.05), efflabel=EffLabel)
 
 # %%
 
 # %%
-CompareSingleCT(HighIQ_ASD_Bias, LowIQ_ASD_Bias, "Deep-layer corticothalamic and 6b", HIQ_LIQ_ASD_Contrast_Neurons, "ASD Mutation Bias", 
+CompareSingleCT(HighIQ_ASD_Bias, LowIQ_ASD_Bias, "Deep-layer corticothalamic and 6b", HIQ_LIQ_ASD_Contrast_Neurons, "ASD w/o ID Mutation Bias",
                     "ASD with ID\nMutation Bias", loc=2, efflabel=EffLabel)
-CompareSingleCT(HighIQ_ASD_Bias, LowIQ_ASD_Bias, "Amygdala excitatory", HIQ_LIQ_ASD_Contrast_Neurons, "ASD Mutation Bias", 
+CompareSingleCT(HighIQ_ASD_Bias, LowIQ_ASD_Bias, "Amygdala excitatory", HIQ_LIQ_ASD_Contrast_Neurons, "ASD w/o ID Mutation Bias",
                     "ASD with ID\nMutation Bias", efflabel=EffLabel, loc=(0.25, 0.17))
-CompareSingleCT(HighIQ_ASD_Bias, LowIQ_ASD_Bias, "Upper-layer intratelencephalic", HIQ_LIQ_ASD_Contrast_Neurons, "ASD Mutation Bias", 
+CompareSingleCT(HighIQ_ASD_Bias, LowIQ_ASD_Bias, "Upper-layer intratelencephalic", HIQ_LIQ_ASD_Contrast_Neurons, "ASD w/o ID Mutation Bias",
                     "ASD with ID\nMutation Bias", loc=2, efflabel=EffLabel)
-CompareSingleCT(HighIQ_ASD_Bias, LowIQ_ASD_Bias, "Deep-layer intratelencephalic", HIQ_LIQ_ASD_Contrast_Neurons, "ASD Mutation Bias", 
+CompareSingleCT(HighIQ_ASD_Bias, LowIQ_ASD_Bias, "Deep-layer intratelencephalic", HIQ_LIQ_ASD_Contrast_Neurons, "ASD w/o ID Mutation Bias",
                     "ASD with ID\nMutation Bias", loc=2, efflabel=EffLabel)
 
 # %%
@@ -219,7 +218,7 @@ CompareSingleCT(EDU_Pos_Bias, EDU_Neg_Bias, "CGE interneuron", EDU_Contrast, "ED
 #                "RT - Mutation Bias",loc=(-0.05, 0.045))
 
 # %%
-DDD_ASD_Contrast = compare_biases(HighIQ_ASD_Bias, DDD_Bias, name1="ASD", name2="DD/ID", neurons=Neurons)
+DDD_ASD_Contrast = compare_biases(HighIQ_ASD_Bias, DDD_Bias, name1="ASD w/o ID", name2="DD/ID", neurons=Neurons)
 DDD_ASD_Contrast_Neurons = DDD_ASD_Contrast[DDD_ASD_Contrast.index.isin(Neurons)]
 
 # Create contrast for SCZ vs ASD with ID
@@ -228,7 +227,7 @@ SCZ_LIQ_ASD_Contrast = compare_biases(SCZ_Bias, LowIQ_ASD_Bias, name1="SCZ", nam
 SCZ_LIQ_ASD_Contrast_Neurons = SCZ_LIQ_ASD_Contrast[SCZ_LIQ_ASD_Contrast.index.isin(Neurons)]
 
 # %%
-CompareSingleCT(HighIQ_ASD_Bias, DDD_Bias, "CGE interneuron", DDD_ASD_Contrast,  "ASD Mutation Bias", 
+CompareSingleCT(HighIQ_ASD_Bias, DDD_Bias, "CGE interneuron", DDD_ASD_Contrast,  "ASD w/o ID Mutation Bias",
                     "DD/ID Mutation Bias",loc=(0.1, 0.05))
 
 # %% [markdown]
@@ -240,14 +239,14 @@ CompareSingleCT(HighIQ_ASD_Bias, DDD_Bias, "CGE interneuron", DDD_ASD_Contrast, 
 # %%
 # Example usage:
 datasets = {
-    'ASD': HighIQ_ASD_Bias,
+    'ASD w/o ID': HighIQ_ASD_Bias,
     'ASD with ID': LowIQ_ASD_Bias,
     'VNR+': VNR_Pos_Bias,
     'VNR-': VNR_Neg_Bias,
     'DD/ID': DDD_Bias,
     'SCZ': SCZ_Bias
 }
-TestPairs=[("VNR+", "VNR-"), ("ASD", "SCZ"), ("ASD", "ASD with ID"), ("ASD", "DD/ID"), ("SCZ", "ASD with ID")]
+TestPairs=[("VNR+", "VNR-"), ("ASD w/o ID", "SCZ"), ("ASD w/o ID", "ASD with ID"), ("ASD w/o ID", "DD/ID"), ("SCZ", "ASD with ID")]
 SuperCluster = "CGE interneuron"
 plot_mutation_bias_comparison(SuperCluster, datasets, Anno, TestPairs=TestPairs)
 
@@ -260,7 +259,7 @@ SuperCluster = "LAMP5-LHX6 and Chandelier"
 plot_mutation_bias_comparison(SuperCluster, datasets, Anno, TestPairs=TestPairs)
 
 # %%
-Test = [("VNR+", "VNR-"), ("ASD", "SCZ"), ("ASD", "ASD with ID"), ("ASD", "DD/ID"), ("SCZ", "ASD with ID")]
+Test = [("VNR+", "VNR-"), ("ASD w/o ID", "SCZ"), ("ASD w/o ID", "ASD with ID"), ("ASD w/o ID", "DD/ID"), ("SCZ", "ASD with ID")]
 Contrast_List = [VNR_Contrast, ASD_SCZ_Contrast, HIQ_LIQ_ASD_Contrast_Neurons, DDD_ASD_Contrast]
 
 # %%
@@ -274,7 +273,7 @@ import pandas as pd
 # Test = [("VNR+", "VNR-"), ("EDU+", "EDU-"), ("ASD", "SCZ"), ("ASD", "ASD with ID"), ("ASD", "DD/ID")]
 
 Contrast_List = [VNR_Contrast, ASD_SCZ_Contrast, HIQ_LIQ_ASD_Contrast_Neurons, SCZ_LIQ_ASD_Contrast_Neurons, DDD_ASD_Contrast]
-Test = [("VNR+", "VNR-"), ("ASD", "SCZ"), ("ASD", "ASD with ID"), ("SCZ", "ASD with ID"), ("ASD", "DD/ID")]
+Test = [("VNR+", "VNR-"), ("ASD w/o ID", "SCZ"), ("ASD w/o ID", "ASD with ID"), ("SCZ", "ASD with ID"), ("ASD w/o ID", "DD/ID")]
 
 all_contrasts_rows = []
 
@@ -301,8 +300,8 @@ all_contrasts_df = pd.DataFrame(
 all_contrasts_df["ALL_FDR"] = fdrcorrection(all_contrasts_df["Pval"])[1]
 
 # %%
-#Test = [("VNR+", "VNR-"), ("EDU+", "EDU-"), ("ASD", "SCZ"), ("ASD", "ASD with ID"), ("ASD", "DD/ID")]
-Test = [("VNR+", "VNR-"), ("ASD", "SCZ"), ("ASD", "ASD with ID"), ("SCZ", "ASD with ID"), ("ASD", "DD/ID")]
+#Test = [("VNR+", "VNR-"), ("EDU+", "EDU-"), ("ASD w/o ID", "SCZ"), ("ASD w/o ID", "ASD with ID"), ("ASD w/o ID", "DD/ID")]
+Test = [("VNR+", "VNR-"), ("ASD w/o ID", "SCZ"), ("ASD w/o ID", "ASD with ID"), ("SCZ", "ASD with ID"), ("ASD w/o ID", "DD/ID")]
 SuperCluster = "CGE interneuron"
 plot_mutation_bias_comparison_V2(SuperCluster, datasets, Anno, all_contrasts_df, TestPairs=Test)
 
@@ -320,7 +319,7 @@ from scipy.stats import mannwhitneyu  # <-- correctly import mannwhitneyu
 
 # Datasets mapping
 datasets = {
-    'ASD': HighIQ_ASD_Bias,
+    'ASD w/o ID': HighIQ_ASD_Bias,
     'ASD with ID': LowIQ_ASD_Bias,
     'VNR+': VNR_Pos_Bias,
     'VNR-': VNR_Neg_Bias,
@@ -332,9 +331,9 @@ superclusters = ["CGE interneuron", "MGE interneuron", "LAMP5-LHX6 and Chandelie
 # Swap all pairs (ASD SCZ to SCZ ASD, etc.)
 disorder_pairs = [
     ("SCZ", "ASD with ID"),
-    ("SCZ", "ASD"),
-    ("ASD with ID", "ASD"),
-    ("DD/ID", "ASD"),
+    ("SCZ", "ASD w/o ID"),
+    ("ASD with ID", "ASD w/o ID"),
+    ("DD/ID", "ASD w/o ID"),
     ("VNR-", "VNR+"),
 ]
 
@@ -481,8 +480,8 @@ else:
                 ax.plot([x2, x2], [y, y - cap_height], color='k', lw=1.2, zorder=10, ls='--', alpha=0.7)
                 ax.text((x1 + x2)/2, y + 0.01, f"{format_pval_scientific(pval)}", ha='center', va='bottom', fontsize=10, zorder=11)
 
-            # If specifically for "SCZ to ASD with ID", add MGE > CGE one-tail test
-            if dp == "SCZ to ASD with ID":
+            # If specifically for SCZ to ASD with ID comparison, add MGE > CGE one-tail test
+            if "SCZ" in dp and "ASD with ID" in dp:
                 stat_mge_gt_cge, pval_mge_gt_cge = mannwhitneyu(mge_diffs, cge_diffs, alternative='greater')
                 test_results.append({
                     "DisorderPair": dp,
@@ -573,12 +572,12 @@ SCZ_rm_NDD297_Bias = pd.read_csv(Bias_Save_Dir + "HCT.SCZ61.ExNDD297.csv", index
 # %%
 # Example usage:
 datasets = {
-    'ASD': HighIQ_ASD_Bias,
+    'ASD w/o ID': HighIQ_ASD_Bias,
     'SCZ rm NDD297': SCZ_rm_NDD297_Bias,
     'SCZ rm NDD61': SCZ_rm_NDD61_Bias,
     'SCZ': SCZ_Bias
 }
-TestPairs=[("SCZ rm NDD297", "SCZ"), ("SCZ rm NDD61", "SCZ"), ("SCZ rm NDD297", "ASD"), ("SCZ rm NDD61", "ASD")]
+TestPairs=[("SCZ rm NDD297", "SCZ"), ("SCZ rm NDD61", "SCZ"), ("SCZ rm NDD297", "ASD w/o ID"), ("SCZ rm NDD61", "ASD w/o ID")]
 SuperCluster = "CGE interneuron"
 plot_mutation_bias_comparison(SuperCluster, datasets, Anno, TestPairs=TestPairs)
 
@@ -1274,7 +1273,7 @@ with pd.ExcelWriter(excel_path, engine="openpyxl", mode="a", if_sheet_exists="re
     # Add SCZ_Bias and other bias DataFrames to SuppTable as separate sheets
     Name_Dict = {
         "SCZ_Bias": "Table_S2_Cluster_Bias_SCZ",
-        "HighIQ_ASD_Bias": "Table_S3_Cluster_Bias_ASD",
+        "HighIQ_ASD_Bias": "Table_S3_Cluster_Bias_ASD_woID",
         "LowIQ_ASD_Bias": "Table_S4_Cluster_Bias_ASD_ID",
         "X22q_Bias": "Table_S5_Cluster_Bias_22q11.2",
         "DDD_Bias": "Table_S6_Cluster_Bias_DD",

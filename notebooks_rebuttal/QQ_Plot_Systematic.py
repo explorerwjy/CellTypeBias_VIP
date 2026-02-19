@@ -73,8 +73,8 @@ SHOW_METHODS = ["Random", "Best-of-N"]
 GENE_SETS = OrderedDict([
     ("SCZ", "SCZ"),
     ("ASD (all)", "ASD_All"),
-    ("ASD (high IQ)", "ASD_HIQ"),
-    ("ASD (low IQ)", "ASD_LIQ"),
+    ("ASD w/o ID", "ASD_HIQ"),
+    ("ASD with ID", "ASD_LIQ"),
     ("DDD", "DDD_61"),
     ("22q11.2 del", "22q_del"),
 ])

@@ -260,7 +260,7 @@ EFFECT_Col = "EFFECT"
 #EFFECT_Adj_Col = "EFFECT_Adj"
 values1 = SCZ_Z2_Bias_unique.sort_index()[EFFECT_Col].values
 values2 = ASD_HIQ_Bias_unique.sort_index()[EFFECT_Col].values
-plot_correlation(values2, values1, "SCZ", "HIQ ASD HCT", dpi=80)
+plot_correlation(values2, values1, "SCZ", "ASD w/o ID HCT", dpi=80)
 
 # %% [markdown] heading_collapsed=true
 # ## 22q.11 Bias
