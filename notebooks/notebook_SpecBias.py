@@ -1075,7 +1075,7 @@ print(f"\nAll bias files saved to: {Bias_Save_Dir}")
 # %%
 
 # %%
-Bias_Save_Dir2 = "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/results/random/Centering/"
+Bias_Save_Dir2 = "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/results/main_results/random/Centering/"
 
 VNR_Pos_Bias = pd.read_csv(Bias_Save_Dir2 + "UKBB_VNR_Pos_bias_addP.csv", index_col=0)
 VNR_Neg_Bias = pd.read_csv(Bias_Save_Dir2 + "UKBB_VNR_Neg_bias_addP.csv", index_col=0)

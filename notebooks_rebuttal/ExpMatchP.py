@@ -54,33 +54,7 @@ fm._load_fontmanager(try_read_cache=False)
 plt.style.use('seaborn-v0_8-whitegrid')
 
 # %%
-#Bias_Save_Dir = "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/results/match/Centering/CDS_WB_LOEUF_Tricubic/"
-#Bias_Save_Dir = "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/results/match/Centering/CDS_WB/"
-#Bias_Save_Dir = "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/results/match/Centering/LOEUF/" # This kill ASD most
-#Bias_Save_Dir = "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/results/match/Centering/WB/" # This kill High IQ ASD most, and CGE for LIQ ASD
-#Bias_Save_Dir = "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/results/match/Centering/CDS/" # This actually promote CGE, only kill HIQ ASD
-#Bias_Save_Dir = "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/results/set_level_matched/Centering/"
-#Bias_Save_Dir = "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/results/set_level_matched_sis/Centering/"
-#Bias_Save_Dir = "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/results/set_level_matched_sis_WB_CDS/Centering/"
-#Bias_Save_Dir = "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/results/matched_WB_CDS/Centering/"
-#Bias_Save_Dir = "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/results/set_level_matched_CDS/Centering/"
-
-#Bias_Save_Dir = "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/results/set_level_matched_WB_CDS/Centering/"
-#Bias_Save_Dir = "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/results/set_level_matched_best1000_WB_CDS/Centering/"
-#Bias_Save_Dir = "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/results/random/Centering/"
-
-#Bias_Save_Dir = "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/results/set_level_matched_WB_CDS_PropWeight/Centering/"
-#Bias_Save_Dir = "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/results/set_level_matched_WB_CDS_PropWeight_Tricubic/Centering/"
-#Bias_Save_Dir = "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/results/set_level_matched_WB_CDS_LOEUF_PropWeight_Tricubic/Centering/"
-#Bias_Save_Dir = "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/results/set_level_matched_WB_LOEUF_PropWeight_Tricubic/Centering/"
-#Bias_Save_Dir = "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/results/set_level_matched_CDS_LOEUF_PropWeight_Tricubic/Centering/"
-#Bias_Save_Dir = "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/results/set_level_matched_CDS_WB_PropWeight_Tricubic/Centering/"
-
-Bias_Save_Dir = "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/results/set_level_matched_CDS_WB_PropWeight_Tricubic_v2/Centering/"
-Bias_Save_Dir = "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/results/set_level_matched_WB_mean_phastCons_n_CDS_bases_PropWeight_Tricubic/Centering/"
-Bias_Save_Dir = "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/results/constraint_model_LOEUF_WB_n_CDS_bases_PropWeight_Tricubic/Centering/"
-Bias_Save_Dir = "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/results/conservation_model_WB_mean_phastCons_n_CDS_bases_Best1000/Centering/"
-#Bias_Save_Dir = "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/results/set_level_matched_CDS_WB_LOEUF_PropWeight_Tricubic/Centering/"
+Bias_Save_Dir = "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/results/main_results/matched_WB_mean_phastCons_n_CDS_bases_Best1000/Centering/"
 
 ASD_All_Bias = pd.read_csv(Bias_Save_Dir + "ASD_All_bias_addP.csv", index_col=0)
 SCZ_Bias = pd.read_csv(Bias_Save_Dir + "SCZ_bias_addP.csv", index_col=0)

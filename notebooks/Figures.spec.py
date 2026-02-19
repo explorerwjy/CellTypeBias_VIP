@@ -40,7 +40,7 @@ fm._load_fontmanager(try_read_cache=False)
 plt.style.use('seaborn-v0_8-whitegrid')
 
 # %%
-Bias_Save_Dir = "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/results/systematic_random/Centering/"
+Bias_Save_Dir = "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/results/main_results/random/Centering/"
 ASD_All_Bias = pd.read_csv(Bias_Save_Dir + "ASD_All_bias_addP.csv", index_col=0)
 SCZ_Bias = pd.read_csv(Bias_Save_Dir + "SCZ_bias_addP.csv", index_col=0)
 HighIQ_ASD_Bias = pd.read_csv(Bias_Save_Dir + "ASD_HIQ_bias_addP.csv", index_col=0)
@@ -48,7 +48,7 @@ LowIQ_ASD_Bias = pd.read_csv(Bias_Save_Dir + "ASD_LIQ_bias_addP.csv", index_col=
 X22q_Bias = pd.read_csv(Bias_Save_Dir + "22q_del_bias_addP.csv", index_col=0)
 DDD_Bias = pd.read_csv(Bias_Save_Dir + "DDD_61_bias_addP.csv", index_col=0)
 
-UKBB_Dir = "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/results/random/Centering/"
+UKBB_Dir = "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/results/main_results/random/Centering/"
 VNR_Pos_Bias = pd.read_csv(UKBB_Dir + "UKBB_VNR_Pos_bias_addP.csv", index_col=0)
 VNR_Neg_Bias = pd.read_csv(UKBB_Dir + "UKBB_VNR_Neg_bias_addP.csv", index_col=0)
 EDU_Pos_Bias = pd.read_csv(UKBB_Dir + "UKBB_EDU_Pos_bias_addP.csv", index_col=0)

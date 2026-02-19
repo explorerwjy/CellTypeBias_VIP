@@ -52,7 +52,7 @@ HumanCT_Z2_HCT.shape
 
 # %%
 GeneWeightDIR = "../dat/GeneWeights/"
-Bias_Save_Dir = ProjDIR + "results/random/Centering/"
+Bias_Save_Dir = ProjDIR + "results/main_results/random/Centering/"
 if not os.path.exists(Bias_Save_Dir): # make dir if not exists
     os.makedirs(Bias_Save_Dir)
 
@@ -273,7 +273,7 @@ for i, row in Spark_Denovo_sub.iterrows():
     Spark_Denovo_sub.loc[i, "HIQ_counts"] = HIQ_counts
     if row["pDenovoWEST_Meta"] == 0:
         Spark_Denovo_sub.loc[i, "pDenovoWEST_Meta"] = 1e-6
-    
+
 
 # %%
 # Calculate correlation as genes are removed, sorted by LofZ (descending)
