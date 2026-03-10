@@ -1,0 +1,237 @@
+# scVI Model Configuration
+# Configuration for scVI model architecture and training parameters
+# Used by: scripts/02_train_scvi.py
+#
+# Usage:
+#   python 02_train_scvi.py --config ../configs/scvi_model_config.yaml
+#   python 02_train_scvi.py --config ../configs/scvi_model_config.yaml --n-latent 30  # CLI overrides config
+
+# Model architecture
+model:
+  # Latent space dimensionality
+  # Higher values capture more variance but risk overfitting
+  # Recommended: 30-50 for large atlases, 10-20 for smaller datasets
+  n_latent: 50
+
+  # Number of hidden layers in encoder/decoder
+  # More layers = more expressivity but harder to train
+  # Recommended: 1-3 layers
+  n_layers: 2
+
+  # Number of hidden units per layer
+  # Larger = more capacity, but slower and more memory
+  # Recommended: 128-512
+  n_hidden: 256
+
+  # Dropout rate for regularization
+  # Higher values = more regularization, may help with small datasets
+  # Recommended: 0.1-0.2
+  dropout_rate: 0.1
+
+  # Gene likelihood distribution
+  # Options: "nb" (negative binomial), "zinb" (zero-inflated NB), "poisson"
+  # "nb" recommended for most scRNA-seq data
+  gene_likelihood: "zinb"
+  #gene_likelihood: "nb"
+
+  # Whether to use batch normalization
+  use_batch_norm: "both"  # Options: "encoder", "decoder", "both", "none"
+
+  # Whether to use layer normalization
+  use_layer_norm: "none"  # Options: "encoder", "decoder", "both", "none"
+
+  # Activation function
+  # Options: "relu", "leaky_relu", "softplus"
+  activation_fn: "relu"
+
+
+# Training parameters
+training:
+  # Maximum number of training epochs
+  max_epochs: 400
+
+  # Batch size for training
+  # Larger = faster but more memory; smaller = more stable gradients
+  # Recommended: 128-512
+  batch_size: 512
+
+  # Learning rate
+  # scVI default is 1e-3, adjust if training is unstable
+  learning_rate: 0.001
+
+  # Early stopping configuration
+  early_stopping: true
+  early_stopping_patience: 50
+  early_stopping_min_delta: 0.0
+
+  # Training plan parameters
+  lr_scheduler: true  # Use learning rate scheduler
+  lr_patience: 30     # Patience for LR reduction
+  lr_factor: 0.6      # Factor to reduce LR by
+
+  # Gradient clipping (helps with stability)
+  gradient_clip_val: null  # Set to float (e.g., 1.0) to enable
+
+  # Training seed for reproducibility
+  seed: 42
+
+
+# Hardware configuration
+hardware:
+  # Whether to use GPU (if available)
+  use_gpu: true
+
+  # Number of workers for data loading
+  # Set to 0 for single-threaded (more stable)
+  num_workers: 0
+
+  # Pin memory for faster GPU transfer
+  pin_memory: true
+
+
+# scArches / transfer learning settings
+# These are used when mapping query data (step 03)
+scarches:
+  # Weight decay for surgery
+  weight_decay: 0.0
+
+  # Unfrozen layers during surgery
+  # Options: "all", "none", or list of layer names
+  #unfrozen: "all"
+  unfrozen: "none"
+
+
+# Preset configurations for different use cases
+# Use --preset flag to select one of these
+presets:
+  # Default balanced configuration
+  default:
+    n_latent: 50
+    n_layers: 2
+    n_hidden: 256
+    max_epochs: 400
+    batch_size: 512
+
+  # Quick training for testing/debugging
+  quick:
+    n_latent: 20
+    n_layers: 1
+    n_hidden: 128
+    max_epochs: 50
+    batch_size: 256
+
+  # High capacity for large/complex atlases
+  large:
+    n_latent: 100
+    n_layers: 3
+    n_hidden: 512
+    max_epochs: 500
+    batch_size: 512
+
+  # Memory efficient for limited GPU memory
+  memory_efficient:
+    n_latent: 30
+    n_layers: 2
+    n_hidden: 128
+    max_epochs: 400
+    batch_size: 128
+
+  # For Patch-seq integration specifically
+  patchseq:
+    n_latent: 50
+    n_layers: 2
+    n_hidden: 256
+    max_epochs: 400
+    batch_size: 512
+    dropout_rate: 0.1
+
+
+# =============================================================================
+# EXPERIMENT CONFIGURATIONS
+# For training multiple models with different hyperparameters and comparing
+# =============================================================================
+experiments:
+  # Enable/disable experiment mode
+  enabled: true
+
+  # Base output directory for all experiment results
+  # Each model gets its own subdirectory: results/{model_name}/
+  base_results_dir: "atlas_matching/results"
+
+  # List of model configurations to train and compare
+  # Each experiment will create:
+  #   - results/models/{name}/           (trained model)
+  #   - results/scvi_mapped/{name}/      (mapping results)
+  #   - results/canonical/{name}/        (canonical expression)
+  #   - results/annotated_metadata/{name}/ (annotated metadata)
+  models:
+    # Baseline model - current default
+    - name: "latent50_hidden256_layers2"
+      n_latent: 50
+      n_layers: 2
+      n_hidden: 256
+      max_epochs: 400
+      batch_size: 512
+      description: "Baseline configuration"
+
+    # Smaller latent space - faster, potentially less overfitting
+    - name: "latent30_hidden256_layers2"
+      n_latent: 30
+      n_layers: 2
+      n_hidden: 256
+      max_epochs: 400
+      batch_size: 512
+      description: "Smaller latent dimension"
+
+    # Larger latent space - more capacity
+    - name: "latent100_hidden256_layers2"
+      n_latent: 100
+      n_layers: 2
+      n_hidden: 256
+      max_epochs: 400
+      batch_size: 512
+      description: "Larger latent dimension"
+
+    # Deeper network
+    - name: "latent50_hidden256_layers3"
+      n_latent: 50
+      n_layers: 3
+      n_hidden: 256
+      max_epochs: 400
+      batch_size: 512
+      description: "Deeper network (3 layers)"
+
+    # Wider network
+    - name: "latent50_hidden512_layers2"
+      n_latent: 50
+      n_layers: 2
+      n_hidden: 512
+      max_epochs: 400
+      batch_size: 512
+      description: "Wider hidden layers"
+
+    # Compact model
+    - name: "latent30_hidden128_layers2"
+      n_latent: 30
+      n_layers: 2
+      n_hidden: 128
+      max_epochs: 400
+      batch_size: 512
+      description: "Compact model for faster inference"
+
+  # GPU assignment for parallel training
+  # Maps model index to GPU ID (for multi-GPU systems)
+  gpu_assignment:
+    # Round-robin assignment for 2 GPUs
+    strategy: "round_robin"  # or "manual"
+    num_gpus: 2
+
+    # Manual assignment (if strategy is "manual")
+    # model_name: gpu_id
+    manual:
+      "latent50_hidden256_layers2": 0
+      "latent30_hidden256_layers2": 0
+      "latent100_hidden256_layers2": 1
+      "latent50_hidden256_layers3": 1
+      "latent50_hidden512_layers2": 0
+      "latent30_hidden128_layers2": 1

@@ -1,0 +1,305 @@
+# Human Cortex Interneuron Atlas Matching Configuration
+# Maps human Patch-seq GABAergic interneurons onto the Siletti et al. (2023) human brain cell atlas
+#
+# Reference: Siletti et al. (2023) Science, DOI: 10.1126/science.add7046
+# Query: Lee & Dalley human cortex GABAergic Patch-seq (DANDI 000636)
+
+# =============================================================================
+# Reference Atlas: Siletti et al. 2023 (CZ CELLxGENE)
+# =============================================================================
+reference_atlas:
+  name: "Siletti et al. 2023 Human Brain Cell Atlas"
+  species: "human"
+  technology: "snRNA-seq (10x 3' v3)"
+  total_cells: 3369219  # across all 31 superclusters
+  publication: "Siletti et al. (2023) Science"
+  doi: "10.1126/science.add7046"
+
+  paths:
+    h5ad_dir: "/mnt/data0/HumanBrainCellType/SuperTypeRawDat"
+    annotation_xlsx: "/mnt/data0/HumanBrainCellType/annotation.xlsx"
+    subcluster_annotation_xlsx: "/mnt/data0/HumanBrainCellType/subcluster_annotation.xlsx"
+
+  # Primary interneuron files (MUST include)
+  interneuron_files:
+    CGE:
+      file: "Supercluster_CGE_interneuron.h5ad"
+      cells: 227671
+      clusters: 21  # IDs 276-296
+      subclusters: 180
+      subtypes: ["INT-VIP", "INT-LAMP5"]
+      neurotransmitter: ["GABA", "GABA VGLUT3"]
+    MGE:
+      file: "Supercluster_MGE_interneuron.h5ad"
+      cells: 222434
+      clusters: 26  # IDs 236-263
+      subclusters: 211
+      subtypes: ["INT-SST", "INT-SST INT-SST-CHODL", "INT-PVALB"]
+      neurotransmitter: ["GABA", "GABA VGLUT3"]
+    LAMP5_LHX6_Chandelier:
+      file: "Supercluster_LAMP5_LHX6_and_Chandelier.h5ad"
+      cells: 45118
+      clusters: 12  # IDs 264-275
+      subclusters: 55
+      subtypes: ["CHAND", "INT-LAMP5-LHX6"]
+      neurotransmitter: ["GABA", "GABA VGLUT3"]
+
+  # Decoy (non-interneuron) files for negative control evaluation
+  # Sample a subset of cells from each to test misclassification
+  decoy_files:
+    glutamatergic:
+      - file: "Supercluster_Upper_layer_intratelencephalic.h5ad"
+        cells: 455006
+        sample_n: 5000  # subsample to keep reference tractable
+      - file: "Supercluster_Deep_layer_intratelencephalic.h5ad"
+        cells: 228467
+        sample_n: 5000
+    non_neuronal:
+      - file: "Supercluster_Astrocyte.h5ad"
+        cells: 155025
+        sample_n: 3000
+      - file: "Supercluster_Oligodendrocyte.h5ad"
+        cells: 490246
+        sample_n: 3000
+      - file: "Supercluster_Microglia.h5ad"
+        cells: 91838
+        sample_n: 2000
+
+  # h5ad structure notes
+  data_format:
+    expression_location: "X"  # Raw UMI counts in .X (CSR sparse, float32 int-valued)
+    counts_layer: null  # No separate counts layer; .X IS the raw counts
+    gene_id_format: "ensembl"  # .var index is Ensembl IDs (e.g., ENSG00000144285)
+    gene_symbol_col: "Gene"  # Human-readable symbols in .var["Gene"]
+    n_genes: 59236
+    batch_key: "sample_id"  # sequencing sample (443-505 per supercluster, 4 donors)
+    cell_type_cols:
+      supercluster: "supercluster_term"
+      cluster: "cluster_id"
+      subcluster: "subcluster_id"
+    embedding_cols: ["X_UMAP", "X_tSNE"]
+
+  # Cell type hierarchy
+  hierarchy:
+    levels: ["Supercluster", "Cluster", "Subcluster"]
+    # Supercluster (31) -> Cluster (461) -> Subcluster (3313)
+    interneuron_cluster_ids:
+      CGE: [276, 277, 278, 279, 280, 281, 282, 283, 284, 285, 286, 287, 288, 289, 290, 291, 292, 293, 294, 295, 296]
+      MGE: [236, 239, 240, 241, 242, 243, 244, 245, 246, 247, 248, 249, 250, 251, 252, 253, 254, 255, 256, 257, 258, 259, 260, 261, 262, 263]
+      LAMP5_LHX6_Chandelier: [264, 265, 266, 267, 268, 269, 270, 271, 272, 273, 274, 275]
+
+
+# =============================================================================
+# Query: Human Cortex GABAergic Patch-seq (Lee & Dalley)
+# =============================================================================
+query_dataset:
+  name: "Human Cortex GABAergic Patch-seq (Lee & Dalley)"
+  species: "human"
+  technology: "Patch-seq (Smart-seq2)"
+  sample_count: 778
+  dandi_id: "000636"
+
+  paths:
+    # Expression data
+    expression_csv: "/home/jw3514/Work/NeurSim/EphysSumStats/workspace/HumanCortexGaba/expression_by_cell.csv.gz"
+    metadata_csv: "/home/jw3514/Work/NeurSim/EphysSumStats/workspace/HumanCortexGaba/cell_metadata.csv"
+
+    # Original RData files (for raw count extraction — expression CSV is log2(CPM+1))
+    rdata_part1: "/home/jw3514/Work/NeurSim/human_patchseq_gaba/data/complete_patchseq_data_sets1.RData"
+    rdata_part2: "/home/jw3514/Work/NeurSim/human_patchseq_gaba/data/complete_patchseq_data_sets2.RData"
+    export_script: "/home/jw3514/Work/NeurSim/EphysSumStats/workspace/HumanCortexGaba/export_expression.R"
+
+    # Electrophysiology
+    ephys_features: "/home/jw3514/Work/NeurSim/human_patchseq_gaba/data/LeeDalley_ephys_fx.csv"
+    processed_dandi: "/home/jw3514/Work/NeurSim/data/DANDI/Processed/000636"
+    raw_nwb: "/home/jw3514/Work/NeurSim/data/DANDI/000636"
+
+    # Supplementary data
+    morpho_features: "/home/jw3514/Work/NeurSim/human_patchseq_gaba/data/LeeDalley_morpho_features.csv"
+    donor_table: "/home/jw3514/Work/NeurSim/human_patchseq_gaba/data/DataS1_Donor_table.csv"
+    vgic_genes: "/home/jw3514/Work/NeurSim/human_patchseq_gaba/data/vgic_genes.csv"
+
+  # Expression normalization
+  expression_format:
+    stored_as: "log2(CPM+1)"  # Confirmed: sum(2^x - 1) = 1,000,000.0 exactly for every cell
+    scvi_requires: "integer_counts"
+    action: "Inverse-transform to pseudo-counts: round(2^x - 1)"
+    # CPM values rounded to integers (~1M total per cell). scVI's per-cell size
+    # factor handles the scaling difference vs 10x reference (~5K UMIs/cell).
+    # Original STAR output at Allen-internal paths (inaccessible).
+    # No library size info in any available metadata.
+    n_genes: 50281
+
+  # Metadata columns
+  metadata:
+    cell_id_col: "specimen_id"
+    subclass_col: "subclass_label"      # PVALB, SST, VIP, LAMP5/PAX6/Other
+    ttype_col: "transcriptomic_type"    # Fine t-type labels (e.g., "Inh L2-4 PVALB WFDC2")
+    quality_col: "tree_call"            # Core, I1, I2, I3, PoorQ
+    donor_col: "donor"
+    condition_col: "condition"           # acute vs culture
+    nwb_id_col: "nwb_id"               # Links to DANDI 000636 sessions
+
+  # Cell composition
+  subclass_counts:
+    PVALB: 327
+    SST: 247
+    VIP: 112
+    "LAMP5/PAX6/Other": 92
+
+  quality_counts:
+    Core: 224
+    I1: 170
+    I2: 170
+    I3: 15
+    PoorQ: 199
+
+  # Expected subclass-to-atlas mapping
+  expected_mapping:
+    PVALB: "MGE interneuron"        # INT-PVALB clusters
+    SST: "MGE interneuron"          # INT-SST clusters
+    VIP: "CGE interneuron"          # INT-VIP clusters
+    "LAMP5/PAX6/Other": "CGE interneuron or LAMP5-LHX6 and Chandelier"
+
+
+# =============================================================================
+# Pipeline Parameters
+# =============================================================================
+pipeline:
+  # Reference subsampling (full interneurons are ~495K — may want to subsample)
+  reference_sampling:
+    interneuron_max_per_supercluster: null  # null = use all cells
+    decoy_total: 18000  # total decoy cells across all decoy files
+
+  # Gene selection
+  gene_selection:
+    n_hvgs: 3000
+    hvg_method: "seurat_v3"
+    use_reference_only: true  # Only compute HVGs on reference (not query)
+    force_include_ion_channels: true
+    # Ion channel genes to force-include (human symbols)
+    ion_channel_genes:
+      sodium: [SCN1A, SCN2A, SCN3A, SCN4A, SCN5A, SCN8A]
+      potassium_kv1: [KCNA1, KCNA2, KCNA3, KCNA4, KCNA5, KCNA6]
+      potassium_kv2: [KCNB1, KCNB2]
+      potassium_kv3: [KCNC1, KCNC2, KCNC3, KCNC4]
+      potassium_kv4: [KCND1, KCND2, KCND3]
+      calcium: [CACNA1A, CACNA1B, CACNA1C, CACNA1D, CACNA1E]
+      hcn: [HCN1, HCN2, HCN3, HCN4]
+    # All 30 confirmed present in reference atlas
+
+  # scVI training
+  scvi:
+    n_latent: 50
+    n_layers: 2
+    n_hidden: 256
+    max_epochs: 400
+    early_stopping: true
+    early_stopping_patience: 50
+    dropout_rate: 0.1
+    gene_likelihood: "nb"  # Negative binomial (appropriate for UMI-based snRNA-seq)
+    batch_key: "sample_id"  # Within-reference batch correction
+
+  # Query mapping
+  query_mapping:
+    method: "scarches"  # scArches surgery for Patch-seq integration
+    batch_id: "PatchSeq_Human_GABA"  # New batch category for Smart-seq2 query
+    max_epochs_surgery: 200
+
+  # Hierarchical assignment
+  mapping:
+    k_candidates: 30
+    k_nn: 100  # Match mouse pipeline for robust canonical expression
+    conf_threshold_supercluster: 0.8
+    conf_threshold_cluster: 0.5
+    distance_weighted: true
+    restrict_to_predicted_supercluster: true
+
+  # Canonical expression (post-mapping)
+  canonical_expression:
+    k_nn: 100
+    restrict_to_predicted_subclass: true  # Prevent cross-type contamination
+    compute_full_genome: true  # Recompute with all genes (not just HVGs)
+
+
+# =============================================================================
+# Evaluation Metrics
+# =============================================================================
+evaluation:
+  # Metric 1: Misclassification to non-interneuron types
+  # All Patch-seq cells are interneurons; any mapping to glia/excitatory is an error
+  interneuron_purity:
+    target: 0.99  # >99% should map to interneuron superclusters
+    report_per_subclass: true
+
+  # Metric 2: Concordance with original Patch-seq labels
+  label_concordance:
+    patchseq_label_col: "subclass_label"
+    atlas_label_col: "predicted_supercluster"
+    expected_pairs:
+      PVALB: "MGE interneuron"
+      SST: "MGE interneuron"
+      VIP: "CGE interneuron"
+      # LAMP5 could map to either CGE or LAMP5-LHX6
+    quality_filter: ["Core", "I1"]  # Only evaluate on high-quality cells
+
+  # Metric 3: Fine-grained t-type concordance
+  ttype_concordance:
+    patchseq_col: "transcriptomic_type"
+    atlas_col: "predicted_cluster"
+    evaluate_top_k: [1, 3, 5]  # Top-k accuracy
+
+  # CCK basket cell identification (downstream)
+  cck_basket_analysis:
+    # CCK basket cells are CGE-derived, fast-spiking, PV-like ephys
+    target_patchseq_types:
+      - "Inh L2-4 PVALB WFDC2"   # Potential CCK basket (PV-like ephys, CGE origin)
+      - "Inh L1-3 VIP CCDC184"   # VIP/CCK+ interneurons
+    cge_clusters_to_examine: [276, 277, 278, 279, 280, 281, 282, 283, 284, 285, 286, 287, 288, 289, 290, 291, 292, 293, 294, 295, 296]
+    ephys_features_of_interest:
+      - "spike_frequency_Hz"
+      - "avg_ap_width_ms"
+      - "avg_upstroke_downstroke_ratio"
+      - "input_resistance"
+      - "current_threshold_pA"
+
+
+# =============================================================================
+# Output Configuration
+# =============================================================================
+output:
+  results_dir: "results/human_interneuron"
+  subdirs:
+    preprocessed: "results/human_interneuron/preprocessed"
+    models: "results/human_interneuron/models"
+    mapped: "results/human_interneuron/scvi_mapped"
+    canonical: "results/human_interneuron/canonical"
+    evaluation: "results/human_interneuron/evaluation"
+    figures: "results/human_interneuron/figures"
+
+
+# =============================================================================
+# Identifier Cross-Reference
+# =============================================================================
+identifiers:
+  # Patch-seq primary key
+  specimen_id:
+    description: "Allen cell database ID (int64, e.g., 636982263)"
+    found_in: ["cell_metadata.csv", "expression_by_cell.csv.gz", "LeeDalley_ephys_fx.csv"]
+
+  # DANDI link
+  nwb_id:
+    description: "DANDI 000636 session ID — maps to sub-XXX_ses-{nwb_id}_icephys.nwb"
+    found_in: ["cell_metadata.csv (via nwb_id column)"]
+    coverage: "734/778 cells"
+
+  # Reference atlas cell ID
+  cell_id:
+    description: "CellID in h5ad .obs index (format: 10X270_7:CCTCTCCAGGGCCAAT)"
+    linked_to: "cluster_id and subcluster_id in .obs"
+
+  # Gene ID mapping
+  genes:
+    reference: "Ensembl IDs (.var index) -> Gene symbols (.var['Gene'])"
+    query: "Gene symbols (column names in expression CSV)"
+    action: "Map via .var['Gene'] column; genes not in intersection are dropped"

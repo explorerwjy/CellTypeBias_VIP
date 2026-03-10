@@ -1,0 +1,256 @@
+# Cross-Species Mouse→Human CCKBC Mapping Configuration
+# Maps mouse Patch-seq cells (with known CCKBC labels) onto the human Siletti atlas
+# to identify which human CGE clusters correspond to mouse CCKBCs.
+
+# =============================================================================
+# Human Reference Atlas: Siletti et al. 2023
+# =============================================================================
+human_reference:
+  h5ad_dir: "/mnt/data0/HumanBrainCellType/SuperTypeRawDat"
+
+  # Primary interneuron superclusters (full representation)
+  interneuron_files:
+    CGE:
+      file: "Supercluster_CGE_interneuron.h5ad"
+      total_cells: 227671
+      subsample_n: 50000
+    MGE:
+      file: "Supercluster_MGE_interneuron.h5ad"
+      total_cells: 222434
+      subsample_n: 50000
+    LAMP5_LHX6_Chandelier:
+      file: "Supercluster_LAMP5_LHX6_and_Chandelier.h5ad"
+      total_cells: 45118
+      subsample_n: 45000  # Nearly all — small file
+
+  # Control superclusters (smaller representation for context)
+  control_files:
+    Upper_layer_Glut:
+      file: "Supercluster_Upper_layer_intratelencephalic.h5ad"
+      total_cells: 455006
+      subsample_n: 10000
+    Deep_layer_Glut:
+      file: "Supercluster_Deep_layer_intratelencephalic.h5ad"
+      total_cells: 228467
+      subsample_n: 10000
+    Astrocyte:
+      file: "Supercluster_Astrocyte.h5ad"
+      total_cells: 155025
+      subsample_n: 5000
+    Oligodendrocyte:
+      file: "Supercluster_Oligodendrocyte.h5ad"
+      total_cells: 490246
+      subsample_n: 5000
+
+  # h5ad structure
+  data_format:
+    expression_location: "X"  # Raw UMI counts in .X (CSR sparse)
+    gene_id_format: "ensembl"  # .var index = Ensembl IDs
+    gene_symbol_col: "Gene"    # Human symbols in .var['Gene']
+    batch_key: "sample_id"
+    cell_type_cols:
+      supercluster: "supercluster_term"
+      cluster: "cluster_id"
+      subcluster: "subcluster_id"
+
+# =============================================================================
+# Mouse Reference Atlas: Allen Brain Cell Atlas (WMB-10Xv3)
+# =============================================================================
+mouse_reference:
+  expression_dir: "/mnt/data0/AllenMouseSC/abc_download_root/expression_matrices/WMB-10Xv3/20230630"
+  metadata_csv: "/mnt/data0/AllenMouseSC/abc_download_root/metadata/WMB-10X/20230830/views/cell_metadata_with_cluster_annotation.csv"
+
+  # Brain regions to include (cortex + hippocampus + amygdala)
+  # ROI acronyms from region_of_interest_acronym column
+  region_filter:
+    include_prefixes:
+      - "VIS"     # Visual cortex
+      - "ACA"     # Anterior cingulate
+      - "MOp"     # Primary motor
+      - "MOs"     # Secondary motor
+      - "SSp"     # Primary somatosensory
+      - "SSs"     # Secondary somatosensory
+      - "RSP"     # Retrosplenial
+      - "PL"      # Prelimbic
+      - "ILA"     # Infralimbic
+      - "ORB"     # Orbital
+      - "AI"      # Agranular insular
+      - "TEa"     # Temporal association
+      - "ECT"     # Ectorhinal
+      - "PERI"    # Perirhinal
+      - "CA"      # Hippocampal CA
+      - "DG"      # Dentate gyrus
+      - "SUB"     # Subiculum
+      - "ProS"    # Prosubiculum
+      - "BLA"     # Basolateral amygdala
+      - "BMA"     # Basomedial amygdala
+      - "LA"      # Lateral amygdala
+      - "ENT"     # Entorhinal
+
+  # Filter metadata to WMB-10Xv3 dataset (expression files are WMB-10Xv3 only)
+  dataset_filter: "WMB-10Xv3"
+
+  # Expression matrix region files to load (cortex + hippocampus + amygdala)
+  expression_files:
+    - "WMB-10Xv3-Isocortex-1-raw.h5ad"
+    - "WMB-10Xv3-Isocortex-2-raw.h5ad"
+    - "WMB-10Xv3-HPF-raw.h5ad"
+    - "WMB-10Xv3-OLF-raw.h5ad"   # Olfactory / cortex-adjacent regions
+    - "WMB-10Xv3-CTXsp-raw.h5ad"  # Cortical subplate: BLA, BMA, LA (amygdala)
+
+  # Cell class filters (from 'class' column in metadata)
+  # Actual Allen WMB-10Xv3 class names in cortex/hippocampus:
+  #   '06 CTX-CGE GABA' (95K), '07 CTX-MGE GABA' (87K)
+  #   '01 IT-ET Glut' (714K), '02 NP-CT-L6b Glut' (244K)
+  #   '30 Astro-Epen' (53K), '31 OPC-Oligo' (42K)
+  cell_class_filter:
+    include_classes:
+      - "06 CTX-CGE GABA"
+      - "07 CTX-MGE GABA"
+      - "01 IT-ET Glut"
+      - "02 NP-CT-L6b Glut"
+      - "30 Astro-Epen"
+      - "31 OPC-Oligo"
+
+  # Subsampling limits per broad cell class
+  subsampling:
+    GABAergic: 50000   # Sncg + Vip + Lamp5 + Pvalb + Sst subclasses
+    Glutamatergic: 10000  # IT-ET + NP-CT-L6b
+    NonNeuronal: 5000     # Astro-Epen + OPC-Oligo
+
+# =============================================================================
+# Mouse Patch-seq Query
+# =============================================================================
+mouse_patchseq:
+  data_dir: "/home/jw3514/Work/NeurSim/TransEphys/dat/expression"
+  V1:
+    counts: "V1_patchseq_counts.csv"
+    metadata: "V1_patchseq_metadata.csv"
+  M1:
+    counts: "M1_patchseq_counts.csv.gz"
+    metadata: "M1_patchseq_metadata.csv"
+    ephys_features: "M1_patchseq_ephys_features.csv"
+
+  # CCKBC identification in mouse
+  cckbc_definition:
+    # Based on Gouwens et al. 2020 Supplementary Table 1
+    # See docs/cckbc_definition.md for full rationale
+    #
+    # 1. Sncg subclass = large CCK basket cells
+    # 2. Vip Sncg supertype = small CCK basket cells
+    # 3. Vip Serpinf1 supertype = deep CCK+ cells
+    sncg_subclass_prefixes: ["Sncg"]          # V1: types starting with "Sncg" (AIT2.3.1 alias)
+    vip_cckbc_supertypes: ["Vip Sncg", "Vip Serpinf1"]  # M1: exact supertype matches
+    m1_family_include: ["Sncg"]               # M1: RNA family == "Sncg"
+    # Explicit exclusions (Vip types that are NOT CCKBCs)
+    exclude_types: ["Mybpc1", "Col15a1", "Chat", "Gpc3", "Htr1f", "C1ql1", "Lmo1"]
+
+# =============================================================================
+# Ortholog Mapping
+# =============================================================================
+orthologs:
+  mouse2human_symbol_pickle: "/home/jw3514/Work/ASD_Circuits_CellType/dat/Mouse2Human_Symbol.pk"
+  mouse2human_entrez_pickle: "/home/jw3514/Work/ASD_Circuits_CellType/dat/Mouse2Human_Entrez.pk"
+  hom_table: "/home/jw3514/Work/ASD_Circuits_CellType/dat/HOM_MouseHumanSequence.rpt"
+
+# =============================================================================
+# scVI Training Parameters
+# =============================================================================
+scvi:
+  n_latent: 50
+  n_hidden: 256
+  n_layers: 2
+  gene_likelihood: "nb"
+  max_epochs: 400
+  early_stopping: true
+  early_stopping_patience: 20
+  batch_size: 1024
+  train_size: 0.9
+  batch_key: "sample_species"  # sample_id + species suffix
+
+# =============================================================================
+# Gene Selection
+# =============================================================================
+gene_selection:
+  n_hvgs_per_species: 2000    # Top 2000 HVGs per species, union -> ~3000-4000
+  hvg_method: "seurat_v3"
+
+  # Forced marker genes (human symbols — mouse will be mapped via orthologs)
+  forced_genes:
+    interneuron_markers:
+      - VIP
+      - CCK
+      - SST
+      - PVALB
+      - SNCG
+      - CALB2
+      - CHRM2
+      - SERPINF1
+      - CNR1
+      - LAMP5
+      - LHX6
+      - ADARB2
+      - RELN
+    ion_channels:
+      sodium: [SCN1A, SCN2A, SCN3A, SCN8A]
+      potassium_kv1: [KCNA1, KCNA2, KCNA3, KCNA4, KCNA5, KCNA6]
+      potassium_kv2: [KCNB1, KCNB2]
+      potassium_kv3: [KCNC1, KCNC2, KCNC3, KCNC4]
+      potassium_kv4: [KCND1, KCND2, KCND3]
+      calcium: [CACNA1A, CACNA1B, CACNA1C, CACNA1D, CACNA1E]
+      hcn: [HCN1, HCN2, HCN3, HCN4]
+
+# =============================================================================
+# scArches Query Mapping
+# =============================================================================
+scarches:
+  max_epochs: 200
+  batch_size: 128
+  freeze_dropout: true
+
+# =============================================================================
+# Hierarchical Assignment
+# =============================================================================
+mapping:
+  k_candidates: 30
+  n_neighbors_global: 100
+  min_neighbors_candidates: 10
+  conf_threshold_high: 0.8
+  conf_threshold_medium: 0.5
+  conf_threshold_low: 0.3
+  distance_weighted: true
+
+# =============================================================================
+# Human Patch-seq Validation
+# =============================================================================
+validation:
+  human_patchseq_mapping: "results/human_interneuron/scanvi_mapped/mapping_results.csv"
+  human_patchseq_ephys: "/home/jw3514/Work/NeurSim/human_patchseq_gaba/data/LeeDalley_ephys_fx.csv"
+
+  # Ephys-based CCKBC cluster assignments from cge_cckbc_ephys_analysis.py
+  cluster_groups:
+    CCKBC: [284, 289]
+    "High-rate VIP": [290]
+    "Irregular VIP": [291, 292]
+    "Regular VIP": [279, 280]
+    "LAMP5": [278, 287, 288]
+
+# =============================================================================
+# 22q Mutation Bias Data
+# =============================================================================
+bias_data:
+  bias_results_dir: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/results"
+  gene_weights_dir: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights"
+  annotation_xlsx: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/annotation.xlsx"
+
+# =============================================================================
+# Output
+# =============================================================================
+output:
+  results_dir: "results/cross_species"
+  subdirs:
+    orthologs: "results/cross_species/orthologs"
+    preprocessed: "results/cross_species/preprocessed"
+    models: "results/cross_species/models"
+    mapped: "results/cross_species/mapped"
+    figures: "results/cross_species/figures"

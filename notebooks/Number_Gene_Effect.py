@@ -393,8 +393,244 @@ plot_gene_set_correlation(
     corr_unweighted_label="Bias Correlation (Unweighted)"
 )
 
-# %%
+# %% [markdown]
+# # Reviewer Figure R3.2a: SCZ Split-Half Bias Comparison
+#
+# Do added SCZ genes (62-200) carry concordant cell-type signal,
+# or are they noise? Compare bias profiles of top-61 vs added vs random.
+#
+# Supports reply to Reviewer #3, Point 2, Paragraph 1 (concordant signal).
 
 # %%
+from scipy.stats import spearmanr
+
+# Compute bias for three gene subsets
+top61_gw = dict(zip(GeneWeights.index[:61], GeneWeights["Weight"].values[:61]))
+added_gw = dict(zip(GeneWeights.index[61:200], GeneWeights["Weight"].values[61:200]))
+
+top61_bias = HumanCT_AvgZ_Weighted(HumanCT_Z2_HCT, top61_gw)
+top61_bias = AnnotateCTDat(top61_bias, Anno)
+
+added_bias = HumanCT_AvgZ_Weighted(HumanCT_Z2_HCT, added_gw)
+added_bias = AnnotateCTDat(added_bias, Anno)
+
+# Random control: 139 genes not in SCZ top-200, with average weight of added genes
+np.random.seed(42)
+exclude_set = set(GeneWeights.index[:200].astype(int))
+gene_pool = [g for g in HumanCT_Z2_HCT.index.values if g not in exclude_set]
+random_genes = np.random.choice(gene_pool, size=139, replace=False)
+avg_added_weight = GeneWeights["Weight"].values[61:200].mean()
+random_gw = dict(zip(random_genes, np.ones(139) * avg_added_weight))
+random_bias = HumanCT_AvgZ_Weighted(HumanCT_Z2_HCT, random_gw)
+random_bias = AnnotateCTDat(random_bias, Anno)
+
+# Correlations
+common_idx = top61_bias.index
+neur_mask = top61_bias.index.isin(Neur_idx)
+
+r_added_all, p_added_all = spearmanr(top61_bias["EFFECT"], added_bias.loc[common_idx, "EFFECT"])
+r_added_neur, p_added_neur = spearmanr(top61_bias.loc[neur_mask, "EFFECT"], added_bias.loc[top61_bias.loc[neur_mask].index, "EFFECT"])
+r_rand_all, p_rand_all = spearmanr(top61_bias["EFFECT"], random_bias.loc[common_idx, "EFFECT"])
+
+print(f"Top-61 vs Added (62-200):  all CTs r={r_added_all:.3f} (p={p_added_all:.2e}), neurons r={r_added_neur:.3f} (p={p_added_neur:.2e})")
+print(f"Top-61 vs Random (n=139):  all CTs r={r_rand_all:.3f} (p={p_rand_all:.2e})")
+
+print("\nTop 5 superclusters — Top-61 genes:")
+for sc, val in top61_bias.groupby("Supercluster")["EFFECT"].mean().sort_values(ascending=False).head(5).items():
+    print(f"  {sc}: {val:.4f}")
+
+print("\nTop 5 superclusters — Added genes (62-200):")
+for sc, val in added_bias.groupby("Supercluster")["EFFECT"].mean().sort_values(ascending=False).head(5).items():
+    print(f"  {sc}: {val:.4f}")
+
+# %%
+fig, axes = plt.subplots(1, 2, figsize=(12, 5), dpi=120)
+
+for ax_idx, (comp_bias, comp_label, r_val, p_val) in enumerate([
+    (added_bias, "Added genes (62-200)", r_added_all, p_added_all),
+    (random_bias, "Random genes (n=139)", r_rand_all, p_rand_all),
+]):
+    ax = axes[ax_idx]
+    x = top61_bias["EFFECT"].values
+    y = comp_bias.loc[common_idx, "EFFECT"].values
+
+    ax.scatter(x[neur_mask], y[neur_mask], color="red", alpha=0.4, s=20,
+               edgecolors="white", lw=0.3, label="Neuronal", zorder=3)
+    ax.scatter(x[~neur_mask], y[~neur_mask], color="blue", alpha=0.5, s=20,
+               edgecolors="white", lw=0.3, label="Non-neuronal", zorder=4)
+
+    # Reference line
+    lims = [min(x.min(), y.min()), max(x.max(), y.max())]
+    ax.plot(lims, lims, "k--", lw=0.8, alpha=0.4)
+    ax.axhline(0, color="gray", lw=0.5, alpha=0.3)
+    ax.axvline(0, color="gray", lw=0.5, alpha=0.3)
+
+    ax.set_xlabel("Top-61 SCZ genes — EFFECT", fontsize=11)
+    ax.set_ylabel(f"{comp_label} — EFFECT", fontsize=11)
+    ax.set_title(chr(65 + ax_idx), fontweight="bold", loc="left", fontsize=14)
+    ax.legend(fontsize=9, framealpha=0.8)
+    ax.text(0.97, 0.03, f"ρ = {r_val:.3f}\np = {p_val:.1e}",
+            transform=ax.transAxes, ha="right", va="bottom", fontsize=10,
+            bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8))
+    for spine in ["top", "right"]:
+        ax.spines[spine].set_visible(False)
+
+fig.suptitle("R3.2a — SCZ: Added genes carry concordant cell-type signal", fontsize=13, fontweight="bold")
+fig.tight_layout()
+fig.patch.set_alpha(0)
+plt.show()
+
+# %% [markdown]
+# # Reviewer Figure R3.2b: Sliding Window Correlation Decay (SCZ)
+#
+# Use a sliding window of 61 genes to show how far down the ranked list
+# the cell-type bias signal persists.
+#
+# Supports reply to Reviewer #3, Point 2, Paragraph 1 (signal persistence).
+
+# %%
+GeneDF = pd.read_csv("../dat/SCZ.ALLGENE.MutCountModified.csv", index_col=0)
+
+# Add P-values to full gene weight list (if not already present)
+for i in GeneWeights.index:
+    if i in GeneDF.index.values:
+        GeneWeights.loc[i, "Pval"] = GeneDF.loc[i, "P meta"]
+
+window_size = 61
+start_ranks = np.arange(0, 200 - window_size + 1, 10)
+window_corrs = []
+window_mean_pvals = []
+
+for start in start_ranks:
+    end = start + window_size
+    w_gw = dict(zip(GeneWeights.index[start:end], GeneWeights["Weight"].values[start:end]))
+    w_bias = HumanCT_AvgZ_Weighted(HumanCT_Z2_HCT, w_gw)
+    w_bias = AnnotateCTDat(w_bias, Anno)
+    r, _ = spearmanr(top61_bias["EFFECT"], w_bias.loc[common_idx, "EFFECT"])
+    window_corrs.append(r)
+
+    pvals_in_window = GeneWeights.iloc[start:end]["Pval"].dropna().astype(float)
+    window_mean_pvals.append(pvals_in_window.mean() if len(pvals_in_window) > 0 else np.nan)
+
+# %%
+fig, ax1 = plt.subplots(figsize=(7, 4.5), dpi=120)
+
+color_corr = "#1f77b4"
+color_pval = "#d62728"
+
+ax1.plot(start_ranks + 1, window_corrs, color=color_corr, marker="o", markersize=5, lw=2, label="Spearman ρ with top-61")
+ax1.set_xlabel("Starting gene rank", fontsize=12)
+ax1.set_ylabel("Spearman ρ (window bias vs top-61 bias)", color=color_corr, fontsize=11)
+ax1.tick_params(axis="y", labelcolor=color_corr)
+ax1.set_ylim(-0.1, 1.05)
+ax1.axhline(0, color="gray", lw=0.5, alpha=0.5)
+
+ax2 = ax1.twinx()
+ax2.plot(start_ranks + 1, -np.log10(np.array(window_mean_pvals)),
+         color=color_pval, marker="s", markersize=4, lw=1.5, ls="--",
+         label=r"$-\log_{10}$(mean P-value)")
+ax2.set_ylabel(r"$-\log_{10}$(mean P-value in window)", color=color_pval, fontsize=11)
+ax2.tick_params(axis="y", labelcolor=color_pval)
+
+# Combined legend
+lines1, labels1 = ax1.get_legend_handles_labels()
+lines2, labels2 = ax2.get_legend_handles_labels()
+ax1.legend(lines1 + lines2, labels1 + labels2, loc="upper right", fontsize=9, framealpha=0.8)
+
+ax1.set_title("R3.2b — SCZ: Sliding window (61 genes) correlation decay", fontweight="bold", fontsize=12)
+for spine in ["top"]:
+    ax1.spines[spine].set_visible(False)
+    ax2.spines[spine].set_visible(False)
+
+fig.tight_layout()
+fig.patch.set_alpha(0)
+plt.show()
+
+idx_below = np.searchsorted(-np.array(window_corrs), -0.3)
+if idx_below < len(start_ranks):
+    print(f"Signal persistence: ρ > 0.3 until rank ~{start_ranks[idx_below] + 1}")
+else:
+    print(f"Signal persistence: ρ > 0.3 across ALL windows (min ρ = {min(window_corrs):.3f})")
+
+# %% [markdown]
+# # Reviewer Figure R3.2c: Cross-Disorder Effect Size vs Gene Set Size
+#
+# At N=61, SCZ/ASD(ID)/DDD have comparable CGE effect sizes.
+# Beyond 61, SCZ dilutes faster — justifying N=61 as the regime
+# where cross-disorder comparisons are fair.
+#
+# Supports reply to Reviewer #3, Point 2, Paragraph 3 (effect size divergence).
+
+# %%
+# Load expanded gene weight files for ASD(ID) and DDD
+LIQ_GW_full = pd.read_csv(GeneWeightDIR + "LIQ.top500.gw", index_col=0, header=None, names=["Weight"])
+DDD_GW_full = pd.read_csv(GeneWeightDIR + "DDD.hc.gw", index_col=0, header=None, names=["Weight"])
+
+print(f"SCZ: {len(GeneWeights)} genes, ASD(ID): {len(LIQ_GW_full)} genes, DDD: {len(DDD_GW_full)} genes")
+
+# %%
+gene_counts_sweep = [20, 30, 40, 50, 61, 80, 100, 120, 150, 175, 200]
+
+def compute_bias_stats(gw_df, n_genes):
+    n = min(n_genes, len(gw_df))
+    gw = dict(zip(gw_df.index[:n], gw_df["Weight"].values[:n]))
+    bias = HumanCT_AvgZ_Weighted(HumanCT_Z2_HCT, gw)
+    bias = AnnotateCTDat(bias, Anno)
+    neur = bias.loc[bias.index.isin(Neur_idx)]
+    cge = bias.loc[bias["Supercluster"] == "CGE interneuron", "EFFECT"]
+    return {
+        "n": n,
+        "mean_cge": cge.mean(),
+        "std_neur": neur["EFFECT"].std(),
+    }
+
+results_scz = [compute_bias_stats(GeneWeights, n) for n in gene_counts_sweep]
+results_asd = [compute_bias_stats(LIQ_GW_full, n) for n in gene_counts_sweep]
+results_ddd = [compute_bias_stats(DDD_GW_full, n) for n in gene_counts_sweep]
+
+# %%
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5), dpi=120)
+
+colors = {"SCZ": "#ff7f0e", "ASD with ID": "#1f77b4", "DDD": "#2ca02c"}
+
+# Panel A: CGE interneuron mean effect
+for res_list, label in [(results_scz, "SCZ"), (results_asd, "ASD with ID"), (results_ddd, "DDD")]:
+    ns = [r["n"] for r in res_list]
+    vals = [r["mean_cge"] for r in res_list]
+    ax1.plot(ns, vals, marker="o", markersize=5, lw=2, color=colors[label], label=label)
+
+ax1.axvline(61, color="gray", ls="--", lw=1.5, alpha=0.6, label="N = 61")
+ax1.set_xlabel("Number of genes", fontsize=12)
+ax1.set_ylabel("Mean CGE interneuron effect", fontsize=12)
+ax1.set_title("A", fontweight="bold", loc="left", fontsize=14)
+ax1.legend(fontsize=9, framealpha=0.8)
+for spine in ["top", "right"]:
+    ax1.spines[spine].set_visible(False)
+
+# Panel B: Neuronal effect std (discrimination)
+for res_list, label in [(results_scz, "SCZ"), (results_asd, "ASD with ID"), (results_ddd, "DDD")]:
+    ns = [r["n"] for r in res_list]
+    vals = [r["std_neur"] for r in res_list]
+    ax2.plot(ns, vals, marker="o", markersize=5, lw=2, color=colors[label], label=label)
+
+ax2.axvline(61, color="gray", ls="--", lw=1.5, alpha=0.6, label="N = 61")
+ax2.set_xlabel("Number of genes", fontsize=12)
+ax2.set_ylabel("Std of neuronal effects (discrimination)", fontsize=12)
+ax2.set_title("B", fontweight="bold", loc="left", fontsize=14)
+ax2.legend(fontsize=9, framealpha=0.8)
+for spine in ["top", "right"]:
+    ax2.spines[spine].set_visible(False)
+
+fig.suptitle("R3.2c — Effect size comparable at N=61, SCZ dilutes faster beyond", fontsize=13, fontweight="bold")
+fig.tight_layout()
+fig.patch.set_alpha(0)
+plt.show()
+
+# Print key numbers
+print("\n=== CGE effect at key gene set sizes ===")
+print(f"{'N':>5s}  {'SCZ':>8s}  {'ASD(ID)':>8s}  {'DDD':>8s}")
+for i, n in enumerate(gene_counts_sweep):
+    if n in [61, 100, 200]:
+        print(f"{n:5d}  {results_scz[i]['mean_cge']:8.4f}  {results_asd[i]['mean_cge']:8.4f}  {results_ddd[i]['mean_cge']:8.4f}")
 
 # %%
