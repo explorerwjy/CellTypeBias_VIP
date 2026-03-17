@@ -55,7 +55,7 @@ Mut_n_IQ = pd.read_csv("../dat/ASD_IQ_Mut.csv")
 Mut_n_IQ.columns.values
 
 # %%
-Spark_Denovo = pd.read_excel("../dat/41588_2022_1148_MOESM4_ESM.xlsx",
+Spark_Denovo = pd.read_excel("../dat/suppl.data/41588_2022_1148_MOESM4_ESM.xlsx",
                            skiprows=2, sheet_name="Table S7")
 Spark_Denovo = Spark_Denovo[Spark_Denovo[
     "pDenovoWEST_Meta"]!="."]

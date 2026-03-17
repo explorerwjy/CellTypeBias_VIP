@@ -261,7 +261,7 @@ plot_gene_set_correlation(
 # ASD references will be computed inline after weights are built (below)
 
 # %%
-Spark_Denovo = pd.read_excel("../dat/41588_2022_1148_MOESM4_ESM.xlsx",
+Spark_Denovo = pd.read_excel("../dat/suppl.data/41588_2022_1148_MOESM4_ESM.xlsx",
                            skiprows=2, sheet_name="Table S7")
 Spark_Denovo = Spark_Denovo[Spark_Denovo[
     "pDenovoWEST_Meta"]!="."]

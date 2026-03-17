@@ -41,7 +41,7 @@ HumanCT_Z2_HCT.shape
 # # SCZ
 
 # %% hidden=true
-GeneDF = pd.read_excel("../dat/41586_2022_4556_MOESM3_ESM.xlsx",
+GeneDF = pd.read_excel("../dat/suppl.data/41586_2022_4556_MOESM3_ESM.xlsx",
                     sheet_name="Table S5 - Gene Results")
 ExAC_pLI = pd.read_csv("/home/jw3514/Work/Resources/gnomad.v2.1.1.lof_metrics.by_gene.txt", sep="\t",
                       index_col="gene")
@@ -437,7 +437,7 @@ for CT in Neurons:
 # ## High IQ vs Low IQ
 
 # %% hidden=true
-Spark_Denovo = pd.read_excel("../dat/41588_2022_1148_MOESM4_ESM.xlsx",
+Spark_Denovo = pd.read_excel("../dat/suppl.data/41588_2022_1148_MOESM4_ESM.xlsx",
                            skiprows=2, sheet_name="Table S7")
 Spark_Denovo = Spark_Denovo[Spark_Denovo[
     "pDenovoWEST_Meta"]!="."]
@@ -923,7 +923,7 @@ GEE_GW
 # verbal-numerical reasoning (VNR)
 
 # %%
-CogDF = pd.read_excel("../dat/41588_2023_1398_MOESM3_ESM.xlsx", sheet_name="Table S4")
+CogDF = pd.read_excel("../dat/suppl.data/41588_2023_1398_MOESM3_ESM.xlsx", sheet_name="Table S4")
 CogDF = CogDF[CogDF["POPULATION"]=="EUR"]
 
 

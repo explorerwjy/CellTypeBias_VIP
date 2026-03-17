@@ -27,7 +27,8 @@
 # - ASD_All (EWS): pLI-stratified weights, N = 42,607
 # - ASD_HIQ (IQ > 70): equal weights, N = 4,876
 # - ASD_LIQ (IQ ≤ 70): equal weights, N = 2,619
-# - DDD: equal weights, N = 31,058 (was incorrectly 42,607)
+# - DDD top-61: equal weights, N = 31,058 (was incorrectly 42,607)
+# - DDD top-285: all 285 genome-wide significant genes (Kaplanis et al. 2020), N = 31,058
 #
 # SCZ is already corrected (case–control expected count subtraction).
 
@@ -78,7 +79,7 @@ print(f"Expression matrix genes: {len(expr_genes)}")
 # - Unconstrained (pLI < 0.5): wLGD = 0.138, wDmis = 0.130
 
 # %%
-ews = pd.read_excel(PROJ_DIR / "dat" / "41588_2022_1148_MOESM4_ESM.xlsx",
+ews = pd.read_excel(PROJ_DIR / "dat" / "suppl.data" / "41588_2022_1148_MOESM4_ESM.xlsx",
                      sheet_name="Table S7", header=2)
 print(f"EWS table: {len(ews)} genes")
 
@@ -258,11 +259,17 @@ old_ddd_entrez = set(old_ddd["Entrez"].values)
 
 # Compute corrected weights using Aggregate_Gene_Weights_NDD logic
 # wLGD=1, wMis=1 (equal weights, matching existing scheme)
+# IMPORTANT: keep the same 61 genes as original (selected by p_denovowest),
+# only correct their weights for background mutation rate.
 gene2weight_ddd = {}
 for _, row in ddd_sig.iterrows():
     try:
         g = int(row["EntrezID"])
     except (ValueError, TypeError):
+        continue
+
+    # Only keep genes from original top-61 set (ranked by p_denovowest)
+    if g not in old_ddd_entrez:
         continue
 
     nLGD = (row["frameshift_variant"] + row["splice_acceptor_variant"]
@@ -279,10 +286,9 @@ for _, row in ddd_sig.iterrows():
     weight = (nLGD - exp_lgd) * 1 + (nMis - exp_mis) * 1  # equal weights
     gene2weight_ddd[g] = weight
 
-# Take top 61 by weight (matching original)
-top_ddd = sorted(gene2weight_ddd.items(), key=lambda x: x[1], reverse=True)[:61]
-print(f"\nCorrected DDD: {len(gene2weight_ddd)} total, top 61 saved")
-print(f"Genes with negative weight (all): {sum(1 for v in gene2weight_ddd.values() if v <= 0)}")
+top_ddd = sorted(gene2weight_ddd.items(), key=lambda x: x[1], reverse=True)
+print(f"\nCorrected DDD: {len(gene2weight_ddd)} genes (same membership as original)")
+print(f"Genes with negative weight: {sum(1 for v in gene2weight_ddd.values() if v <= 0)}")
 
 # Save
 out_ddd = GW_DIR / "DDD.top61.gw.bgmr.csv"
@@ -293,18 +299,69 @@ with open(out_ddd, "w", newline="") as f:
 print(f"Saved → {out_ddd}")
 
 # %% [markdown]
+# ## D2. DDD top-285: All significant genes with BGMR correction
+#
+# Kaplanis et al. (2020) report 285 genome-wide significant genes.
+# The previous `DDD.hc.gw` used `Nproband=42,607` (wrong — ASD default).
+# Here we re-generate with correct `N=31,058` and take top 285 by significance.
+
+# %%
+# Use same ddd DataFrame loaded in section D
+N_DDD_285 = 285
+
+# Sort by significance, take top 285 (as reported in the paper)
+ddd_top285 = ddd.sort_values("denovoWEST_p_full").head(N_DDD_285).copy()
+ddd_top285["EntrezID"] = ddd_top285["symbol"].map(name2entrez)
+n_mapped_285 = ddd_top285["EntrezID"].notna().sum()
+print(f"DDD top 285 genes, mapped to Entrez: {n_mapped_285}/{N_DDD_285}")
+
+# Compute BGMR-corrected weights (wLGD=1, wMis=1, N=31,058)
+gene2weight_ddd285 = {}
+for _, row in ddd_top285.iterrows():
+    try:
+        g = int(row["EntrezID"])
+    except (ValueError, TypeError):
+        continue
+
+    nLGD = (row["frameshift_variant"] + row["splice_acceptor_variant"]
+            + row["splice_donor_variant"] + row["stop_gained"] + row["stop_lost"])
+    nMis = row["missense_variant"]
+
+    if g in bgmr.index:
+        exp_lgd = bgmr.loc[g, "p_LGD"] * 2 * N_DDD
+        exp_mis = bgmr.loc[g, "p_misense"] * 2 * N_DDD
+    else:
+        exp_lgd = 0
+        exp_mis = 0
+
+    weight = (nLGD - exp_lgd) + (nMis - exp_mis)
+    gene2weight_ddd285[g] = weight
+
+print(f"Corrected DDD-285: {len(gene2weight_ddd285)} genes")
+print(f"Genes with negative weight: {sum(1 for v in gene2weight_ddd285.values() if v <= 0)}")
+
+# Save (sorted by weight descending)
+out_ddd285 = GW_DIR / "DDD.top285.gw.bgmr.csv"
+with open(out_ddd285, "w", newline="") as f:
+    writer = csv.writer(f)
+    for k, v in sorted(gene2weight_ddd285.items(), key=lambda x: x[1], reverse=True):
+        writer.writerow([k, v])
+print(f"Saved → {out_ddd285}")
+
+# %% [markdown]
 # ## E. Comparison: Old vs Corrected Weights
 
 # %%
 from scipy.stats import spearmanr
 
-fig, axes = plt.subplots(1, 4, figsize=(20, 5))
+fig, axes = plt.subplots(1, 5, figsize=(24, 5))
 
 comparisons = [
     ("ASD_All", "Spark_Meta_EWS.GeneWeight.csv", "Spark_Meta_EWS.GeneWeight.bgmr.csv"),
     ("ASD_HIQ", "HIQ.top61.nopLI.LGD_Dmis_SameWeight.gw", "HIQ.top61.nopLI.LGD_Dmis_SameWeight.bgmr.gw"),
     ("ASD_LIQ", "LIQ.top61.nopLI.LGD_Dmis_SameWeight.gw", "LIQ.top61.nopLI.LGD_Dmis_SameWeight.bgmr.gw"),
-    ("DDD", "DDD.top61.gw.csv", "DDD.top61.gw.bgmr.csv"),
+    ("DDD_61", "DDD.top61.gw.csv", "DDD.top61.gw.bgmr.csv"),
+    ("DDD_285", "DDD.hc.gw.csv", "DDD.top285.gw.bgmr.csv"),
 ]
 
 for ax, (label, old_file, new_file) in zip(axes, comparisons):

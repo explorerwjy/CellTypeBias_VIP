@@ -42,7 +42,7 @@ from UNIMED import LoadGeneINFO
 # Data Paths (absolute paths on lab workstation)
 # ============================================================================
 DATA_PATHS = {
-    "ASD_mutations": "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/41588_2022_1148_MOESM4_ESM.xlsx",
+    "ASD_mutations": "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/suppl.data/41588_2022_1148_MOESM4_ESM.xlsx",
     "SCZ_mutations": "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/SCZ.ALLGENE.MutCountModified.csv",
     "DDD_mutations": "/home/jw3514/Work/data/DDD/41586_2020_2832_MOESM4_ESM.xlsx",
     "BGMR": "/home/jw3514/Work/Resources/BGMR.withEntrez.csv",

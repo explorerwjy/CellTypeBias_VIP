@@ -51,7 +51,7 @@ HumanCT_Z2_HCT = pd.read_csv("/home/jw3514/Work/CellType_Psy/dat/HumanCTExpressi
 HumanCT_Z2_HCT.columns = HumanCT_Z2_HCT.columns.astype(int)
 
 # %%
-CogDF = pd.read_excel("../dat/41588_2023_1398_MOESM3_ESM.xlsx", sheet_name="Table S4")
+CogDF = pd.read_excel("../dat/suppl.data/41588_2023_1398_MOESM3_ESM.xlsx", sheet_name="Table S4")
 CogDF = CogDF[CogDF["POPULATION"]=="EUR"]
 for i, row in CogDF.iterrows():
     genesymbol = row["GENE"]
