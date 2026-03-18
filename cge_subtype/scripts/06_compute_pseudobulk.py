@@ -275,8 +275,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--outdir",
         type=Path,
-        default=PROJECT_ROOT / "results" / "pseudobulk",
-        help="Output directory for pseudobulk CSVs (default: results/pseudobulk/).",
+        default=PROJECT_ROOT / "cge_subtype" / "results" / "pseudobulk",
+        help="Output directory for pseudobulk CSVs (default: cge_subtype/results/pseudobulk/).",
     )
     return parser.parse_args()
 

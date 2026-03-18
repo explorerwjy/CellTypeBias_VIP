@@ -59,8 +59,8 @@ _MOUSE_META_CSV = Path(
     "/WMB-10X/20230830/views/cell_metadata_with_cluster_annotation.csv"
 )
 _HUMAN_H5AD_DIR = Path("/mnt/data0/HumanBrainCellType/SuperTypeRawDat")
-_DEFAULT_BRIDGE_DIR = PROJECT_ROOT / "results" / "cluster_bridge"
-_DEFAULT_OUTDIR = PROJECT_ROOT / "results" / "cluster_bridge"
+_DEFAULT_BRIDGE_DIR = PROJECT_ROOT / "cge_subtype" / "results" / "cluster_bridge"
+_DEFAULT_OUTDIR = PROJECT_ROOT / "cge_subtype" / "results" / "cluster_bridge"
 _DEFAULT_ORTHOLOG = Path(
     "/home/jw3514/Work/NeurSim/TransEphys/atlas_matching/results"
     "/cross_species/orthologs/ortholog_mapping.csv"

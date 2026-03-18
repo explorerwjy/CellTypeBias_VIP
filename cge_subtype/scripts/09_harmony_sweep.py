@@ -256,7 +256,7 @@ def main() -> None:
 # CLI
 # ---------------------------------------------------------------------------
 def parse_args() -> argparse.Namespace:
-    default_outdir = PROJECT_ROOT / "results" / "harmony"
+    default_outdir = PROJECT_ROOT / "cge_subtype" / "results" / "harmony"
 
     parser = argparse.ArgumentParser(
         description=(

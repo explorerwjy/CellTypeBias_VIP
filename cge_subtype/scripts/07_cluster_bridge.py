@@ -52,9 +52,9 @@ _DEFAULT_ORTHOLOG = Path(
     "/home/jw3514/Work/NeurSim/TransEphys/atlas_matching/results"
     "/cross_species/orthologs/ortholog_mapping.csv"
 )
-_DEFAULT_MOUSE_PB = PROJECT_ROOT / "results" / "pseudobulk" / "mouse_pseudobulk.csv"
-_DEFAULT_HUMAN_PB = PROJECT_ROOT / "results" / "pseudobulk" / "human_pseudobulk.csv"
-_DEFAULT_OUTDIR = PROJECT_ROOT / "results" / "cluster_bridge"
+_DEFAULT_MOUSE_PB = PROJECT_ROOT / "cge_subtype" / "results" / "pseudobulk" / "mouse_pseudobulk.csv"
+_DEFAULT_HUMAN_PB = PROJECT_ROOT / "cge_subtype" / "results" / "pseudobulk" / "human_pseudobulk.csv"
+_DEFAULT_OUTDIR = PROJECT_ROOT / "cge_subtype" / "results" / "cluster_bridge"
 
 
 # ---------------------------------------------------------------------------

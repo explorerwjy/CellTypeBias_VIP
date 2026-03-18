@@ -52,7 +52,7 @@ _MOUSE_META_CSV = Path(
 )
 _META_COLS = ["cell_label", "cluster_alias", "subclass_label", "class_label"]
 
-_DEFAULT_OUTDIR = PROJECT_ROOT / "results" / "preprocessed"
+_DEFAULT_OUTDIR = PROJECT_ROOT / "cge_subtype" / "results" / "preprocessed"
 CHUNK_SIZE = 1000
 
 

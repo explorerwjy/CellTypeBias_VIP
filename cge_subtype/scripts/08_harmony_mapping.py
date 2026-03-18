@@ -76,7 +76,7 @@ DATASET_CONFIGS: dict[str, dict] = {
 # ---------------------------------------------------------------------------
 # Default reference path
 # ---------------------------------------------------------------------------
-_DEFAULT_REF = PROJECT_ROOT / "results" / "preprocessed" / "reference_subsampled.h5ad"
+_DEFAULT_REF = PROJECT_ROOT / "cge_subtype" / "results" / "preprocessed" / "reference_subsampled.h5ad"
 
 # Column in reference obs that holds the cluster labels to transfer
 _REF_CLUSTER_COL = "cluster_alias"
@@ -358,7 +358,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--outdir",
         type=Path,
-        default=PROJECT_ROOT / "results" / "harmony",
+        default=PROJECT_ROOT / "cge_subtype" / "results" / "harmony",
         help="Output directory for predictions / metrics / confusion matrix CSVs.",
     )
     return parser.parse_args()
