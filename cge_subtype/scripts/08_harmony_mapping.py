@@ -196,6 +196,16 @@ def main() -> None:
     ref_adata = ad.read_h5ad(ref_path)
     log.info("  Reference shape: %s", ref_adata.shape)
 
+    # If var_names are Ensembl IDs but gene_symbol column exists, switch to gene symbols
+    if "gene_symbol" in ref_adata.var.columns:
+        symbols = ref_adata.var["gene_symbol"].astype(str)
+        # Drop genes with missing/duplicate symbols
+        valid = (symbols != "") & (symbols != "nan") & (~symbols.duplicated(keep="first"))
+        ref_adata = ref_adata[:, valid].copy()
+        ref_adata.var_names = ref_adata.var["gene_symbol"][valid].values
+        ref_adata.var_names_make_unique()
+        log.info("  Converted var_names to gene symbols: %d genes", ref_adata.n_vars)
+
     # Subsample per cluster if requested
     if args.max_per_cluster > 0:
         from cge_subtype.src.harmony_mapping import subsample_reference  # noqa: E402
