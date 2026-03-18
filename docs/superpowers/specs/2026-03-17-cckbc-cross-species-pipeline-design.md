@@ -99,7 +99,7 @@ Establish which mouse clusters correspond to which human clusters (461) at the c
 2. Convert mouse genes to human orthologs using existing ortholog table (cge_subtype/scripts/00_prepare_orthologs.py). Restrict to 1:1 orthologs (~15-16K genes).
 3. Subset to top 3,000 HVGs by variance across cluster centroids in combined matrix.
 4. Spearman correlation matrix (mouse ~360 x human ~461).
-5. Assign reciprocal best hits (RBH) with r > 0.7. These are "resolved" pairs.
+5. Assign reciprocal best hits (RBH). The correlation threshold for "resolved" pairs is determined empirically: compute the full RBH correlation distribution, inspect the histogram for a natural gap between high-confidence matches and ambiguous ones, and set the threshold at that gap. If no clear gap exists, use a data-driven cutoff such as the inflection point of the sorted RBH correlation curve or a permutation-based null (shuffle cluster labels, compute RBH correlations, set threshold at the 95th percentile of the null).
 6. Expected: most major classes (Pvalb, Sst, L2/3 IT, L5 ET, etc.) resolve here.
 
 **Pass 2 — MetaNeighbor-style AUROC on unresolved clusters (resolve hard clusters):**
