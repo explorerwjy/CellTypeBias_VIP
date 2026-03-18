@@ -205,18 +205,31 @@ class TestMetaNeighborAuroc:
     """Tests for compute_metaneighbor_auroc."""
 
     def _make_well_separated_data(self, n_cells_per_cluster=20, n_genes=50, offset=5.0, seed=0):
-        """Create expression data where mouse and human clusters are well matched."""
-        rng = np.random.default_rng(seed)
+        """Create expression data where mouse and human clusters are well matched.
 
-        # Two clusters with large offset
+        Clusters are separated by having different *gene expression patterns*
+        (distinct mean vectors), not just a global additive offset.  A constant
+        offset is invisible after per-cell gene-ranking (the correct axis for
+        MetaNeighbor), so we use complementary patterns instead: C0 cells have
+        high expression on the first half of genes and low on the second half;
+        C1 cells have the opposite pattern.  This produces large inter-cluster
+        Spearman distances that survive rank-transformation.
+        """
+        rng = np.random.default_rng(seed)
         n_cells = n_cells_per_cluster * 2
+        half = n_genes // 2
+
+        # Cluster mean vectors: C0 is [+offset, 0, ...], C1 is [0, +offset, ...]
+        mean_c0 = np.array([offset] * half + [0.0] * (n_genes - half))
+        mean_c1 = np.array([0.0] * half + [offset] * (n_genes - half))
+
         mouse_data = np.vstack([
-            rng.standard_normal((n_cells_per_cluster, n_genes)),
-            rng.standard_normal((n_cells_per_cluster, n_genes)) + offset,
+            rng.standard_normal((n_cells_per_cluster, n_genes)) + mean_c0,
+            rng.standard_normal((n_cells_per_cluster, n_genes)) + mean_c1,
         ])
         human_data = np.vstack([
-            rng.standard_normal((n_cells_per_cluster, n_genes)),
-            rng.standard_normal((n_cells_per_cluster, n_genes)) + offset,
+            rng.standard_normal((n_cells_per_cluster, n_genes)) + mean_c0,
+            rng.standard_normal((n_cells_per_cluster, n_genes)) + mean_c1,
         ])
 
         genes = [f"g{i}" for i in range(n_genes)]

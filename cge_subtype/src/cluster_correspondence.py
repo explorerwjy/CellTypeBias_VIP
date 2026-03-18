@@ -114,8 +114,11 @@ def find_reciprocal_best_hits(
     Returns
     -------
     pd.DataFrame
-        One row per RBH candidate with columns:
-        ``mouse_cluster``, ``human_cluster``, ``correlation``,
+        One row **per mouse cluster** (regardless of whether it is an RBH).
+        Each row contains the best-matching human cluster for that mouse cluster,
+        plus ``is_rbh=True`` if the pair passes both the reciprocal topology check
+        and the optional correlation threshold, ``is_rbh=False`` otherwise.
+        Columns: ``mouse_cluster``, ``human_cluster``, ``correlation``,
         ``is_rbh`` (bool), ``method`` (str).
     """
     vals = corr_matrix.values
@@ -183,17 +186,23 @@ def determine_rbh_threshold(
     vals = corr_matrix.values.copy()
     n_mouse, n_human = vals.shape
 
-    null_rbh_corrs = []
+    # Collect the per-permutation maximum best-hit correlation across all mouse
+    # clusters.  Shuffling columns independently per row destroys the real
+    # structure while preserving the marginal distribution of each row.
+    perm_maxima = []
     for _ in range(n_perm):
-        # Shuffle rows (mouse clusters) of the correlation matrix
-        perm_idx = rng.permutation(n_mouse)
-        perm_vals = vals[perm_idx, :]
+        perm_vals = vals.copy()
+        for row in range(n_mouse):
+            perm_vals[row] = perm_vals[row, rng.permutation(n_human)]
 
-        # Collect best-hit correlation for each mouse cluster under permutation
+        # Best-hit correlation for each mouse cluster, then take the max across
+        # clusters so that the null reflects the family-wise null (one threshold
+        # controls the experiment as a whole rather than being inflated by pooling
+        # n_mouse × n_perm values from a single flat list).
         best_corrs = perm_vals.max(axis=1)
-        null_rbh_corrs.extend(best_corrs.tolist())
+        perm_maxima.append(best_corrs.max())
 
-    threshold = float(np.percentile(null_rbh_corrs, 95))
+    threshold = float(np.percentile(perm_maxima, 95))
     # Clip to valid correlation range
     return float(np.clip(threshold, 0.0, 1.0))
 
@@ -239,18 +248,22 @@ def compute_metaneighbor_auroc(
         AUROC > 0.5 indicates mouse cluster is more similar to the matching
         human cluster than to other human cells.
     """
-    mouse_cells = labels_mouse.index.tolist()
-    human_cells = labels_human.index.tolist()
+    # Use the species Series to explicitly identify mouse and human cells rather
+    # than relying on positional slicing.
+    mouse_cells = species[species == "mouse"].index.intersection(labels_mouse.index).tolist()
+    human_cells = species[species == "human"].index.intersection(labels_human.index).tolist()
     all_cells = mouse_cells + human_cells
 
-    # Rank-transform each gene across cells (rank along axis=0, i.e., per column).
-    # This yields cell-cell Spearman correlation when combined with a Pearson
-    # inner product — matching the original MetaNeighbor formulation.
+    # Rank-transform each cell's expression across genes (rank along axis=1,
+    # i.e., per row / per cell).  MetaNeighbor uses gene-rank profiles per cell
+    # as the basis for computing cell-cell similarity, not gene-rank profiles
+    # across cells.  Pearson correlation on per-cell gene-ranks equals the
+    # Spearman correlation between two cells' expression profiles.
     expr_sub = expr_df.loc[all_cells].values.astype(float)  # (n_cells, n_genes)
-    ranked = np.apply_along_axis(rankdata, axis=0, arr=expr_sub)  # rank cells per gene
+    ranked = np.apply_along_axis(rankdata, axis=1, arr=expr_sub)  # rank genes per cell
 
-    # Mean-center per gene so that inner product gives Pearson on ranks = Spearman
-    centered = ranked - ranked.mean(axis=0, keepdims=True)
+    # Mean-center per cell so that inner product gives Pearson on ranks = Spearman
+    centered = ranked - ranked.mean(axis=1, keepdims=True)
 
     # Unit-normalize per cell for cosine similarity
     norms = np.linalg.norm(centered, axis=1, keepdims=True)
