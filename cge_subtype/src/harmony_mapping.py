@@ -119,6 +119,10 @@ def run_harmony_mapping(
     ref.obs[batch_key] = "reference"
     query.obs[batch_key] = "query"
 
+    # Save cluster labels before concat (concat drops columns not shared by both)
+    _ref_cluster_labels = ref.obs[cluster_col].copy()
+    _ref_cluster_labels.name = cluster_col
+
     # ------------------------------------------------------------------
     # 2. Concatenate
     # ------------------------------------------------------------------
@@ -182,11 +186,9 @@ def run_harmony_mapping(
     ref_emb = harmony_emb[is_ref.values]
     query_emb = harmony_emb[is_query.values]
 
-    # Cluster labels for reference cells (aligned with ref_emb rows)
-    # Use the original cluster_col from ref_adata; the obs index in combined
-    # for reference cells preserves ref_adata obs names.
-    ref_obs = combined.obs.loc[is_ref]
-    ref_labels = ref_obs[cluster_col].values
+    # Cluster labels for reference cells — use saved labels (concat may drop the column)
+    ref_cell_ids = combined.obs_names[is_ref.values]
+    ref_labels = _ref_cluster_labels.loc[ref_cell_ids].values
 
     nn = NearestNeighbors(n_neighbors=n_neighbors, metric="euclidean", n_jobs=1)
     nn.fit(ref_emb)
