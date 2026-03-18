@@ -189,14 +189,20 @@ def _load_human_cells_from_h5ads(
     gene_names: list[str] | None = None
 
     for h5ad_path in h5ad_files:
-        adata = ad.read_h5ad(h5ad_path, backed="r")
+        try:
+            adata = ad.read_h5ad(h5ad_path, backed="r")
+        except Exception as exc:
+            log.warning("  Could not open %s: %s", h5ad_path.name, exc)
+            continue
         cluster_col = _get_cluster_col(adata)
         if cluster_col is None:
+            log.debug("  No cluster column in %s, skipping.", h5ad_path.name)
             adata.file.close()
             continue
 
         if gene_names is None:
             gene_names = _get_gene_names(adata)
+            log.info("  Gene names from %s: %d genes", h5ad_path.name, len(gene_names))
 
         # Find cells in target clusters
         obs_clusters = adata.obs[cluster_col].astype(str)
@@ -206,42 +212,51 @@ def _load_human_cells_from_h5ads(
 
         matching_idx = np.where(mask.values)[0]
         if len(matching_idx) == 0:
+            log.debug("  No matching cells in %s", h5ad_path.name)
             adata.file.close()
             continue
+        log.info("  %s: %d matching cells found", h5ad_path.name, len(matching_idx))
 
-        # Subsample per cluster within this file
-        selected_idx = []
-        matching_clusters = obs_clusters.iloc[matching_idx].values
-        for clust in np.unique(matching_clusters):
-            already = cluster_cell_counts.get(clust, 0)
-            remaining = max_per_cluster - already
-            if remaining <= 0:
+        try:
+            # Subsample per cluster within this file
+            selected_idx = []
+            matching_clusters = obs_clusters.iloc[matching_idx].values
+            for clust in np.unique(matching_clusters):
+                already = cluster_cell_counts.get(clust, 0)
+                remaining = max_per_cluster - already
+                if remaining <= 0:
+                    continue
+                clust_positions = matching_idx[matching_clusters == clust]
+                if len(clust_positions) > remaining:
+                    clust_positions = rng.choice(clust_positions, remaining, replace=False)
+                selected_idx.extend(clust_positions.tolist())
+                cluster_cell_counts[clust] = already + len(clust_positions)
+
+            if not selected_idx:
+                adata.file.close()
                 continue
-            clust_positions = matching_idx[matching_clusters == clust]
-            if len(clust_positions) > remaining:
-                clust_positions = rng.choice(clust_positions, remaining, replace=False)
-            selected_idx.extend(clust_positions.tolist())
-            cluster_cell_counts[clust] = already + len(clust_positions)
 
-        if not selected_idx:
+            selected_idx = sorted(selected_idx)
+            log.info("  Loading %d human cells from %s ...", len(selected_idx), h5ad_path.name)
+            chunk = adata[selected_idx].X
+            if hasattr(chunk, "toarray"):
+                chunk = chunk.toarray()
+            else:
+                chunk = np.asarray(chunk)
+
+            selected_cell_ids = adata.obs_names[selected_idx].tolist()
+            selected_labels = obs_clusters.iloc[selected_idx].values
+            for i, cell_id in enumerate(selected_cell_ids):
+                rows[cell_id] = chunk[i].astype(np.float32)
+                labels[cell_id] = selected_labels[i]
+
             adata.file.close()
-            continue
-
-        selected_idx = sorted(selected_idx)
-        log.info("  Loading %d human cells from %s ...", len(selected_idx), h5ad_path.name)
-        chunk = adata[selected_idx].X
-        if hasattr(chunk, "toarray"):
-            chunk = chunk.toarray()
-        else:
-            chunk = np.asarray(chunk)
-
-        selected_cell_ids = adata.obs_names[selected_idx].tolist()
-        selected_labels = obs_clusters.iloc[selected_idx].values
-        for i, cell_id in enumerate(selected_cell_ids):
-            rows[cell_id] = chunk[i].astype(np.float32)
-            labels[cell_id] = selected_labels[i]
-
-        adata.file.close()
+        except Exception as exc:
+            log.error("  Error processing %s: %s", h5ad_path.name, exc, exc_info=True)
+            try:
+                adata.file.close()
+            except Exception:
+                pass
 
     if not rows:
         return pd.DataFrame(), pd.Series(dtype=str)
