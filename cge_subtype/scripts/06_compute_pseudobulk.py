@@ -216,9 +216,21 @@ def compute_human_pseudobulk(outdir: Path) -> None:
         adata = ad.read_h5ad(h5ad_path, backed="r")
         log.info("  Shape: %s", adata.shape)
 
-        # Determine gene names
+        # Determine gene names (deduplicate to avoid DataFrame alignment errors)
         if gene_names is None:
-            gene_names = _get_gene_names(adata)
+            raw_names = _get_gene_names(adata)
+            # Keep first occurrence of each gene name
+            seen = set()
+            unique_mask = []
+            for g in raw_names:
+                if g not in seen:
+                    seen.add(g)
+                    unique_mask.append(True)
+                else:
+                    unique_mask.append(False)
+            gene_names = [g for g, keep in zip(raw_names, unique_mask) if keep]
+            _gene_mask = unique_mask  # save mask for subsetting expression chunks
+            log.info("  Gene names: %d unique / %d total", len(gene_names), len(raw_names))
 
         # Determine cluster column
         cluster_col: str | None = None
@@ -240,6 +252,9 @@ def compute_human_pseudobulk(outdir: Path) -> None:
         adata.file.close()
 
         for lbl, vec in mean_dict.items():
+            # Subset to unique genes if there were duplicates
+            if len(vec) > len(gene_names):
+                vec = vec[np.array(_gene_mask)]
             row = pd.Series(vec, index=gene_names, name=lbl)
             all_rows.append(row)
 
