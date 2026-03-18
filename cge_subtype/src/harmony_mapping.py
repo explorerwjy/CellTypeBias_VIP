@@ -170,7 +170,7 @@ def run_harmony_mapping(
         batch_key,
         theta=theta,
     )
-    combined.obsm["X_harmony"] = ho.Z_corr.T  # harmony returns (n_pcs, n_cells)
+    combined.obsm["X_harmony"] = ho.Z_corr  # (n_cells, n_pcs) — no transpose needed
 
     # ------------------------------------------------------------------
     # 7. kNN label transfer
