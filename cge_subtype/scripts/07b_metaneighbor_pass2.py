@@ -175,9 +175,15 @@ def _load_human_cells_from_h5ads(
     h5ad_dir: Path,
     target_cells: set[str],
     target_clusters: set[str],
+    max_per_cluster: int = 200,
+    seed: int = 42,
 ) -> tuple[pd.DataFrame, pd.Series]:
-    """Load expression and cluster labels for target human cells."""
+    """Load expression and cluster labels for target human cells (subsampled)."""
     h5ad_files = sorted(h5ad_dir.glob("Supercluster_*.h5ad"))
+    rng = np.random.default_rng(seed)
+
+    # Track how many cells we've collected per cluster
+    cluster_cell_counts: dict[str, int] = {}
     rows: dict[str, np.ndarray] = {}
     labels: dict[str, str] = {}
     gene_names: list[str] | None = None
@@ -192,32 +198,55 @@ def _load_human_cells_from_h5ads(
         if gene_names is None:
             gene_names = _get_gene_names(adata)
 
-        # cells that belong to target clusters or target cell IDs
+        # Find cells in target clusters
         obs_clusters = adata.obs[cluster_col].astype(str)
-        mask = obs_clusters.isin(target_clusters) | adata.obs_names.isin(target_cells)
-        cell_ids = adata.obs_names[mask].tolist()
+        mask = obs_clusters.isin(target_clusters)
+        if target_cells:
+            mask = mask | adata.obs_names.isin(target_cells)
 
-        if not cell_ids:
+        matching_idx = np.where(mask.values)[0]
+        if len(matching_idx) == 0:
             adata.file.close()
             continue
 
-        log.info("  Loading %d human cells from %s ...", len(cell_ids), h5ad_path.name)
-        positions = [adata.obs_names.get_loc(c) for c in cell_ids]
-        chunk = adata[positions].X
+        # Subsample per cluster within this file
+        selected_idx = []
+        matching_clusters = obs_clusters.iloc[matching_idx].values
+        for clust in np.unique(matching_clusters):
+            already = cluster_cell_counts.get(clust, 0)
+            remaining = max_per_cluster - already
+            if remaining <= 0:
+                continue
+            clust_positions = matching_idx[matching_clusters == clust]
+            if len(clust_positions) > remaining:
+                clust_positions = rng.choice(clust_positions, remaining, replace=False)
+            selected_idx.extend(clust_positions.tolist())
+            cluster_cell_counts[clust] = already + len(clust_positions)
+
+        if not selected_idx:
+            adata.file.close()
+            continue
+
+        selected_idx = sorted(selected_idx)
+        log.info("  Loading %d human cells from %s ...", len(selected_idx), h5ad_path.name)
+        chunk = adata[selected_idx].X
         if hasattr(chunk, "toarray"):
             chunk = chunk.toarray()
         else:
             chunk = np.asarray(chunk)
 
-        for i, cell_id in enumerate(cell_ids):
+        selected_cell_ids = adata.obs_names[selected_idx].tolist()
+        selected_labels = obs_clusters.iloc[selected_idx].values
+        for i, cell_id in enumerate(selected_cell_ids):
             rows[cell_id] = chunk[i].astype(np.float32)
-            labels[cell_id] = obs_clusters.iloc[positions[i]]
+            labels[cell_id] = selected_labels[i]
 
         adata.file.close()
 
     if not rows:
         return pd.DataFrame(), pd.Series(dtype=str)
 
+    log.info("  Total human cells loaded: %d across %d clusters", len(rows), len(cluster_cell_counts))
     expr_df = pd.DataFrame(rows, index=gene_names).T
     labels_series = pd.Series(labels)
     return expr_df, labels_series
