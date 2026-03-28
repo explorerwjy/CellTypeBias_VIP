@@ -41,8 +41,10 @@ import matplotlib.font_manager as fm
 import seaborn as sns
 from scipy import stats
 
-NOTEBOOK_DIR = Path().absolute()
-PROJ_DIR = NOTEBOOK_DIR.parent if NOTEBOOK_DIR.name in ("notebooks_rebuttal", "notebooks") else NOTEBOOK_DIR
+import yaml
+with open("/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/config/config.yaml") as f:
+    _cfg = yaml.safe_load(f)
+PROJ_DIR = Path(_cfg["ProjDIR"])
 sys.path.insert(0, str(PROJ_DIR / "src"))
 
 from CellType_PSY import Anno, Neur_idx, NonNeur_idx
@@ -129,13 +131,15 @@ rho_cells, p_cells = stats.spearmanr(ct_stats["N_cells"], ct_stats["frac_clipped
 print(f"Spearman(N cells, frac_clipped): ρ={rho_cells:.3f}, p={p_cells:.2e}")
 
 # %% [markdown]
-# ## Main Figure
+# ## Main Figure (1×2)
 
 # %%
-fig, axes = plt.subplots(2, 2, figsize=(13, 11))
+from scipy.stats import gaussian_kde
+
+fig, axes = plt.subplots(1, 2, figsize=(14, 6))
 
 # --- Panel A: Total UMI vs Fraction Clipped ---
-ax = axes[0, 0]
+ax = axes[0]
 ax.scatter(ct_stats.loc[neur_mask, "Total_UMI"], ct_stats.loc[neur_mask, "frac_clipped"],
            color="red", alpha=0.5, s=30, edgecolors="white", lw=0.3, label="Neuronal", zorder=3)
 ax.scatter(ct_stats.loc[~neur_mask, "Total_UMI"], ct_stats.loc[~neur_mask, "frac_clipped"],
@@ -151,72 +155,36 @@ ax.text(0.97, 0.97, f"ρ = {rho_umi:.3f}\np = {p_umi:.1e}",
 for spine in ["top", "right"]:
     ax.spines[spine].set_visible(False)
 
-# --- Panel B: Neuronal vs Non-Neuronal Box + Strip ---
-ax = axes[0, 1]
-plot_data = ct_stats[["frac_clipped", "is_neuronal"]].copy()
-plot_data["Group"] = plot_data["is_neuronal"].map({True: "Neuronal\n(n=378)", False: "Non-neuronal\n(n=83)"})
+# --- Panel B: Specificity Distribution — Example Cell Types ---
+ax = axes[1]
 
-sns.boxplot(data=plot_data, x="Group", y="frac_clipped", ax=ax, order=["Neuronal\n(n=378)", "Non-neuronal\n(n=83)"],
-            boxprops=dict(facecolor="none", edgecolor="black"), medianprops=dict(color="black"),
-            whiskerprops=dict(color="black"), capprops=dict(color="black"), width=0.5, fliersize=0)
-sns.stripplot(data=plot_data, x="Group", y="frac_clipped", ax=ax, order=["Neuronal\n(n=378)", "Non-neuronal\n(n=83)"],
-              hue="is_neuronal", palette={True: "red", False: "blue"}, alpha=0.4, size=4, jitter=0.2, legend=False)
-ax.set_xlabel("")
-ax.set_ylabel("Fraction of genes exceeding cap")
-ax.set_title("B", fontweight="bold", loc="left", fontsize=16)
-ax.text(0.5, 0.97, f"Mann-Whitney p = {p_mw:.1e}",
-        transform=ax.transAxes, ha="center", va="top", fontsize=10,
-        bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8))
-for spine in ["top", "right"]:
-    ax.spines[spine].set_visible(False)
+# Non-neuronal: Vascular and Fibroblast (lowest UMI, most extreme tails)
+vasc_cts = ct_stats.loc[(ct_stats["Supercluster"] == "Vascular") & ~neur_mask]
+vasc_ct = vasc_cts.sort_values("Total_UMI").index[0]
 
-# --- Panel C: Max Specificity by Supercluster ---
-ax = axes[1, 0]
+fibro_cts = ct_stats.loc[(ct_stats["Supercluster"] == "Fibroblast") & ~neur_mask]
+fibro_ct = fibro_cts.sort_values("Total_UMI").index[0]
 
-# Compute median max_spec per supercluster for sorting
-sc_order = ct_stats.groupby("Supercluster")["max_spec"].median().sort_values(ascending=True).index.tolist()
+# Glia: Astrocyte (median UMI)
+astro_cts = ct_stats.loc[ct_stats["Supercluster"] == "Astrocyte"]
+astro_ct = astro_cts.sort_values("Total_UMI").iloc[len(astro_cts)//2].name
 
-# Determine neuronal superclusters
-sc_is_neur = ct_stats.groupby("Supercluster")["is_neuronal"].mean()
-sc_colors = {sc: "red" if sc_is_neur[sc] > 0.5 else "blue" for sc in sc_order}
+# Cerebellum neuron: Cerebellar inhibitory (median UMI — includes Purkinje)
+cereb_cts = ct_stats.loc[(ct_stats["Supercluster"] == "Cerebellar inhibitory") & neur_mask]
+cereb_ct = cereb_cts.sort_values("Total_UMI").iloc[len(cereb_cts)//2].name
 
-# Horizontal box plot
-positions = range(len(sc_order))
-for i, sc in enumerate(sc_order):
-    vals = ct_stats.loc[ct_stats["Supercluster"] == sc, "max_spec"].values
-    color = sc_colors[sc]
-    bp = ax.boxplot(vals, positions=[i], vert=False, widths=0.6,
-                    boxprops=dict(color=color), medianprops=dict(color=color),
-                    whiskerprops=dict(color=color), capprops=dict(color=color),
-                    flierprops=dict(marker=".", markersize=3, markerfacecolor=color, markeredgecolor=color))
-
-ax.axvline(x=clip_threshold, color="black", ls="--", lw=1.5, alpha=0.7, label=f"Cap = {clip_threshold:.1f}")
-ax.set_yticks(positions)
-ax.set_yticklabels(sc_order, fontsize=8)
-ax.set_xlabel("Max specificity (unclipped)")
-ax.set_title("C", fontweight="bold", loc="left", fontsize=16)
-ax.legend(fontsize=9, loc="lower right")
-for spine in ["top", "right"]:
-    ax.spines[spine].set_visible(False)
-
-# --- Panel D: Specificity Distribution — Example Cell Types ---
-ax = axes[1, 1]
-
-# Pick examples: lowest-UMI non-neuronal, moderate non-neuronal, typical CGE neuron, largest neuron
-nonneur_stats = ct_stats.loc[~neur_mask].sort_values("Total_UMI")
-low_umi_ct = nonneur_stats.index[0]
-mod_umi_ct = nonneur_stats.iloc[len(nonneur_stats)//2].name
-
-# Find a CGE interneuron
+# CGE interneuron (median UMI) — our key cell type
 cge_cts = ct_stats.loc[(ct_stats["Supercluster"] == "CGE interneuron") & neur_mask]
-cge_ct = cge_cts.sort_values("Total_UMI").iloc[len(cge_cts)//2].name  # median UMI CGE
+cge_ct = cge_cts.sort_values("Total_UMI").iloc[len(cge_cts)//2].name
 
-# Largest neuronal
+# Largest neuronal — cleanest distribution
 large_neur_ct = ct_stats.loc[neur_mask].sort_values("Total_UMI").index[-1]
 
 examples = [
-    (low_umi_ct, "blue", f"Non-neur (UMI={ct_stats.loc[low_umi_ct, 'Total_UMI']:.0f})"),
-    (mod_umi_ct, "cornflowerblue", f"Non-neur (UMI={ct_stats.loc[mod_umi_ct, 'Total_UMI']:.0f})"),
+    (vasc_ct, "darkblue", f"Vascular (UMI={ct_stats.loc[vasc_ct, 'Total_UMI']:.0f})"),
+    (fibro_ct, "royalblue", f"Fibroblast (UMI={ct_stats.loc[fibro_ct, 'Total_UMI']:.0f})"),
+    (astro_ct, "#7B68EE", f"Astrocyte (UMI={ct_stats.loc[astro_ct, 'Total_UMI']:.0f})"),
+    (cereb_ct, "#FF8C00", f"Cereb. IN (UMI={ct_stats.loc[cereb_ct, 'Total_UMI']:.0f})"),
     (cge_ct, "salmon", f"CGE IN (UMI={ct_stats.loc[cge_ct, 'Total_UMI']:.0f})"),
     (large_neur_ct, "red", f"Neuron (UMI={ct_stats.loc[large_neur_ct, 'Total_UMI']:.0f})"),
 ]
@@ -224,19 +192,22 @@ examples = [
 for ct, color, label in examples:
     vals = spec_unclip[ct].values
     vals_pos = vals[vals > 0.01]  # skip near-zero for cleaner KDE
-    ax.hist(vals_pos, bins=np.logspace(np.log10(0.01), np.log10(vals_pos.max() * 1.1), 80),
-            alpha=0.4, color=color, label=label, density=True)
+    log_vals = np.log10(vals_pos)
+    kde = gaussian_kde(log_vals, bw_method=0.15)
+    x_grid = np.linspace(np.log10(0.01), np.log10(max(vals_pos.max(), 100) * 1.1), 500)
+    ax.plot(10**x_grid, kde(x_grid), color=color, lw=2, label=label)
+    ax.fill_between(10**x_grid, kde(x_grid), alpha=0.12, color=color)
 
 ax.axvline(x=clip_threshold, color="black", ls="--", lw=1.5, alpha=0.7, label=f"Cap = {clip_threshold:.1f}")
 ax.set_xscale("log")
 ax.set_xlabel("Specificity (fold-enrichment)")
 ax.set_ylabel("Density")
-ax.set_title("D", fontweight="bold", loc="left", fontsize=16)
+ax.set_title("B", fontweight="bold", loc="left", fontsize=16)
 ax.legend(fontsize=8, framealpha=0.8, loc="upper right")
 for spine in ["top", "right"]:
     ax.spines[spine].set_visible(False)
 
-fig.tight_layout(h_pad=3, w_pad=3)
+fig.tight_layout(w_pad=3)
 
 fig.savefig(FIG_DIR / "specificity_cap_analysis.pdf", dpi=300, transparent=True, bbox_inches="tight")
 fig.savefig(FIG_DIR / "specificity_cap_analysis.png", dpi=300, transparent=True, bbox_inches="tight")

@@ -43,21 +43,18 @@ import seaborn as sns
 from scipy import stats
 from pathlib import Path
 
-ProjDIR = "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/"
-sys.path.insert(1, f'{ProjDIR}/src/')
+import yaml
+with open("/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/config/config.yaml") as f:
+    _cfg = yaml.safe_load(f)
+PROJ_DIR = Path(_cfg["ProjDIR"])
+sys.path.insert(0, str(PROJ_DIR / "src"))
 from CellType_PSY import *
 
 HGNC, ENSID2Entrez, GeneSymbol2Entrez, Entrez2Symbol = LoadGeneINFO()
 
-try:
-    os.chdir(f"{ProjDIR}/notebooks/")
-    print(f"Working directory: {os.getcwd()}")
-except Exception as e:
-    print(f"Error: {e}")
-
 # Paths
-BIAS_DIR = Path(ProjDIR) / "results" / "main_results" / "random" / "Centering"
-CONTRAST_DIR = Path(ProjDIR) / "results" / "main_results" / "contrasts"
+BIAS_DIR = PROJ_DIR / "results" / "main_results" / "random" / "Centering"
+CONTRAST_DIR = PROJ_DIR / "results" / "main_results" / "contrasts"
 EPHYS_FX_PATH = Path("/home/jw3514/Work/NeurSim/human_patchseq_gaba/data/LeeDalley_ephys_fx.csv")
 MAPPING_PATH = Path("/home/jw3514/Work/NeurSim/TransEphys/atlas_matching/results/human_interneuron/scvi_mapped/mapping_results.csv")
 EXPR_PATH = "/home/jw3514/Work/CellType_Psy/dat/HumanCTExpressionMats/Human.CT.Exp.Entrez.csv"

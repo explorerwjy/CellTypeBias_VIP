@@ -18,18 +18,14 @@
 # %autoreload 2
 import sys
 import os
-ProjDIR = "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/" # Change to your project directory
-sys.path.insert(1, f'{ProjDIR}/src/')
+from pathlib import Path
+import yaml
+with open("/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/config/config.yaml") as f:
+    _cfg = yaml.safe_load(f)
+PROJ_DIR = Path(_cfg["ProjDIR"])
+sys.path.insert(0, str(PROJ_DIR / "src"))
 from CellType_PSY import *
 HGNC, ENSID2Entrez, GeneSymbol2Entrez, Entrez2Symbol = LoadGeneINFO()
-
-try:
-    os.chdir(f"{ProjDIR}/notebooks/")
-    print(f"Current working directory: {os.getcwd()}")
-except FileNotFoundError as e:
-    print(f"Error: Could not change directory - {e}")
-except Exception as e:
-    print(f"Unexpected error: {e}")
 
 #print(f"Current working directory: {os.getcwd()}")
 
@@ -37,7 +33,7 @@ except Exception as e:
 # ### Try 22q DEGs from https://www.nature.com/articles/s41467-022-31436-8#Abs1
 
 # %%
-DEG_22q_day0 = pd.read_excel("../dat/suppl.data/41467_2022_31436_MOESM4_ESM.xlsx", skiprows=1)
+DEG_22q_day0 = pd.read_excel(str(PROJ_DIR / "dat/suppl.data/41467_2022_31436_MOESM4_ESM.xlsx"), skiprows=1)
 DEG_22q_day0 = DEG_22q_day0[DEG_22q_day0["gene_biotype"] == "protein_coding"]
 DEG_22q_day0["EntrezID"] = DEG_22q_day0["external_gene_name"].map(GeneSymbol2Entrez)
 DEG_22q_day0 = DEG_22q_day0[DEG_22q_day0["EntrezID"].notnull()].copy()
@@ -46,7 +42,7 @@ DEG_22q_day0.set_index("EntrezID", inplace=True)
 DEG_22q_day0 = DEG_22q_day0.sort_values(by="padj", ascending=True)
 
 # %%
-DEG_22q_day4 = pd.read_excel("../dat/suppl.data/41467_2022_31436_MOESM5_ESM.xlsx", skiprows=1)
+DEG_22q_day4 = pd.read_excel(str(PROJ_DIR / "dat/suppl.data/41467_2022_31436_MOESM5_ESM.xlsx"), skiprows=1)
 DEG_22q_day4 = DEG_22q_day4[DEG_22q_day4["gene_biotype"] == "protein_coding"]
 DEG_22q_day4["EntrezID"] = DEG_22q_day4["external_gene_name"].map(GeneSymbol2Entrez)
 DEG_22q_day4 = DEG_22q_day4[DEG_22q_day4["EntrezID"].notnull()].copy()
@@ -55,7 +51,7 @@ DEG_22q_day4.set_index("EntrezID", inplace=True)
 DEG_22q_day4 = DEG_22q_day4.sort_values(by="padj", ascending=True)
 
 # %%
-DEG_22q_day28 = pd.read_excel("../dat/suppl.data/41467_2022_31436_MOESM6_ESM.xlsx", skiprows=1)
+DEG_22q_day28 = pd.read_excel(str(PROJ_DIR / "dat/suppl.data/41467_2022_31436_MOESM6_ESM.xlsx"), skiprows=1)
 DEG_22q_day28 = DEG_22q_day28[DEG_22q_day28["gene_biotype"] == "protein_coding"]
 DEG_22q_day28["EntrezID"] = DEG_22q_day28["external_gene_name"].map(GeneSymbol2Entrez)
 DEG_22q_day28 = DEG_22q_day28[DEG_22q_day28["EntrezID"].notnull()].copy()
@@ -100,7 +96,7 @@ print(f"    Downregulated: {len(DEG_22q_day28_sig_down)}")
 
 
 # %%
-X22q_GW = Fil2Dict("../dat/GeneWeights/X22q.gw.csv")
+X22q_GW = Fil2Dict(str(PROJ_DIR / "dat/GeneWeights/X22q.gw.csv"))
 X22q_Genes = list(X22q_GW.keys())
 
 # %%
@@ -280,7 +276,7 @@ def plot_vip_effect_comparison(df, effect_col = "EFFECT"):
     plt.ylabel(effect_col)
     plt.title(f"p = {pval:.2e}")
     plt.show()
-VIP_Anno = pd.read_csv("VIP_Anno.csv", index_col=0)
+VIP_Anno = pd.read_csv(str(PROJ_DIR / "notebooks/VIP_Anno.csv"), index_col=0)
 
 # %%
 common_indices = X22q_DEG_day0_Bias.index.intersection(VIP_Anno.index)
@@ -302,7 +298,7 @@ plot_vip_effect_comparison(X22q_DEG_Test)
 # ### Try 22q DEGs from https://www.nature.com/articles/s41591-020-1043-9#Abs1
 
 # %%
-DEG_22q_day25 = pd.read_excel("../dat/suppl.data/41591_2020_1043_MOESM3_ESM.xlsx", sheet_name="Day25")
+DEG_22q_day25 = pd.read_excel(str(PROJ_DIR / "dat/suppl.data/41591_2020_1043_MOESM3_ESM.xlsx"), sheet_name="Day25")
 #DEG_22q_day25 = DEG_22q_day25[DEG_22q_day25["gene_biotype"] == "protein_coding"]
 DEG_22q_day25["EntrezID"] = DEG_22q_day25["Gene"].map(GeneSymbol2Entrez)
 DEG_22q_day25 = DEG_22q_day25[DEG_22q_day25["EntrezID"].notnull()].copy()
@@ -311,7 +307,7 @@ DEG_22q_day25.set_index("EntrezID", inplace=True)
 DEG_22q_day25 = DEG_22q_day25.sort_values(by="FDR", ascending=True)
 
 # %%
-DEG_22q_day50 = pd.read_excel("../dat/suppl.data/41591_2020_1043_MOESM3_ESM.xlsx", sheet_name="Day50")
+DEG_22q_day50 = pd.read_excel(str(PROJ_DIR / "dat/suppl.data/41591_2020_1043_MOESM3_ESM.xlsx"), sheet_name="Day50")
 #DEG_22q_day50 = DEG_22q_day50[DEG_22q_day50["gene_biotype"] == "protein_coding"]
 DEG_22q_day50["EntrezID"] = DEG_22q_day50["Gene"].map(GeneSymbol2Entrez)
 DEG_22q_day50 = DEG_22q_day50[DEG_22q_day50["EntrezID"].notnull()].copy()
@@ -320,7 +316,7 @@ DEG_22q_day50.set_index("EntrezID", inplace=True)
 DEG_22q_day50 = DEG_22q_day50.sort_values(by="FDR", ascending=True)
 
 # %%
-DEG_22q_day75 = pd.read_excel("../dat/suppl.data/41591_2020_1043_MOESM3_ESM.xlsx", sheet_name="Day75")
+DEG_22q_day75 = pd.read_excel(str(PROJ_DIR / "dat/suppl.data/41591_2020_1043_MOESM3_ESM.xlsx"), sheet_name="Day75")
 #DEG_22q_day75 = DEG_22q_day75[DEG_22q_day75["gene_biotype"] == "protein_coding"]
 DEG_22q_day75["EntrezID"] = DEG_22q_day75["Gene"].map(GeneSymbol2Entrez)
 DEG_22q_day75 = DEG_22q_day75[DEG_22q_day75["EntrezID"].notnull()].copy()
@@ -329,7 +325,7 @@ DEG_22q_day75.set_index("EntrezID", inplace=True)
 DEG_22q_day75 = DEG_22q_day75.sort_values(by="FDR", ascending=True)
 
 # %%
-DEG_22q_day100 = pd.read_excel("../dat/suppl.data/41591_2020_1043_MOESM3_ESM.xlsx", sheet_name="Day100")
+DEG_22q_day100 = pd.read_excel(str(PROJ_DIR / "dat/suppl.data/41591_2020_1043_MOESM3_ESM.xlsx"), sheet_name="Day100")
 #DEG_22q_day100 = DEG_22q_day100[DEG_22q_day100["gene_biotype"] == "protein_coding"]
 DEG_22q_day100["EntrezID"] = DEG_22q_day100["Gene"].map(GeneSymbol2Entrez)
 DEG_22q_day100 = DEG_22q_day100[DEG_22q_day100["EntrezID"].notnull()].copy()
@@ -396,7 +392,7 @@ try:
 except:
     X22q_DEG_day100_Bias = None
 
-Bias_Save_Dir = "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/Spec_Bias_Jul24_Centered/"
+Bias_Save_Dir = str(PROJ_DIR / "dat/Spec_Bias_Jul24_Centered/") + "/"
 X22q_DEG_day25_Bias.to_csv("{}/DEG_22q_day25_Bias.csv".format(Bias_Save_Dir))
 X22q_DEG_day75_Bias.to_csv("{}/DEG_22q_day75_Bias.csv".format(Bias_Save_Dir))
 X22q_DEG_day50_Bias.to_csv("{}/DEG_22q_day50_Bias.csv".format(Bias_Save_Dir))

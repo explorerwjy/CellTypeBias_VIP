@@ -51,17 +51,12 @@ print(f"pandas version: {pd.__version__}")
 # %autoreload 2
 import sys
 import os
-ProjDIR = "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/" # Change to your project directory
-sys.path.insert(1, f'{ProjDIR}/src/')
-
-
-try:
-    os.chdir(f"{ProjDIR}/notebooks/")
-    print(f"Current working directory: {os.getcwd()}")
-except FileNotFoundError as e:
-    print(f"Error: Could not change directory - {e}")
-except Exception as e:  
-    print(f"Unexpected error: {e}")    
+from pathlib import Path
+import yaml
+with open("/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/config/config.yaml") as f:
+    _cfg = yaml.safe_load(f)
+PROJ_DIR = Path(_cfg["ProjDIR"])
+sys.path.insert(0, str(PROJ_DIR / "src"))
 
 # %% [markdown]
 # ## Step 1: Parse GENCODE v19 GTF and Extract CDS Regions
@@ -70,7 +65,7 @@ except Exception as e:
 # File paths
 GTF_FILE = "/home/jw3514/Work/Resources/gencode.v19.annotation.gtf.gz"
 PHASTCONS_FILE = "/home/jw3514/Work/Resources/hg19.100way.phastCons.bw"
-OUTPUT_FILE = "../results/phastCons_scores_all_genes.csv"
+OUTPUT_FILE = str(PROJ_DIR / "results/phastCons_scores_all_genes.csv") + "/"
 
 print(f"GTF file: {GTF_FILE}")
 print(f"phastCons file: {PHASTCONS_FILE}")

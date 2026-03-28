@@ -8,9 +8,9 @@
 #       format_version: '1.3'
 #       jupytext_version: 1.19.1
 #   kernelspec:
-#     display_name: gencic
+#     display_name: Python (gencic)
 #     language: python
-#     name: python3
+#     name: gencic
 # ---
 
 # %% [markdown]
@@ -32,13 +32,15 @@ import os
 import io
 from contextlib import contextmanager
 
-ProjDIR = "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/"
-sys.path.insert(1, f'{ProjDIR}/src/')
+from pathlib import Path
+import yaml
+with open("/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/config/config.yaml") as f:
+    _cfg = yaml.safe_load(f)
+PROJ_DIR = Path(_cfg["ProjDIR"])
+sys.path.insert(0, str(PROJ_DIR / "src"))
 from CellType_PSY import *
 from PIL import Image as PILImage
 from matplotlib.image import imread
-
-os.chdir(f"{ProjDIR}/notebooks/")
 
 import matplotlib.font_manager as fm
 font_path = '/usr/share/fonts/truetype/msttcorefonts/Arial.ttf'
@@ -46,7 +48,7 @@ fm.fontManager.addfont(font_path)
 fm._load_fontmanager(try_read_cache=False)
 plt.style.use('seaborn-v0_8-whitegrid')
 
-FIG_DIR = os.path.join(ProjDIR, "results/figures/main/")
+FIG_DIR = str(PROJ_DIR / "results/figures/main/") + "/"
 os.makedirs(FIG_DIR, exist_ok=True)
 
 
@@ -113,7 +115,7 @@ def assemble_panels(panel_paths, panel_labels, layout, figsize, out_path, dpi=30
 
 # %%
 # Bias DataFrames
-Bias_Save_Dir = os.path.join(ProjDIR, "results/main_results/random/Centering/")
+Bias_Save_Dir = str(PROJ_DIR / "results/main_results/random/Centering/") + "/"
 
 ASD_All_Bias = pd.read_csv(Bias_Save_Dir + "ASD_All_bias_addP.csv", index_col=0)
 SCZ_Bias = pd.read_csv(Bias_Save_Dir + "SCZ_bias_addP.csv", index_col=0)
@@ -127,9 +129,15 @@ EDU_Pos_Bias = pd.read_csv(Bias_Save_Dir + "UKBB_EDU_Pos_bias_addP.csv", index_c
 EDU_Neg_Bias = pd.read_csv(Bias_Save_Dir + "UKBB_EDU_Neg_bias_addP.csv", index_col=0)
 X22q_mousemodel = pd.read_csv(Bias_Save_Dir + "22q_small_del_bias_addP.csv", index_col=0)
 
+# SCZ protective-direction genes (OR < 1)
+SCZ_Protect_Bias = pd.read_csv(
+    str(Bias_Save_Dir + "/SCZ_protect_bias_addP.csv"),
+    index_col=0
+)
+
 # %%
 # Pre-computed contrasts
-CONTRAST_DIR = os.path.join(ProjDIR, "results/main_results/contrasts/")
+CONTRAST_DIR = str(PROJ_DIR / "results/main_results/contrasts/") + "/"
 
 ASD_SCZ_Contrast = pd.read_csv(CONTRAST_DIR + "ASD_woID_vs_SCZ_contrast.csv", index_col=0)
 ASD_wID_SCZ_Contrast = pd.read_csv(CONTRAST_DIR + "ASD_wID_vs_SCZ_contrast.csv", index_col=0)
@@ -145,6 +153,23 @@ CGE_anno_22q = pd.read_csv(CONTRAST_DIR + "CGE_VIP_annotation_22q.csv", index_co
 # Neuron-filtered contrasts
 ASD_SCZ_Contrast_Neurons = ASD_SCZ_Contrast[ASD_SCZ_Contrast.index.isin(Neurons)]
 HIQ_LIQ_Contrast_Neurons = HIQ_LIQ_Contrast[HIQ_LIQ_Contrast.index.isin(Neurons)]
+
+# Compute SCZ vs SCZ Protective contrast and append to all_contrasts_df
+SCZ_Protect_Contrast = compare_biases(SCZ_Bias, SCZ_Protect_Bias, name1="SCZ", name2="SCZ Protective", neurons=Neurons)
+_protect_rows = []
+for supercluster, row in SCZ_Protect_Contrast.iterrows():
+    _protect_rows.append({
+        "Pair": "SCZ - SCZ Protective",
+        "SuperCluster": supercluster,
+        "Bias1": row["Bias_SCZ"],
+        "Bias2": row["Bias_SCZ Protective"],
+        "BiasDiff": row["Bias_Diff"],
+        "Pval": row["Mann_Whitney_P"],
+        "MWU_FDR": row["Mann_Whitney_FDR"],
+    })
+_protect_df = pd.DataFrame(_protect_rows)
+_protect_df["ALL_FDR"] = _protect_df["MWU_FDR"]  # Will be approximate; not pooled with other tests
+all_contrasts_df = pd.concat([all_contrasts_df, _protect_df], ignore_index=True)
 
 EffLabel = "EFFECT"
 
@@ -182,7 +207,7 @@ with save_panel(FIG_DIR + "Fig2_A.png"):
 
 # %%
 import shutil
-LOEUF_SRC = os.path.join(ProjDIR, "results/figures/LOEUF_gene_removal_ASD_SCZ_correlation.png")
+LOEUF_SRC = str(PROJ_DIR / "results/figures/LOEUF_gene_removal_ASD_SCZ_correlation.png")
 shutil.copy2(LOEUF_SRC, FIG_DIR + "Fig2_B.png")
 
 # %% [markdown]
@@ -191,7 +216,12 @@ shutil.copy2(LOEUF_SRC, FIG_DIR + "Fig2_B.png")
 # %%
 with save_panel(FIG_DIR + "Fig2_C.png"):
     plot_bias_comparison(ASD_SCZ_Contrast_Neurons, "ASD w/o ID", "SCZ",
-                         p_test="Mann_Whitney_FDR", legend_anchor=(0.15, 0.9))
+                         p_test="Mann_Whitney_FDR", legend_anchor=(0.01, 1.1))
+
+# %%
+with save_panel(FIG_DIR + "Fig2_D_bias_comparison.png"):
+    plot_bias_comparison(HIQ_LIQ_Contrast_Neurons, "ASD w/o ID", "ASD with ID",
+                         p_test="Mann_Whitney_FDR", legend_anchor=(0.65, 1.1))
 
 # %% [markdown]
 # ### Panel D — Medium Spiny Neuron
@@ -229,32 +259,9 @@ with save_panel(FIG_DIR + "Fig2_G.png"):
                     loc=(0.12, 0.05), efflabel=EffLabel)
 
 # %% [markdown]
-# ### Composite Figure 2
+# ### Panel D — ASD with ID vs ASD w/o ID Neuron Bias Comparison
 
 # %%
-assemble_panels(
-    panel_paths=[
-        FIG_DIR + "Fig2_A.png",
-        FIG_DIR + "Fig2_B.png",
-        FIG_DIR + "Fig2_C.png",
-        FIG_DIR + "Fig2_D.png",
-        FIG_DIR + "Fig2_E.png",
-        FIG_DIR + "Fig2_F.png",
-        FIG_DIR + "Fig2_G.png",
-    ],
-    panel_labels=["A", "B", "C", "D", "E", "F", "G"],
-    layout=[
-        (0, slice(0, 3)),   # A — left half (correlation scatter)
-        (0, slice(3, 6)),   # B — right half (LOEUF gene removal)
-        (1, slice(0, 3)),   # C — left half (bar plot)
-        (1, slice(3, 6)),   # D — right half (MSN)
-        (2, slice(0, 2)),   # E — left third (MGE)
-        (2, slice(2, 4)),   # F — middle third (CGE ASD vs SCZ)
-        (2, slice(4, 6)),   # G — right third (CGE ASD vs ASD)
-    ],
-    figsize=(24, 24),
-    out_path=FIG_DIR + "Figure2.pdf",
-)
 
 # %% [markdown]
 # ---
@@ -275,10 +282,11 @@ datasets = {
     'VNR+': VNR_Pos_Bias,
     'VNR-': VNR_Neg_Bias,
     'DD/ID': DDD_Bias,
-    'SCZ': SCZ_Bias
+    'SCZ': SCZ_Bias,
+    'SCZ Protective': SCZ_Protect_Bias,
 }
 TestPairs = [("VNR+", "VNR-"), ("ASD w/o ID", "SCZ"), ("ASD w/o ID", "ASD with ID"),
-             ("SCZ", "ASD with ID"), ("ASD w/o ID", "DD/ID")]
+             ("SCZ", "ASD with ID"), ("ASD w/o ID", "DD/ID"), ("SCZ", "SCZ Protective")]
 
 with save_panel(FIG_DIR + "Fig3_A.png"):
     plot_mutation_bias_comparison_V2("CGE interneuron", datasets, Anno,
@@ -378,19 +386,6 @@ for i, dp in enumerate(disorderpair_order):
             ax.plot([x1, x1], [y, y - cap_height], color='k', lw=1.2, zorder=10, ls='--', alpha=0.7)
             ax.plot([x2, x2], [y, y - cap_height], color='k', lw=1.2, zorder=10, ls='--', alpha=0.7)
             ax.text((x1+x2)/2, y+0.01, f"{format_pval_scientific(pval)}", ha='center', va='bottom', fontsize=10, zorder=11)
-
-    row_mge_gt = test_df[(test_df["DisorderPair"] == dp) & (test_df["Test"] == "MGE > CGE")]
-    if not row_mge_gt.empty and len(cge_diffs) > 0 and len(mge_diffs) > 0:
-        pval_gt = row_mge_gt["MWU_pval"].values[0]
-        if pval_gt < 0.05:
-            x1 = pos_dict[(dp, "MGE interneuron")]
-            x2 = pos_dict[(dp, "CGE interneuron")]
-            y_max = max(np.max(cge_diffs), np.max(mge_diffs))
-            y = y_max + 0.12
-            ax.plot([x1, x2], [y, y], color='red', lw=1.2, zorder=10, ls='--', alpha=0.7)
-            ax.plot([x1, x1], [y, y-cap_height], color='red', lw=1.2, zorder=10, ls='--', alpha=0.7)
-            ax.plot([x2, x2], [y, y-cap_height], color='red', lw=1.2, zorder=10, ls='--', alpha=0.7)
-            ax.text((x1+x2)/2, y+0.01, f"MGE>CGE\n{format_pval_scientific(pval_gt)}", ha='center', va='bottom', fontsize=9, zorder=11, color='red')
 
     row_cge_lamp = test_df[(test_df["DisorderPair"] == dp) & (test_df["Test"] == "CGE != LAMP5")]
     if not row_cge_lamp.empty and len(cge_diffs) > 0 and len(lamp_diffs) > 0:

@@ -17,8 +17,12 @@
 # %load_ext autoreload
 # %autoreload 2
 import sys
-ProjDIR = "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/" # Change to your project directory
-sys.path.insert(1, '{}/src/'.format(ProjDIR))
+from pathlib import Path
+import yaml
+with open("/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/config/config.yaml") as f:
+    _cfg = yaml.safe_load(f)
+PROJ_DIR = Path(_cfg["ProjDIR"])
+sys.path.insert(0, str(PROJ_DIR / "src"))
 from CellType_PSY import *
 from tabulate import tabulate
 import os
@@ -548,7 +552,7 @@ CT_ExpMat = CT_ExpMat.transpose()
 CT_ExpMat.columns = [int(x) for x in CT_ExpMat.columns.values]
 
 # %% hidden=true
-Anno = pd.read_excel("../../data/HumanBrainCellType/annotation.xlsx", index_col="Cluster")
+Anno = pd.read_excel(str(PROJ_DIR.parent.parent / "data/HumanBrainCellType/annotation.xlsx"), index_col="Cluster")
 Anno.drop(Anno.tail(1).index,inplace=True) # drop last n rows
 Anno.index = [int(x) for x in Anno.index.values]
 Neur_idx = [str(int(x)) for x in Anno[Anno["Class auto-annotation"]=="NEUR"].index]
@@ -556,17 +560,17 @@ Neur_idx = list(set(CT_ExpMat.columns.values).intersection(set(Neur_idx)))
 
 # %% hidden=true
 CT_ExpMat.index = [int(GeneSymbol2Entrez[x]) for x in CT_ExpMat.index.values]
-CT_ExpMat.to_csv("../dat/Human.CT.Exp.Entrez.csv")
+CT_ExpMat.to_csv(str(PROJ_DIR / "dat/Human.CT.Exp.Entrez.csv"))
 
 # %% [markdown] hidden=true
 # ##### [Start] calculate Overall expression level for each gene
 
 # %% hidden=true
 #CT_ExpMat_log2 = np.log2(CT_ExpMat+1)
-#CT_ExpMat_log2.to_csv("../dat/Human.CT.Exp.Entrez.log2.csv")
+#CT_ExpMat_log2.to_csv(str(PROJ_DIR / "dat/Human.CT.Exp.Entrez.log2.csv"))
 
 # %% hidden=true
-CT_ExpMat_log2 = pd.read_csv("../dat/HumanCTExpressionMats/Human.CT.Exp.Entrez.log2.csv", index_col=0)
+CT_ExpMat_log2 = pd.read_csv(str(PROJ_DIR / "dat/HumanCTExpressionMats/Human.CT.Exp.Entrez.log2.csv"), index_col=0)
 
 # %% hidden=true
 plt.hist(CT_ExpMat_log2.values.flatten())
@@ -588,15 +592,15 @@ def Z1Conversion(ExpMat, outname="test.z1.mat"):
 
 
 # %% hidden=true
-ExpDF_Z1 = Z1Conversion(CT_ExpMat_log2, "../dat/Human.CT.Exp.Entrez.log2.Z1.csv")
+ExpDF_Z1 = Z1Conversion(CT_ExpMat_log2, str(PROJ_DIR / "dat/Human.CT.Exp.Entrez.log2.Z1.csv"))
 max_Z, min_Z = 5, -5
 ExpDF_Z1_clipped = ExpDF_Z1.clip(upper=max_Z, lower=min_Z)
-ExpDF_Z1_clipped.to_csv("../dat/Human.CT.Exp.Entrez.log2.Z1.clip.csv")
+ExpDF_Z1_clipped.to_csv(str(PROJ_DIR / "dat/Human.CT.Exp.Entrez.log2.Z1.clip.csv"))
 
 # %% hidden=true
 max_Z, min_Z = 3, -3
 ExpDF_Z1_clipped = ExpDF_Z1.clip(upper=max_Z, lower=min_Z)
-ExpDF_Z1_clipped.to_csv("../dat/Human.CT.Exp.Entrez.log2.Z1.clip3.csv")
+ExpDF_Z1_clipped.to_csv(str(PROJ_DIR / "dat/Human.CT.Exp.Entrez.log2.Z1.clip3.csv"))
 
 # %% hidden=true
 # Combine Z2 mat
@@ -655,16 +659,16 @@ sns.kdeplot(Y)
 # ## Make Z2 Subcluster
 
 # %% hidden=true
-Cluster_Exp_DF = pd.read_csv("../dat/HumanCTExpressionMats/subcluster_MeanLogUMI.csv", index_col=0)
+Cluster_Exp_DF = pd.read_csv(str(PROJ_DIR / "dat/HumanCTExpressionMats/subcluster_MeanLogUMI.csv"), index_col=0)
 
 # %% hidden=true
 plt.hist(Cluster_Exp_DF.values.flatten())
 
 # %% hidden=true
-SubCluster_Z1 = Z1Conversion(Cluster_Exp_DF, "../dat/Human.Subcluster.log2.Z1.csv")
+SubCluster_Z1 = Z1Conversion(Cluster_Exp_DF, str(PROJ_DIR / "dat/Human.Subcluster.log2.Z1.csv"))
 max_Z, min_Z = 3, -3
 SubCluster_Z1_clipped = SubCluster_Z1.clip(upper=max_Z, lower=min_Z)
-SubCluster_Z1_clipped.to_csv("../dat/HumanCTExpressionMats/Human.Subcluster.log2.Z1.clip3.csv")
+SubCluster_Z1_clipped.to_csv(str(PROJ_DIR / "dat/HumanCTExpressionMats/Human.Subcluster.log2.Z1.clip3.csv"))
 
 # %% hidden=true
 SubCluster_Z1_clipped.head(2)
@@ -677,7 +681,7 @@ for X in SubCluster_Z1_clipped.columns.values:
 SubCluster_Z1_clipped = SubCluster_Z1_clipped[~SubCluster_Z1_clipped.index.duplicated(keep='first')]
 
 # %% hidden=true
-SubCluster_Z1_clipped.to_csv("../dat/HumanCTExpressionMats/Human.Subcluster.log2.Z1.clip3.csv")
+SubCluster_Z1_clipped.to_csv(str(PROJ_DIR / "dat/HumanCTExpressionMats/Human.Subcluster.log2.Z1.clip3.csv"))
 
 # %% hidden=true
 SubCluster_Z1_clipped.loc[9782, "0-297-Upper rhombic lip"]

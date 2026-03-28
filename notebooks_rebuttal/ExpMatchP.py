@@ -18,31 +18,23 @@
 # %autoreload 2
 import sys
 import os
-ProjDIR = "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/" # Change to your project directory
-sys.path.insert(1, f'{ProjDIR}/src/')
+from pathlib import Path
+import yaml
+with open("/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/config/config.yaml") as f:
+    _cfg = yaml.safe_load(f)
+PROJ_DIR = Path(_cfg["ProjDIR"])
+sys.path.insert(1, str(PROJ_DIR / "src"))
 from CellType_PSY import *
 
-
-try:
-    os.chdir(f"{ProjDIR}/notebooks/")
-    print(f"Current working directory: {os.getcwd()}")
-except FileNotFoundError as e:
-    print(f"Error: Could not change directory - {e}")
-except Exception as e:  
-    print(f"Unexpected error: {e}")    
-
-
-import yaml
-with open(ProjDIR + '/config/config.yaml', 'r') as file:
-    config = yaml.safe_load(file)
+config = _cfg
 
 # %%
 expression_matrix = config['analysis_types']['Centering']
 print(expression_matrix)
-HCT_Spec_MAT = pd.read_csv(ProjDIR + expression_matrix, index_col=0)
+HCT_Spec_MAT = pd.read_csv(PROJ_DIR / expression_matrix, index_col=0)
 HCT_Spec_MAT.columns = HCT_Spec_MAT.columns.astype(int)
 
-match_table = pd.read_csv("../dat/Variable_2_Match_master_table_pct.csv", index_col=0)
+match_table = pd.read_csv(PROJ_DIR / "dat" / "Variable_2_Match_master_table_pct.csv", index_col=0)
 match_table.head()
 
 # %%
@@ -66,7 +58,7 @@ try:
 except:
     DDD_Bias = pd.read_csv(Bias_Save_Dir + "DDD_bias_addP.csv", index_col=0)
 
-DDD_297_Bias = pd.read_csv(Bias_Save_Dir + "DDD_297_bias_addP.csv", index_col=0)
+DDD_297_Bias = pd.read_csv(Bias_Save_Dir + "DDD_285_bias_addP.csv", index_col=0)
 
 try:
     SCZ_100_Bias = pd.read_csv(Bias_Save_Dir + "SCZ_100_bias_addP.csv", index_col=0)
@@ -75,7 +67,13 @@ try:
     ASD_HIQ_100_Bias = pd.read_csv(Bias_Save_Dir + "ASD_HIQ_100_bias_addP.csv", index_col=0)
     ASD_LIQ_100_Bias = pd.read_csv(Bias_Save_Dir + "ASD_LIQ_100_bias_addP.csv", index_col=0)
 except:
-    pass
+    # Fall back to full gene-set results when top-N subsets are unavailable
+    ASD_HIQ_100_Bias = HighIQ_ASD_Bias
+    ASD_LIQ_100_Bias = LowIQ_ASD_Bias
+    SCZ_100_Bias = SCZ_Bias
+    SCZ_200_Bias = SCZ_Bias
+    SCZ_500_Bias = SCZ_Bias
+    print("Note: Top-N subset results not found; using full gene-set results as fallback.")
 
 # VNR_Pos_Bias = pd.read_csv(Bias_Save_Dir + "UKBB_VNR_Pos_bias_addP.csv", index_col=0)
 # VNR_Neg_Bias = pd.read_csv(Bias_Save_Dir + "UKBB_VNR_Neg_bias_addP.csv", index_col=0)
@@ -399,7 +397,7 @@ import os
 from scipy.stats import mannwhitneyu
 
 # Ensure output directory exists
-fig_outdir = "../results/figures"
+fig_outdir = str(PROJ_DIR / "results" / "figures") + "/"
 os.makedirs(fig_outdir, exist_ok=True)
 
 # Get all available properties (should be same for all gene sets)
@@ -1529,7 +1527,7 @@ else:
 # ## Bias contrast
 
 # %%
-# DDD_297_Bias = pd.read_csv(Bias_Save_Dir + "DDD_297_bias_addP.csv", index_col=0)
+# DDD_297_Bias = pd.read_csv(Bias_Save_Dir + "DDD_285_bias_addP.csv", index_col=0)
 # SCZ_200_Bias = pd.read_csv(Bias_Save_Dir + "SCZ_200_bias_addP.csv", index_col=0)
 # SCZ_500_Bias = pd.read_csv(Bias_Save_Dir + "SCZ_500_bias_addP.csv", index_col=0)
 # ASD_HIQ_100_Bias = pd.read_csv(Bias_Save_Dir + "ASD_HIQ_100_bias_addP.csv", index_col=0)

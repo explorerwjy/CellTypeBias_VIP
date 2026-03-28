@@ -8,9 +8,9 @@
 #       format_version: '1.3'
 #       jupytext_version: 1.19.1
 #   kernelspec:
-#     display_name: gencic
+#     display_name: Python (gencic)
 #     language: python
-#     name: python3
+#     name: gencic
 # ---
 
 # %% [markdown]
@@ -25,18 +25,21 @@
 import sys
 import os
 
-ProjDIR = "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/"
-sys.path.insert(1, f'{ProjDIR}/src/')
+from pathlib import Path
+import yaml
+with open("/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/config/config.yaml") as f:
+    _cfg = yaml.safe_load(f)
+PROJ_DIR = Path(_cfg["ProjDIR"])
+sys.path.insert(0, str(PROJ_DIR / "src"))
 from CellType_PSY import *
 
-os.chdir(f"{ProjDIR}/notebooks/")
 plt.style.use('seaborn-v0_8-whitegrid')
 
 # %% [markdown]
 # ## Load data
 
 # %%
-Bias_Save_Dir = os.path.join(ProjDIR, "results/main_results/random/Centering/")
+Bias_Save_Dir = str(PROJ_DIR / "results/main_results/random/Centering/") + "/"
 
 HighIQ_ASD_Bias = pd.read_csv(Bias_Save_Dir + "ASD_HIQ_bias_addP.csv", index_col=0)
 LowIQ_ASD_Bias = pd.read_csv(Bias_Save_Dir + "ASD_LIQ_bias_addP.csv", index_col=0)
@@ -48,7 +51,7 @@ EDU_Pos_Bias = pd.read_csv(Bias_Save_Dir + "UKBB_EDU_Pos_bias_addP.csv", index_c
 EDU_Neg_Bias = pd.read_csv(Bias_Save_Dir + "UKBB_EDU_Neg_bias_addP.csv", index_col=0)
 
 # Pre-computed contrasts
-CONTRAST_DIR = os.path.join(ProjDIR, "results/main_results/contrasts/")
+CONTRAST_DIR = str(PROJ_DIR / "results/main_results/contrasts/") + "/"
 ASD_SCZ_Contrast = pd.read_csv(CONTRAST_DIR + "ASD_woID_vs_SCZ_contrast.csv", index_col=0)
 ASD_wID_SCZ_Contrast = pd.read_csv(CONTRAST_DIR + "ASD_wID_vs_SCZ_contrast.csv", index_col=0)
 HIQ_LIQ_Contrast = pd.read_csv(CONTRAST_DIR + "ASD_woID_vs_ASD_wID_contrast.csv", index_col=0)

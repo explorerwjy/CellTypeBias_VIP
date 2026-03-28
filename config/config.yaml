@@ -14,8 +14,8 @@ gene_sets:
 
   DDD_61:
     geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/DDD.top61.gw.bgmr.csv"
-  DDD_297:
-    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/DDD.hc.gw.csv"
+  DDD_285:
+    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/DDD.top285.gw.bgmr.csv"
   22q_del:
     geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/X22q.gw.csv"
   22q_small_del:
@@ -28,6 +28,26 @@ gene_sets:
     geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/UKBB_EDU_Neg_GW_61.csv"
   UKBB_EDU_Pos:
     geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/UKBB_EDU_Pos_GW_61.csv"
+
+  # Protective / negative controls
+  SCZ_protect:
+    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/SCZ.top61.protect.gw"
+  NegCtrl_HDL:
+    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/NegCtrl_HDL.gw.csv"
+  NegCtrl_Alanine:
+    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/NegCtrl_Alanine.gw.csv"
+  NegCtrl_HbA1c:
+    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/NegCtrl_HbA1c.gw.csv"
+  NegCtrl_T2D:
+    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/NegCtrl_T2D.gw.csv"
+  NegCtrl_IBD:
+    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/NegCtrl_IBD.gw.csv"
+  NegCtrl_RBC:
+    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/NegCtrl_RBC.gw.csv"
+  NegCtrl_Parkinson:
+    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/NegCtrl_Parkinson.gw.csv"
+  NegCtrl_Alzheimer:
+    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/NegCtrl_Alzheimer.gw.csv"
 
   #ASD_HIQ_100:
   #  geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/HIQ.top100.nopLI.LGD_Dmis_SameWeight.gw"

@@ -42,8 +42,10 @@ import sys
 import os
 from pathlib import Path
 
-NOTEBOOK_DIR = Path().absolute()
-PROJ_DIR = NOTEBOOK_DIR.parent if NOTEBOOK_DIR.name in ("notebooks_rebuttal", "notebooks") else NOTEBOOK_DIR
+import yaml
+with open("/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/config/config.yaml") as f:
+    _cfg = yaml.safe_load(f)
+PROJ_DIR = Path(_cfg["ProjDIR"])
 sys.path.insert(0, str(PROJ_DIR / "src"))
 
 import numpy as np
@@ -60,6 +62,8 @@ from CellType_PSY import (Anno, Neurons, Not_Neurons, ALL_CTs, Neur_idx, NonNeur
                           GetPermutationP_vectorized)
 
 RESULTS_DIR = PROJ_DIR / "results"
+MAIN_DIR = RESULTS_DIR / "main_results"
+ARCHIVE_DIR = RESULTS_DIR / "archive"
 FIG_DIR = RESULTS_DIR / "figures" / "permutation_evaluation"
 FIG_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -70,56 +74,56 @@ FIG_DIR.mkdir(parents=True, exist_ok=True)
 # Define configurations to compare (ordered by increasing stringency)
 CONFIGS = {
     "random": {
-        "dir": "random",
+        "dir": MAIN_DIR / "random",
         "label": "Random (baseline)",
         "variables": "None",
         "method": "Random",
         "color": "#1f77b4",
     },
     "conservation_Best1000": {
-        "dir": "conservation_model_WB_mean_phastCons_n_CDS_bases_Best1000",
+        "dir": MAIN_DIR / "matched_WB_mean_phastCons_n_CDS_bases_Best1000",
         "label": "CDS+WB+phastCons\nBest-of-1000",
         "variables": "CDS, WB, phastCons",
         "method": "Best-of-N",
         "color": "#2ca02c",
     },
     "constraint_Best1000": {
-        "dir": "conservation_model_LOEUF_WB_n_CDS_bases_Best1000",
+        "dir": ARCHIVE_DIR / "conservation_model_LOEUF_WB_n_CDS_bases_Best1000",
         "label": "CDS+WB+LOEUF\nBest-of-1000",
         "variables": "CDS, WB, LOEUF",
         "method": "Best-of-N",
         "color": "#17becf",
     },
     "LOEUF_Best1000": {
-        "dir": "set_level_matched_CDS_WB_LOEUF_Best1000",
+        "dir": ARCHIVE_DIR / "set_level_matched_CDS_WB_LOEUF_Best1000",
         "label": "CDS+WB+LOEUF\nBest-of-1000 (v2)",
         "variables": "CDS, WB, LOEUF",
         "method": "Best-of-N",
         "color": "#bcbd22",
     },
     "conservation_PropWeight": {
-        "dir": "conservation_model_WB_mean_phastCons_n_CDS_bases_PropWeight_Tricubic",
+        "dir": ARCHIVE_DIR / "conservation_model_WB_mean_phastCons_n_CDS_bases_PropWeight_Tricubic",
         "label": "CDS+WB+phastCons\nPropWeight",
         "variables": "CDS, WB, phastCons",
         "method": "PropWeight",
         "color": "#ff7f0e",
     },
     "constraint_PropWeight": {
-        "dir": "constraint_model_LOEUF_WB_n_CDS_bases_PropWeight_Tricubic",
+        "dir": ARCHIVE_DIR / "constraint_model_LOEUF_WB_n_CDS_bases_PropWeight_Tricubic",
         "label": "CDS+WB+LOEUF\nPropWeight",
         "variables": "CDS, WB, LOEUF",
         "method": "PropWeight",
         "color": "#d62728",
     },
     "LOEUF_PropWeight": {
-        "dir": "set_level_matched_CDS_WB_LOEUF_PropWeight_Tricubic",
+        "dir": ARCHIVE_DIR / "set_level_matched_CDS_WB_LOEUF_PropWeight_Tricubic",
         "label": "CDS+WB+LOEUF\nPropWeight (v2)",
         "variables": "CDS, WB, LOEUF",
         "method": "PropWeight",
         "color": "#9467bd",
     },
     "matched_gene_by_gene": {
-        "dir": "matched_WB_CDS",
+        "dir": ARCHIVE_DIR / "matched_WB_CDS",
         "label": "WB+CDS\nGene-by-gene",
         "variables": "WB, CDS",
         "method": "Gene-by-gene",
@@ -140,7 +144,7 @@ KEY_SUPERCLUSTERS = {
 # Load all bias results
 all_results = {}
 for config_key, config in CONFIGS.items():
-    config_dir = RESULTS_DIR / config["dir"] / "Centering"
+    config_dir = config["dir"] / "Centering"
     all_results[config_key] = {}
     for gs in GENE_SETS:
         fpath = config_dir / f"{gs}_bias_addP.csv"
@@ -196,7 +200,9 @@ sig_table = build_significance_table(all_results, GENE_SETS, KEY_SUPERCLUSTERS)
 display_cols = ["Config", "Method"]
 for gs in GENE_SETS:
     for _, sc_short in KEY_SUPERCLUSTERS.items():
-        display_cols.append(f"{gs}_{sc_short}")
+        col = f"{gs}_{sc_short}"
+        if col in sig_table.columns:
+            display_cols.append(col)
 
 print("Significance summary (sig clusters / total clusters, FDR q < 0.1):")
 print(sig_table[display_cols].to_string(index=False))
@@ -251,7 +257,7 @@ print(f"Master table: {master_table.shape[0]} genes, columns: {list(master_table
 # %%
 # Load null gene weights for the recommended config
 RECOMMENDED_CONFIG = "conservation_Best1000"
-rec_dir = RESULTS_DIR / CONFIGS[RECOMMENDED_CONFIG]["dir"] / "Centering" / "null_weights"
+rec_dir = CONFIGS[RECOMMENDED_CONFIG]["dir"] / "Centering" / "null_weights"
 
 matching_vars = ["n_CDS_bases", "WB", "mean_phastCons"]
 var_labels = {
@@ -631,7 +637,7 @@ cap_results = {}
 if len(cap_expression_files) > 1:
     print("Computing bias for each cap value...")
     # Load the null bias from recommended config (same null for all caps)
-    rec_null_dir = RESULTS_DIR / CONFIGS[RECOMMENDED_CONFIG]["dir"] / "Centering" / "null_bias"
+    rec_null_dir = CONFIGS[RECOMMENDED_CONFIG]["dir"] / "Centering" / "null_bias"
 
     for cap_val, exp_path in sorted(cap_expression_files.items()):
         print(f"\n  Cap = {cap_val}")

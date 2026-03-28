@@ -18,19 +18,15 @@
 # %autoreload 2
 import sys
 
-ProjDIR = "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/" # Change to your project directory
-sys.path.insert(1, f'{ProjDIR}/src/')
+from pathlib import Path
+import yaml
+with open("/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/config/config.yaml") as f:
+    _cfg = yaml.safe_load(f)
+PROJ_DIR = Path(_cfg["ProjDIR"])
+sys.path.insert(0, str(PROJ_DIR / "src"))
 from CellType_PSY import *
 #import scanpy as sc
 HGNC, ENSID2Entrez, GeneSymbol2Entrez, Entrez2Symbol = LoadGeneINFO()
-
-try:
-    os.chdir(f"{ProjDIR}/notebooks/")
-    print(f"Current working directory: {os.getcwd()}")
-except FileNotFoundError as e:
-    print(f"Error: Could not change directory - {e}")
-except Exception as e:
-    print(f"Unexpected error: {e}")
 
 
 import statsmodels.api as sm
@@ -51,11 +47,11 @@ HumanCT_Z2_HCT = pd.read_csv("/home/jw3514/Work/CellType_Psy/dat/HumanCTExpressi
 HumanCT_Z2_HCT.columns = HumanCT_Z2_HCT.columns.astype(int)
 
 # %%
-Mut_n_IQ = pd.read_csv("../dat/ASD_IQ_Mut.csv")
+Mut_n_IQ = pd.read_csv(str(PROJ_DIR / "dat/ASD_IQ_Mut.csv"))
 Mut_n_IQ.columns.values
 
 # %%
-Spark_Denovo = pd.read_excel("../dat/suppl.data/41588_2022_1148_MOESM4_ESM.xlsx",
+Spark_Denovo = pd.read_excel(str(PROJ_DIR / "dat/suppl.data/41588_2022_1148_MOESM4_ESM.xlsx"),
                            skiprows=2, sheet_name="Table S7")
 Spark_Denovo = Spark_Denovo[Spark_Denovo[
     "pDenovoWEST_Meta"]!="."]
@@ -66,7 +62,7 @@ Spark_Denovo_ExomeWide.shape
 # %%
 top_Genes = Spark_Denovo.head(61)["HGNC"].values
 Mut_n_IQ_conf = Mut_n_IQ[Mut_n_IQ["HGNC"].isin(top_Genes)]
-Mut_n_IQ_conf.to_csv("/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/Pheno_Bias_vs_IQ/Mut_n_IQ_conf.csv", index=False)
+Mut_n_IQ_conf.to_csv(str(PROJ_DIR / "dat/Pheno_Bias_vs_IQ/Mut_n_IQ_conf.csv"), index=False)
 Mut_n_IQ_conf.shape
 
 # %%
@@ -80,7 +76,7 @@ for g in Genes:
     data.append(row)
 columns = ["Entrez", "IQ"]
 Avg_Gene_IQ_DF = pd.DataFrame(data=data, columns=columns)
-Avg_Gene_IQ_DF.to_csv("/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/Pheno_Bias_vs_IQ/Mut_n_IQ_conf.GeneL.csv")
+Avg_Gene_IQ_DF.to_csv(str(PROJ_DIR / "dat/Pheno_Bias_vs_IQ/Mut_n_IQ_conf.GeneL.csv"))
 
 # %%
 STR = 276
@@ -199,8 +195,8 @@ def Make_HumanCT_DF(Mut_n_IQ_conf, HCT_Z2_MAT_HCT, output_file, alpha=0.05):
 
 
 # %%
-HumanCT_res_df_MutL = Make_HumanCT_DF(Mut_n_IQ_conf, HumanCT_Z2_HCT, "../dat/Pheno_Bias_vs_IQ/HumanCT.spec.MutL.csv")
-HumanCT_res_df_GeneL = Make_HumanCT_DF(Avg_Gene_IQ_DF, HumanCT_Z2_HCT, "../dat/Pheno_Bias_vs_IQ/HumanCT.spec.GeneL.csv")
+HumanCT_res_df_MutL = Make_HumanCT_DF(Mut_n_IQ_conf, HumanCT_Z2_HCT, str(PROJ_DIR / "dat/Pheno_Bias_vs_IQ/HumanCT.spec.MutL.csv"))
+HumanCT_res_df_GeneL = Make_HumanCT_DF(Avg_Gene_IQ_DF, HumanCT_Z2_HCT, str(PROJ_DIR / "dat/Pheno_Bias_vs_IQ/HumanCT.spec.GeneL.csv"))
 
 
 # %%
@@ -479,8 +475,8 @@ HumanCT_res_df_GeneL = HumanCT_res_df_GeneL.sort_values("beta")
 HumanCT_res_df_GeneL.head(10)
 
 # %%
-HumanCT_res_df_GeneL.to_csv("../dat/Pheno_Bias_vs_IQ/HumanCT.GeneL.cluster.June10.csv")
-results_df.to_csv("../dat/Pheno_Bias_vs_IQ/HumanCT.GeneL.Supercluster.June10.csv")
+HumanCT_res_df_GeneL.to_csv(str(PROJ_DIR / "dat/Pheno_Bias_vs_IQ/HumanCT.GeneL.cluster.June10.csv"))
+results_df.to_csv(str(PROJ_DIR / "dat/Pheno_Bias_vs_IQ/HumanCT.GeneL.Supercluster.June10.csv"))
 
 # %%
 HumanCT_res_df_GeneL.head(2)
@@ -716,8 +712,8 @@ print(p_perm)
 # #### Test VIP+ and VIP-
 
 # %%
-CGE_VIP_Pos_list = np.loadtxt("../dat/Other/CGE_VIP_Pos.txt", dtype=int)
-CGE_VIP_Neg_list = np.loadtxt("../dat/Other/CGE_VIP_Neg.txt", dtype=int)
+CGE_VIP_Pos_list = np.loadtxt(str(PROJ_DIR / "dat/Other/CGE_VIP_Pos.txt"), dtype=int)
+CGE_VIP_Neg_list = np.loadtxt(str(PROJ_DIR / "dat/Other/CGE_VIP_Neg.txt"), dtype=int)
 
 # %%
 VIP_pos_meanPBS = HumanCT_res_df_GeneL[HumanCT_res_df_GeneL.index.isin(CGE_VIP_Pos_list)]["beta"].mean()
@@ -749,8 +745,8 @@ print(f"Observed difference: {DIFF_obs:.3f}")
 print(f"P-value: {pval:.3e}")
 
 # %%
-HumanCT_res_df_GeneL = pd.read_csv("../dat/Pheno_Bias_vs_IQ/HumanCT.GeneL.cluster.June10.csv", index_col=0)
-results_df = pd.read_csv("../dat/Pheno_Bias_vs_IQ/HumanCT.GeneL.Supercluster.June10.csv")
+HumanCT_res_df_GeneL = pd.read_csv(str(PROJ_DIR / "dat/Pheno_Bias_vs_IQ/HumanCT.GeneL.cluster.June10.csv"), index_col=0)
+results_df = pd.read_csv(str(PROJ_DIR / "dat/Pheno_Bias_vs_IQ/HumanCT.GeneL.Supercluster.June10.csv"))
 
 # %%
 results_df
@@ -834,8 +830,8 @@ Avg_Gene_IQ_DF_Dmis = pd.DataFrame(data=data_Dmis, columns=columns)
 
 
 # %%
-HumanCT_res_df_GeneL_LGD = Make_HumanCT_DF(Avg_Gene_IQ_DF_LGD, HumanCT_Z2_HCT, "../dat/Pheno_Bias_vs_IQ/HumanCT.GeneL.LGD.csv")
-HumanCT_res_df_GeneL_Dmis = Make_HumanCT_DF(Avg_Gene_IQ_DF_Dmis, HumanCT_Z2_HCT, "../dat/Pheno_Bias_vs_IQ/HumanCT.GeneL.Dmis.csv")
+HumanCT_res_df_GeneL_LGD = Make_HumanCT_DF(Avg_Gene_IQ_DF_LGD, HumanCT_Z2_HCT, str(PROJ_DIR / "dat/Pheno_Bias_vs_IQ/HumanCT.GeneL.LGD.csv"))
+HumanCT_res_df_GeneL_Dmis = Make_HumanCT_DF(Avg_Gene_IQ_DF_Dmis, HumanCT_Z2_HCT, str(PROJ_DIR / "dat/Pheno_Bias_vs_IQ/HumanCT.GeneL.Dmis.csv"))
 
 # %%
 SuperClusterBias_BoxPlot_CorrIQ(HumanCT_res_df_GeneL_LGD, flip_axis=True, figsize=(6, 8))

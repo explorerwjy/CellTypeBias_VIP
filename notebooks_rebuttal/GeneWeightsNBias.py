@@ -18,21 +18,17 @@
 # %autoreload 2
 import sys
 import os
-ProjDIR = "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/" # Change to your project directory
-sys.path.insert(1, f'{ProjDIR}/src/')
+from pathlib import Path
+import yaml
+with open("/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/config/config.yaml") as f:
+    _cfg = yaml.safe_load(f)
+PROJ_DIR = Path(_cfg["ProjDIR"])
+sys.path.insert(1, str(PROJ_DIR / "src"))
 sys.path.insert(1, '/home/jw3514/Work/UNIMED/src')
 from CellType_PSY import *
 #from UNIMED import *
 #import scanpy as sc
 HGNC, ENSID2Entrez, GeneSymbol2Entrez, Entrez2Symbol = LoadGeneINFO()
-
-try:
-    os.chdir(f"{ProjDIR}/notebooks_rebuttal/")
-    print(f"Current working directory: {os.getcwd()}")
-except FileNotFoundError as e:
-    print(f"Error: Could not change directory - {e}")
-except Exception as e:
-    print(f"Unexpected error: {e}")
 
 # %%
 HumanCT_Spec = pd.read_csv("/home/jw3514/Work/CellType_Psy/dat/HumanCTExpressionMats/HumanCT.TPM.0.1.Filt.Spec.clip.lowexp.cut1e4.mean_centered.csv", index_col=0)
@@ -74,10 +70,10 @@ def plot_vip_effect_comparison(df, effect_col = "EFFECT", plot=True):
         plt.show()
     return pval
 
-VIP_Anno = pd.read_csv("../notebooks/VIP_Anno.csv", index_col=0)
+VIP_Anno = pd.read_csv(PROJ_DIR / "notebooks" / "VIP_Anno.csv", index_col=0)
 
 # %%
-GeneWeightDIR = "../dat/GeneWeights/"
+GeneWeightDIR = str(PROJ_DIR / "dat" / "GeneWeights") + "/"
 HIQ_GW = Fil2Dict("{}/HIQ.top61.nopLI.LGD_Dmis_SameWeight.bgmr.gw".format(GeneWeightDIR))
 LIQ_GW = Fil2Dict("{}/LIQ.top61.nopLI.LGD_Dmis_SameWeight.bgmr.gw".format(GeneWeightDIR))
 SCZ_GW = Fil2Dict("{}/SCZ.top61.nopLI.LGD_Dmis_SameWeight.exclude_Mis2.gw".format(GeneWeightDIR))

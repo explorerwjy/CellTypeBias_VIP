@@ -18,19 +18,15 @@
 # %autoreload 2
 import sys
 import os
-ProjDIR = "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/" # Change to your project directory
-sys.path.insert(1, f'{ProjDIR}/src/')
+from pathlib import Path
+import yaml
+with open("/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/config/config.yaml") as f:
+    _cfg = yaml.safe_load(f)
+PROJ_DIR = Path(_cfg["ProjDIR"])
+sys.path.insert(0, str(PROJ_DIR / "src"))
 from CellType_PSY import *
 #import scanpy as sc
 HGNC, ENSID2Entrez, GeneSymbol2Entrez, Entrez2Symbol = LoadGeneINFO()
-
-try:
-    os.chdir(f"{ProjDIR}/notebooks/")
-    print(f"Current working directory: {os.getcwd()}")
-except FileNotFoundError as e:
-    print(f"Error: Could not change directory - {e}")
-except Exception as e:
-    print(f"Unexpected error: {e}")
 
 
 # %%
@@ -60,7 +56,7 @@ def plot_vip_effect_comparison(df, effect_col = "EFFECT"):
     plt.ylabel(effect_col)
     plt.title(f"p = {pval:.2e}")
     plt.show()
-VIP_Anno = pd.read_csv("VIP_Anno.csv", index_col=0)
+VIP_Anno = pd.read_csv(str(PROJ_DIR / "notebooks/VIP_Anno.csv"), index_col=0)
 
 # %% [markdown]
 # # Bias Cal
@@ -78,7 +74,7 @@ HumanCT_Z2_HCT.shape
 # ## Load GW
 
 # %%
-GeneWeightDIR = "../dat/GeneWeights/"
+GeneWeightDIR = str(PROJ_DIR / "dat/GeneWeights/") + "/"
 #Bias_Save_Dir = "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/Spec_Bias_Jul07/"
 Bias_Save_Dir = "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/Spec_Bias_Jul24_Centered/"
 if not os.path.exists(Bias_Save_Dir): # make dir if not exists
@@ -266,7 +262,7 @@ plot_correlation(values2, values1, "SCZ", "ASD w/o ID HCT", dpi=80)
 # ## 22q.11 Bias
 
 # %%
-X22q_GW = Fil2Dict("../dat/GeneWeights/X22q.gw.csv")
+X22q_GW = Fil2Dict(str(PROJ_DIR / "dat/GeneWeights/X22q.gw.csv"))
 # Exclude key 6899 from X22q_GW
 #X22q_GW = {k: v for k, v in X22q_GW.items() if k != 6899}
 X22q_GW_Mouse = Fil2Dict("{}/X22q.mousemodel.gw.csv".format(GeneWeightDIR))
@@ -479,7 +475,7 @@ else:
 
 
 # %%
-merged_loeuf_df = pd.read_csv("../dat/gnomad.LOEUF.merged.csv", index_col=0)
+merged_loeuf_df = pd.read_csv(str(PROJ_DIR / "dat/gnomad.LOEUF.merged.csv"), index_col=0)
 merged_loeuf_df.index = merged_loeuf_df.index.astype(int)
 merged_loeuf_df.head(2)
 

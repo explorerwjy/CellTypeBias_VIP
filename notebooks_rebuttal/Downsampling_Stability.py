@@ -29,6 +29,7 @@
 # %%
 import sys
 import os
+import yaml
 import pandas as pd
 import numpy as np
 from scipy.stats import pearsonr, spearmanr
@@ -39,8 +40,12 @@ import warnings
 
 warnings.filterwarnings("ignore")
 
-# Add src to path
-sys.path.insert(0, os.path.abspath("../src"))
+# Load project config — absolute path so it works from any CWD (e.g., Jupyter server)
+with open("/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/config/config.yaml") as f:
+    _cfg = yaml.safe_load(f)
+PROJ_DIR = Path(_cfg["ProjDIR"])
+sys.path.insert(0, str(PROJ_DIR / "src"))
+
 from CellType_PSY import (
     HumanCT_AvgZ_Weighted,
     poisson_test_denovo,
@@ -53,8 +58,8 @@ from UNIMED import LoadGeneINFO, AnnotateCTDat
 
 # %%
 # Results directory
-RESULTS_DIR = Path("../results/downsampling")
-FIGURES_DIR = Path("../results/figures")
+RESULTS_DIR = PROJ_DIR / "results" / "downsampling"
+FIGURES_DIR = PROJ_DIR / "results" / "figures"
 FIGURES_DIR.mkdir(parents=True, exist_ok=True)
 
 # Fractions used in downsampling
@@ -74,7 +79,7 @@ SAMPLE_SIZES = {
 TRACKING_SUPERCLUSTERS = {
     "ASD": ["Medium spiny neuron", "CGE interneuron"],
     "SCZ": ["MGE interneuron", "CGE interneuron"],
-    "DDD": ["IT-ET Glut", "Upper-layer intratelencephalic"],
+    "DDD": ["IT-ET Glut", "Upper-layer intratelencephalic", "CGE interneuron"],
 }
 
 # Colors for disorders
@@ -86,8 +91,8 @@ DISORDER_COLORS = {
 
 # Data paths
 DATA_PATHS = {
-    "expression_matrix": "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/ExpMats/HumanCT.TPM.0.1.Filt.Spec.clip.lowexp.cut1e4.mean_centered.csv",
-    "annotation": "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/annotation.xlsx",
+    "expression_matrix": str(PROJ_DIR / "dat/ExpMats/HumanCT.TPM.0.1.Filt.Spec.clip.lowexp.cut1e4.mean_centered.csv"),
+    "annotation": str(PROJ_DIR / "dat/annotation.xlsx"),
 }
 
 print(f"Results directory: {RESULTS_DIR}")
@@ -279,10 +284,8 @@ def plot_stability_curves(corr_df, output_path=None, dpi=300):
 
 
 # %%
-# Plot stability curves
-fig = plot_stability_curves(
-    corr_df, output_path=FIGURES_DIR / "FigSX_downsampling_stability.pdf"
-)
+# Plot stability curves (correlation only, for reference)
+fig = plot_stability_curves(corr_df)
 
 # %% [markdown]
 # ## Gene Overlap Analysis
@@ -319,6 +322,9 @@ def plot_stability_with_overlap(corr_df, overlap_data, output_path=None, dpi=300
     """
     fig, axes = plt.subplots(1, 3, figsize=(15, 5), facecolor="none")
 
+    bias_color = "#E74C3C"      # Red for bias correlation
+    overlap_color = "#3498DB"   # Blue for gene overlap
+
     for ax, disorder in zip(axes, DISORDERS):
         ax.patch.set_alpha(0)
 
@@ -335,20 +341,21 @@ def plot_stability_with_overlap(corr_df, overlap_data, output_path=None, dpi=300
             .agg(
                 mean_r=("correlation", "mean"),
                 std_r=("correlation", "std"),
+                ci_lo=("correlation", lambda x: x.quantile(0.025)),
+                ci_hi=("correlation", lambda x: x.quantile(0.975)),
             )
             .reset_index()
         )
 
-        color = DISORDER_COLORS[disorder]
         fracs = summary["fraction"].values * 100
 
-        # Plot correlation ribbon (±SD)
+        # Plot correlation ribbon (mean ± SD)
         ax.fill_between(
             fracs,
             summary["mean_r"] - summary["std_r"],
             summary["mean_r"] + summary["std_r"],
             alpha=0.3,
-            color=color,
+            color=bias_color,
         )
 
         # Plot correlation mean line
@@ -356,7 +363,7 @@ def plot_stability_with_overlap(corr_df, overlap_data, output_path=None, dpi=300
             fracs,
             summary["mean_r"],
             "o-",
-            color=color,
+            color=bias_color,
             linewidth=2,
             markersize=8,
             label="Bias correlation (r)",
@@ -367,11 +374,11 @@ def plot_stability_with_overlap(corr_df, overlap_data, output_path=None, dpi=300
 
         # Formatting for left axis
         ax.set_xlabel("Sample Fraction (%)", fontsize=12)
-        ax.set_ylabel("Correlation with Full Bias (r)", fontsize=12, color=color)
+        ax.set_ylabel("Correlation with Full Bias (r)", fontsize=12, color=bias_color)
         ax.set_title(disorder, fontsize=14, fontweight="bold")
         ax.set_xlim(5, 105)
         ax.set_ylim(0, 1.05)
-        ax.tick_params(axis="y", labelcolor=color)
+        ax.tick_params(axis="y", labelcolor=bias_color)
         ax.grid(True, alpha=0.3)
 
         # Add gene overlap on right y-axis
@@ -380,8 +387,7 @@ def plot_stability_with_overlap(corr_df, overlap_data, output_path=None, dpi=300
             overlap_df = overlap_data[disorder]
             overlap_fracs = overlap_df["fraction"].values * 100
 
-            # Plot gene overlap with different style
-            overlap_color = "#666666"  # Gray
+            # Plot gene overlap (mean ± SD; ci_lo/ci_hi available in data)
             ax2.fill_between(
                 overlap_fracs,
                 overlap_df["mean_overlap"] - overlap_df["std_overlap"],
@@ -431,11 +437,11 @@ def plot_stability_with_overlap(corr_df, overlap_data, output_path=None, dpi=300
 
 
 # %%
-# Plot stability curves with gene overlap
+# Plot stability curves with gene overlap (primary figure for manuscript)
 if len(gene_overlap_data) > 0:
     fig_with_overlap = plot_stability_with_overlap(
         corr_df, gene_overlap_data,
-        output_path=FIGURES_DIR / "FigSX_downsampling_stability_with_overlap.pdf"
+        output_path=FIGURES_DIR / "FigSX_downsampling_stability.pdf"
     )
 else:
     print("No gene overlap data available. Run script with --gene-overlap flag first.")
@@ -463,9 +469,9 @@ def get_supercluster_indices(anno, supercluster_names):
 
 def compute_supercluster_zscores(results, anno, tracking_superclusters):
     """
-    Compute mean z-score for tracked superclusters across fractions.
+    Compute mean mutation bias for tracked superclusters across fractions.
 
-    Returns DataFrame with columns: disorder, fraction, supercluster, mean_z, std_z
+    Returns DataFrame with columns: disorder, fraction, supercluster, mean_z, std_z, ci_lo, ci_hi
     """
     records = []
 
@@ -478,7 +484,7 @@ def compute_supercluster_zscores(results, anno, tracking_superclusters):
 
         for frac, df in results[disorder].items():
             for sc_name, indices in sc_indices.items():
-                # Get z-scores for this supercluster's cell types
+                # Get bias values for this supercluster's cell types
                 valid_idx = [i for i in indices if i in df.index]
                 if len(valid_idx) == 0:
                     continue
@@ -495,6 +501,8 @@ def compute_supercluster_zscores(results, anno, tracking_superclusters):
                         "supercluster": sc_name,
                         "mean_z": iter_means.mean(),
                         "std_z": iter_means.std(),
+                        "ci_lo": iter_means.quantile(0.025),
+                        "ci_hi": iter_means.quantile(0.975),
                     }
                 )
 
@@ -539,8 +547,8 @@ def plot_supercluster_tracking(zscore_df, output_path=None, dpi=300):
 
             ax.fill_between(
                 fracs,
-                sc_df["mean_z"] - sc_df["std_z"],
-                sc_df["mean_z"] + sc_df["std_z"],
+                sc_df["mean_z"].values - sc_df["std_z"].values,
+                sc_df["mean_z"].values + sc_df["std_z"].values,
                 alpha=0.2,
                 color=sc_colors[i],
             )
@@ -556,7 +564,7 @@ def plot_supercluster_tracking(zscore_df, output_path=None, dpi=300):
 
         ax.axhline(y=0, color="gray", linestyle="--", alpha=0.5)
         ax.set_xlabel("Sample Fraction (%)", fontsize=12)
-        ax.set_ylabel("Mean Z-Score", fontsize=12)
+        ax.set_ylabel("Mean mutation bias", fontsize=12)
         ax.set_title(f"{disorder} - Cell Type Tracking", fontsize=14, fontweight="bold")
         ax.set_xlim(5, 105)
         ax.grid(True, alpha=0.3)

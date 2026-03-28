@@ -35,8 +35,10 @@ import matplotlib.pyplot as plt
 import matplotlib as mpl
 from collections import OrderedDict
 
-NOTEBOOK_DIR = Path().absolute()
-PROJ_DIR = NOTEBOOK_DIR.parent if NOTEBOOK_DIR.name in ("notebooks_rebuttal", "notebooks") else NOTEBOOK_DIR
+import yaml
+with open("/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/config/config.yaml") as f:
+    _cfg = yaml.safe_load(f)
+PROJ_DIR = Path(_cfg["ProjDIR"])
 sys.path.insert(0, str(PROJ_DIR / "src"))
 
 FIG_DIR = PROJ_DIR / "results" / "figures" / "systematic_comparison"
@@ -55,12 +57,8 @@ mpl.rcParams['font.size'] = 14
 # %%
 # All available methods and their result directories
 ALL_METHODS = OrderedDict([
-    ("Random", "systematic_random"),
-    ("Gene-by-gene", "systematic_gene_by_gene_WB_mean_phastCons_n_CDS_bases_Tricubic"),
-    ("Rejection", "systematic_rejection_WB_mean_phastCons_n_CDS_bases_Rejection"),
-    ("Best-of-N", "systematic_best_of_n_WB_mean_phastCons_n_CDS_bases_Best1000"),
-    ("PropWeight", "systematic_propensity_WB_mean_phastCons_n_CDS_bases_PropWeight_Tricubic"),
-    ("SIS", "systematic_sis_WB_mean_phastCons_n_CDS_bases_SIS"),
+    ("Random", "main_results/random"),
+    ("Best-of-N", "main_results/matched_WB_mean_phastCons_n_CDS_bases_Best1000"),
 ])
 
 # --- TOGGLE HERE: which methods to show ---
@@ -77,12 +75,16 @@ GENE_SETS = OrderedDict([
     ("ASD with ID", "ASD_LIQ"),
     ("DDD", "DDD_61"),
     ("22q11.2 del", "22q_del"),
+    ("UKBB VNR+", "UKBB_VNR_Pos"),
+    ("UKBB VNR-", "UKBB_VNR_Neg"),
 ])
 
 # Negative controls (non-brain traits, expect no cell-type enrichment)
 NEG_CTRL_SETS = OrderedDict([
     ("HDL cholesterol", "NegCtrl_HDL"),
     ("Alanine", "NegCtrl_Alanine"),
+    ("Red Blood Cell", "NegCtrl_RBC"),
+    ("IBD", "NegCtrl_IBD"),
 ])
 
 ANALYSIS = "Centering"

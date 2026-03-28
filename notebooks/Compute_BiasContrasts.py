@@ -27,18 +27,19 @@
 import sys
 import os
 
-ProjDIR = "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/"
-sys.path.insert(1, f'{ProjDIR}/src/')
+from pathlib import Path
+import yaml
+with open("/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/config/config.yaml") as f:
+    _cfg = yaml.safe_load(f)
+PROJ_DIR = Path(_cfg["ProjDIR"])
+sys.path.insert(0, str(PROJ_DIR / "src"))
 from CellType_PSY import *
-
-os.chdir(f"{ProjDIR}/notebooks/")
-print(f"Current working directory: {os.getcwd()}")
 
 # %% [markdown]
 # ## 1. Load all bias DataFrames
 
 # %%
-Bias_Save_Dir = os.path.join(ProjDIR, "results/main_results/random/Centering/")
+Bias_Save_Dir = str(PROJ_DIR / "results/main_results/random/Centering/") + "/"
 
 ASD_All_Bias = pd.read_csv(Bias_Save_Dir + "ASD_All_bias_addP.csv", index_col=0)
 SCZ_Bias = pd.read_csv(Bias_Save_Dir + "SCZ_bias_addP.csv", index_col=0)
@@ -60,7 +61,7 @@ print(f"Loaded {11} bias DataFrames")
 # ## 2. Pairwise contrasts
 
 # %%
-OUT_DIR = os.path.join(ProjDIR, "results/main_results/contrasts/")
+OUT_DIR = str(PROJ_DIR / "results/main_results/contrasts/") + "/"
 os.makedirs(OUT_DIR, exist_ok=True)
 
 EffLabel = "EFFECT"
@@ -285,11 +286,11 @@ print(f"Saved CGE_VIP_annotation_22q.csv ({len(CGE_anno_22q)} rows)")
 CGE_VIP_Pos = CGE_anno_22q[CGE_anno_22q["VIP"] >= cutoff].index.values
 CGE_VIP_Neg = CGE_anno_22q[CGE_anno_22q["VIP"] < cutoff].index.values
 
-os.makedirs(os.path.join(ProjDIR, "dat/Other"), exist_ok=True)
-with open(os.path.join(ProjDIR, "dat/Other/CGE_VIP_Pos.txt"), "w") as f:
+os.makedirs(str(PROJ_DIR / "dat/Other"), exist_ok=True)
+with open(str(PROJ_DIR / "dat/Other/CGE_VIP_Pos.txt"), "w") as f:
     for gene in CGE_VIP_Pos:
         f.write(str(gene) + "\n")
-with open(os.path.join(ProjDIR, "dat/Other/CGE_VIP_Neg.txt"), "w") as f:
+with open(str(PROJ_DIR / "dat/Other/CGE_VIP_Neg.txt"), "w") as f:
     for gene in CGE_VIP_Neg:
         f.write(str(gene) + "\n")
 print(f"VIP+ clusters: {len(CGE_VIP_Pos)}, VIP- clusters: {len(CGE_VIP_Neg)}")
@@ -309,7 +310,7 @@ Time = ['mean_2A', 'mean_2B', 'mean_3A', 'mean_3B', 'mean_4', 'mean_5',
         'mean_6', 'mean_7', 'mean_8', 'mean_9', 'mean_10', 'mean_11']
 
 # Load gene sets
-GeneWeightDIR = os.path.join(ProjDIR, "dat/GeneWeights/")
+GeneWeightDIR = str(PROJ_DIR / "dat/GeneWeights/") + "/"
 SCZ_Genes = pd.read_csv(f"{GeneWeightDIR}/SCZ.top61.nopLI.LGD_Dmis_SameWeight.exclude_Mis2.gw", header=None)[0].values
 HIQ_ASD_Genes = pd.read_csv(f"{GeneWeightDIR}/HIQ.top61.nopLI.LGD_Dmis_SameWeight.bgmr.gw", header=None)[0].values
 LIQ_ASD_Genes = pd.read_csv(f"{GeneWeightDIR}/LIQ.top61.nopLI.LGD_Dmis_SameWeight.bgmr.gw", header=None)[0].values

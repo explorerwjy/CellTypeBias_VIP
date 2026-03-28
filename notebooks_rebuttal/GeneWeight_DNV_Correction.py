@@ -44,8 +44,10 @@ import matplotlib.pyplot as plt
 import matplotlib as mpl
 import csv
 
-NOTEBOOK_DIR = Path().absolute()
-PROJ_DIR = NOTEBOOK_DIR.parent if NOTEBOOK_DIR.name in ("notebooks_rebuttal", "notebooks") else NOTEBOOK_DIR
+import yaml
+with open("/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/config/config.yaml") as f:
+    _cfg = yaml.safe_load(f)
+PROJ_DIR = Path(_cfg["ProjDIR"])
 sys.path.insert(0, str(PROJ_DIR / "src"))
 
 GW_DIR = PROJ_DIR / "dat" / "GeneWeights"

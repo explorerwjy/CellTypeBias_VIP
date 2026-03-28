@@ -40,17 +40,16 @@ from pathlib import Path
 from scipy import stats
 from multiprocessing import Pool
 
-ProjDIR = "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/"
-sys.path.insert(1, f'{ProjDIR}/src/')
+import yaml
+with open("/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/config/config.yaml") as f:
+    _cfg = yaml.safe_load(f)
+PROJ_DIR = Path(_cfg["ProjDIR"])
+sys.path.insert(0, str(PROJ_DIR / "src"))
 from CellType_PSY import *
 
-import yaml
-with open(ProjDIR + 'config/config.yaml', 'r') as file:
-    config = yaml.safe_load(file)
+config = _cfg
 
 HGNC, ENSID2Entrez, GeneSymbol2Entrez, Entrez2Symbol = LoadGeneINFO()
-
-os.chdir(f"{ProjDIR}/notebooks/")
 
 # Font setup
 font_path = '/usr/share/fonts/truetype/msttcorefonts/Arial.ttf'
@@ -63,12 +62,12 @@ plt.style.use('seaborn-v0_8-whitegrid')
 
 # %%
 # Gene weights
-ASD_GW = Fil2Dict("../dat/GeneWeights/HIQ.top61.nopLI.LGD_Dmis_SameWeight.bgmr.gw")
-SCZ_GW = Fil2Dict("../dat/GeneWeights/SCZ.top61.nopLI.LGD_Dmis_SameWeight.exclude_Mis2.gw")
+ASD_GW = Fil2Dict(str(PROJ_DIR / "dat/GeneWeights/HIQ.top61.nopLI.LGD_Dmis_SameWeight.bgmr.gw"))
+SCZ_GW = Fil2Dict(str(PROJ_DIR / "dat/GeneWeights/SCZ.top61.nopLI.LGD_Dmis_SameWeight.exclude_Mis2.gw"))
 
 # Expression matrix
 expression_matrix = config['analysis_types']['Centering']
-HCT_Z2_MAT = pd.read_csv(ProjDIR + expression_matrix, index_col=0)
+HCT_Z2_MAT = pd.read_csv(str(PROJ_DIR / expression_matrix), index_col=0)
 HCT_Z2_MAT.columns = HCT_Z2_MAT.columns.astype(int)
 print(f"Expression matrix: {HCT_Z2_MAT.shape[0]} genes x {HCT_Z2_MAT.shape[1]} cell types")
 
@@ -173,18 +172,47 @@ def prepare_gene_arrays(genes_df):
     return entrez, weights
 
 
+def prepare_all_gene_arrays(gw_dict):
+    """Convert full gene weight dict to numpy arrays, filtered to expression matrix."""
+    entrez = np.array([g for g in gw_dict if g in expr_gene_set])
+    weights = np.array([gw_dict[g] for g in entrez])
+    return entrez, weights
+
+
+# Pre-compute full gene arrays (all genes, not just those in gnomAD)
+asd_all_entrez, asd_all_weights = prepare_all_gene_arrays(ASD_GW)
+scz_all_entrez, scz_all_weights = prepare_all_gene_arrays(SCZ_GW)
+print(f"Full gene sets: ASD={len(asd_all_entrez)}, SCZ={len(scz_all_entrez)}")
+
+
 def compute_removal_curve(asd_sorted_df, scz_sorted_df, n_steps=31):
-    """Compute ASD-SCZ correlation as genes are progressively removed from the top."""
-    asd_entrez, asd_weights = prepare_gene_arrays(asd_sorted_df)
-    scz_entrez, scz_weights = prepare_gene_arrays(scz_sorted_df)
+    """Compute ASD-SCZ correlation as genes are progressively removed from the top.
+
+    Genes without annotation (not in sorted_df) are always retained in the bias
+    calculation so the step-0 correlation matches the full-dataset baseline.
+    """
+    # Ranked genes that can be removed
+    asd_ranked_entrez, asd_ranked_weights = prepare_gene_arrays(asd_sorted_df)
+    scz_ranked_entrez, scz_ranked_weights = prepare_gene_arrays(scz_sorted_df)
+
+    # Unranked genes (in full set but not in ranked df) — always kept
+    asd_ranked_set = set(asd_ranked_entrez)
+    scz_ranked_set = set(scz_ranked_entrez)
+    asd_kept_mask = np.array([g not in asd_ranked_set for g in asd_all_entrez])
+    scz_kept_mask = np.array([g not in scz_ranked_set for g in scz_all_entrez])
+    asd_kept_entrez, asd_kept_weights = asd_all_entrez[asd_kept_mask], asd_all_weights[asd_kept_mask]
+    scz_kept_entrez, scz_kept_weights = scz_all_entrez[scz_kept_mask], scz_all_weights[scz_kept_mask]
 
     correlations = []
     for i in range(n_steps):
-        r = fast_bias_corr(
-            asd_entrez[i:], asd_weights[i:],
-            scz_entrez[i:], scz_weights[i:],
-            expr_np, expr_gene_to_row, neur_col_mask
-        )
+        # Combine: unranked (always kept) + ranked genes after removal
+        asd_e = np.concatenate([asd_kept_entrez, asd_ranked_entrez[i:]])
+        asd_w = np.concatenate([asd_kept_weights, asd_ranked_weights[i:]])
+        scz_e = np.concatenate([scz_kept_entrez, scz_ranked_entrez[i:]])
+        scz_w = np.concatenate([scz_kept_weights, scz_ranked_weights[i:]])
+
+        r = fast_bias_corr(asd_e, asd_w, scz_e, scz_w,
+                           expr_np, expr_gene_to_row, neur_col_mask)
         correlations.append(r)
     return correlations
 
@@ -200,11 +228,15 @@ N_PERMS = 1000
 N_PROCESSES = 10
 SMOOTH = False  # Set True to apply moving average smoothing to removal curves
 
-CACHE_FILE = Path("../dat/Other/ASD_SCZ_RandomGeneRemoval_Null.npy")
+CACHE_FILE = PROJ_DIR / "dat/Other/ASD_SCZ_RandomGeneRemoval_Null.npy"
 
 
 def _run_random_removal_batch(args):
-    """Run random gene removal for a batch of permutation indices (worker function)."""
+    """Run random gene removal for a batch of permutation indices (worker function).
+
+    Uses the FULL gene set for bias calculation. At each step, removes i genes
+    (randomly ordered) from the full set.
+    """
     batch_indices, asd_entrez, asd_weights, scz_entrez, scz_weights, \
         expr_np_local, gene_to_row, neur_mask, n_steps = args
 
@@ -233,6 +265,9 @@ def _run_random_removal_batch(args):
     return results
 
 
+# Force recompute since gene set changed
+CACHE_FILE = PROJ_DIR / "dat/Other/ASD_SCZ_RandomGeneRemoval_Null_v2.npy"
+
 if CACHE_FILE.exists():
     print(f"Loading cached null from {CACHE_FILE}")
     RandNull = np.load(CACHE_FILE)
@@ -240,16 +275,13 @@ if CACHE_FILE.exists():
 else:
     print(f"Computing random removal null ({N_PERMS} perms x {N_REMOVAL_STEPS} steps, {N_PROCESSES} processes)...")
 
-    # Prepare numpy arrays once
-    asd_entrez_np, asd_weights_np = prepare_gene_arrays(ASD_Genes)
-    scz_entrez_np, scz_weights_np = prepare_gene_arrays(SCZ_Genes)
-
+    # Use ALL genes (not just gnomAD-annotated) for the random null
     batch_size = N_PERMS // N_PROCESSES
     batches = [np.arange(i, min(i + batch_size, N_PERMS)) for i in range(0, N_PERMS, batch_size)]
 
-    # Package args for each worker
+    # Package args for each worker — using full gene arrays
     worker_args = [
-        (batch, asd_entrez_np, asd_weights_np, scz_entrez_np, scz_weights_np,
+        (batch, asd_all_entrez, asd_all_weights, scz_all_entrez, scz_all_weights,
          expr_np, expr_gene_to_row, neur_col_mask, N_REMOVAL_STEPS)
         for batch in batches
     ]
@@ -325,7 +357,7 @@ ax.spines['bottom'].set_linewidth(1.0)
 ax.spines['bottom'].set_color('black')
 plt.grid(True, linestyle='--', alpha=0.4)
 plt.tight_layout()
-plt.savefig("../results/figures/LOEUF_gene_removal_ASD_SCZ_correlation.png",
+plt.savefig(str(PROJ_DIR / "results/figures/LOEUF_gene_removal_ASD_SCZ_correlation.png"),
             dpi=300, transparent=True, bbox_inches='tight')
 plt.show()
 
@@ -382,7 +414,7 @@ ax.spines['bottom'].set_linewidth(1.0)
 ax.spines['bottom'].set_color('black')
 plt.grid(True, linestyle='--', alpha=0.4)
 plt.tight_layout()
-plt.savefig("../results/figures/BrainSpan_gene_removal_ASD_SCZ_correlation.png",
+plt.savefig(str(PROJ_DIR / "results/figures/BrainSpan_gene_removal_ASD_SCZ_correlation.png"),
             dpi=300, transparent=True, bbox_inches='tight')
 plt.show()
 

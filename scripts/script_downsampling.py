@@ -492,6 +492,8 @@ def run_gene_overlap_analysis(disorder, fractions, n_iter, n_jobs, seed, outdir)
                 "fraction": frac,
                 "mean_overlap": 1.0,
                 "std_overlap": 0.0,
+                "ci_lo": 1.0,
+                "ci_hi": 1.0,
                 "n_iter": n_iter,
             })
             continue
@@ -514,10 +516,13 @@ def run_gene_overlap_analysis(disorder, fractions, n_iter, n_jobs, seed, outdir)
             overlaps.append(overlap)
 
         if len(overlaps) > 0:
+            overlaps = np.array(overlaps)
             results.append({
                 "fraction": frac,
                 "mean_overlap": np.mean(overlaps),
                 "std_overlap": np.std(overlaps),
+                "ci_lo": np.percentile(overlaps, 2.5),
+                "ci_hi": np.percentile(overlaps, 97.5),
                 "n_iter": len(overlaps),
             })
 

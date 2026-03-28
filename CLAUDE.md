@@ -205,6 +205,16 @@ See `docs/MATCHING_MODES.md` for details.
 - Positive bias = cell type enriched for high-specificity genes with high mutation burden
 - Significant: typically q-value < 0.1, Z-score > 2.0
 
+## Manuscript Writing Rule
+
+**All manuscript text (Methods, Results, Supplementary Notes) must be verified against the actual code before finalizing.** Do not describe algorithms, parameters, or procedures from memory or mental models — always read the implementation first. When drafting Methods text that describes a computational procedure, grep/read the relevant function and config to confirm:
+- The actual distance metric or statistic used (e.g., percentile-mean difference vs KS statistic)
+- The actual parameter values (e.g., n_candidates=1000 not 100)
+- Variable weighting or special handling (e.g., CDS length weighted 3x)
+- The exact matching variables used in production runs (check `config/config.yaml`)
+
+See `docs/MS/Code_Method_Crossref.md` for the code-to-manuscript crossreference table.
+
 ## Common Issues
 
 **"Gene not in Expression dataset"**

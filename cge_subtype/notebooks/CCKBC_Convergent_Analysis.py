@@ -933,7 +933,113 @@ print()
 print(summary.to_string())
 
 # %% [markdown]
-# ## 9. Conclusion
+# ## 9. Combined Reviewer Figure: CCKBC vs VIP+ ISI 22q Bias
+#
+# Two-panel composite:
+# - **Left**: Three-way boxplot (22q deletion) — VIP- CCKBC vs VIP+ CCKBC vs VIP+ ISI
+# - **Right**: Continuous scatter — CCKBC fraction (Harmony) vs 22q deletion bias
+
+# %%
+FIGURES_DIR = ProjDIR / "results" / "figures"
+FIGURES_DIR.mkdir(parents=True, exist_ok=True)
+
+fig, axes = plt.subplots(1, 2, figsize=(12, 5.5), facecolor="none",
+                         gridspec_kw={"width_ratios": [1, 1.2]})
+
+# --- Panel A: Three-way boxplot (22q deletion) ---
+ax = axes[0]
+ax.patch.set_alpha(0)
+
+group_colors_combined = {
+    "VIP−\nCCKBC": "#2ECC71",
+    "VIP+\nCCKBC": "#E74C3C",
+    "VIP+\n(ISI)": "#3498DB",
+}
+
+col = "bias_22q_del"
+plot_parts = []
+for grp_label, grp_idx in [("VIP−\nCCKBC", vip_neg_cckbc),
+                             ("VIP+\nCCKBC", vip_pos_cckbc),
+                             ("VIP+\n(ISI)", vip_isi_clusters)]:
+    vals = master.loc[grp_idx, col].dropna()
+    plot_parts.append(pd.DataFrame({"Bias": vals, "Group": grp_label}))
+plot_data = pd.concat(plot_parts)
+
+sns.boxplot(data=plot_data, x="Group", y="Bias", ax=ax,
+            palette=list(group_colors_combined.values()), width=0.5, fliersize=3,
+            order=list(group_colors_combined.keys()))
+sns.stripplot(data=plot_data, x="Group", y="Bias", ax=ax,
+              color="black", size=5, alpha=0.6,
+              order=list(group_colors_combined.keys()))
+
+# Mann-Whitney tests
+vn_vals = master.loc[vip_neg_cckbc, col].dropna()
+vp_vals = master.loc[vip_pos_cckbc, col].dropna()
+isi_vals = master.loc[vip_isi_clusters, col].dropna()
+_, p_vn_vp = mannwhitneyu(vn_vals, vp_vals, alternative="two-sided")
+_, p_vp_isi = mannwhitneyu(vp_vals, isi_vals, alternative="two-sided")
+
+ax.set_title("22q Deletion: Three-Way Comparison", fontsize=11, fontweight="bold")
+ax.set_ylabel("Mutation Bias (EFFECT)", fontsize=10)
+ax.set_xlabel("")
+ax.text(0.02, 0.97,
+        f"VIP− vs VIP+ CCKBC: p={p_vn_vp:.2f}\nVIP+ CCKBC vs ISI: p={p_vp_isi:.2f}",
+        transform=ax.transAxes, fontsize=8, va="top",
+        bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8))
+
+# --- Panel B: Continuous scatter (22q deletion) ---
+ax = axes[1]
+ax.patch.set_alpha(0)
+
+vip_all_idx = sorted(set(list(VIP_idx) + cckbc_clusters))
+vip_master_combined = master.loc[vip_all_idx]
+valid = vip_master_combined["cckbc_frac_harmony"].notna() & vip_master_combined[col].notna()
+x = vip_master_combined.loc[valid, "cckbc_frac_harmony"]
+y = vip_master_combined.loc[valid, col]
+rho, p_corr = spearmanr(x, y)
+
+# Color by group
+colors = []
+for c in x.index:
+    if c in vip_neg_cckbc:
+        colors.append("#2ECC71")
+    elif c in vip_pos_cckbc:
+        colors.append("#E74C3C")
+    else:
+        colors.append("#3498DB")
+
+ax.scatter(x, y, s=60, alpha=0.8, c=colors, edgecolors="k", linewidths=0.5, zorder=3)
+for cl in x.index:
+    ax.annotate(str(cl), (x[cl], y[cl]), fontsize=7, ha="left", va="bottom",
+                xytext=(2, 2), textcoords="offset points", alpha=0.7)
+
+ax.set_xlabel("CCKBC Fraction (Harmony Mapping)", fontsize=10)
+ax.set_ylabel("Mutation Bias (EFFECT)", fontsize=10)
+ax.set_title("CCKBC Fraction vs 22q Deletion Bias", fontsize=11, fontweight="bold")
+ax.text(0.02, 0.97, f"Spearman ρ = {rho:.2f}, P = {p_corr:.3f}\nn = {len(x)} clusters",
+        transform=ax.transAxes, fontsize=9, va="top",
+        bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8))
+
+# Legend
+legend_elements = [
+    Line2D([0], [0], marker='o', color='w', markerfacecolor='#2ECC71',
+           markersize=8, markeredgecolor='k', label='VIP− CCKBC'),
+    Line2D([0], [0], marker='o', color='w', markerfacecolor='#E74C3C',
+           markersize=8, markeredgecolor='k', label='VIP+ CCKBC'),
+    Line2D([0], [0], marker='o', color='w', markerfacecolor='#3498DB',
+           markersize=8, markeredgecolor='k', label='VIP+ (ISI)'),
+]
+ax.legend(handles=legend_elements, loc="lower right", framealpha=0.8, fontsize=8)
+
+fig.patch.set_alpha(0)
+plt.tight_layout()
+plt.savefig(FIGURES_DIR / "FigSX_CCKBC_22q_bias.pdf",
+            dpi=300, bbox_inches="tight", transparent=True)
+plt.show()
+print(f"Saved: {FIGURES_DIR / 'FigSX_CCKBC_22q_bias.pdf'}")
+
+# %% [markdown]
+# ## 10. Conclusion
 #
 # **Summary**:
 # - Mouse CCKBCs map consistently to human clusters 277–281 via both
@@ -941,7 +1047,8 @@ print(summary.to_string())
 # - Ephys signature transfer independently confirms these clusters as most CCKBC-like
 #   (Spearman rho with Harmony fraction, p<0.05).
 # - 22q11.2 deletion bias: imputed CCKBC vs VIP+ (ISI) clusters show
-#   [result from section 6 above].
+#   no significant difference (MWU P = 0.37–0.63 across gene sets).
+# - VIP expression status, not CCKBC identity, drives 22q bias.
 #
 # **Caveats**:
 # - CCKBC is a mouse-defined cell type with no discrete human transcriptomic homolog

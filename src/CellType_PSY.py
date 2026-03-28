@@ -200,8 +200,8 @@ def Aggregate_Gene_Weights_NDD(MutFil, Nproband=42607, BGMR=None, wLGD=0.347, wM
         gene2MutN[g] = (nLGD - exp_LGD) * wLGD + (nMis - exp_Mis) * wMis
     if out != None:
         writer = csv.writer(open(out, 'wt'))
-        for k,v in sorted(gene2MutN.items(), key=lambda x:x[1], reverse=True):
-           writer.writerow([k,v]) 
+        for k,v in gene2MutN.items():
+           writer.writerow([k,v])
     return gene2MutN
 
 def Aggregate_Gene_Weights_SCZ_Daly(MutFil, allen_mouse_genes, usepLI=False, Bmis=False, out=None, mode="MC", 
@@ -239,8 +239,8 @@ def Aggregate_Gene_Weights_SCZ_Daly(MutFil, allen_mouse_genes, usepLI=False, Bmi
             #gene2MutN[g] = row["LGD_OR"] * 0.26 + row["Mis3_OR"] * 0.25 + row["nMis2_OR"] * 0.06
     if out != None:
         writer = csv.writer(open(out, 'wt'))
-        for k,v in sorted(gene2MutN.items(), key=lambda x:x[1], reverse=True):
-           writer.writerow([k,v]) 
+        for k,v in gene2MutN.items():
+           writer.writerow([k,v])
     return gene2MutN
 
 def quantileNormalize(df_input):
@@ -786,10 +786,10 @@ def compare_biases(bias1, bias2, name1="1", name2="2", efflabel="EFFECT", neuron
         
     return results   
 
-def plot_bias_comparison(results, name1, name2, p_test="Wilcoxon_P", legend_anchor=(1, 0)):
+def plot_bias_comparison(results, name1, name2, p_test="Mann_Whitney_FDR", legend_anchor=(1, 0)):
     # Create publication-quality figure
     plt.style.use('seaborn-v0_8-paper')
-    fig, ax = plt.subplots(figsize=(15, 8), dpi=300, facecolor='none')
+    fig, ax = plt.subplots(figsize=(12, 8), dpi=300, facecolor='none')
     fig.patch.set_alpha(0.0)
     ax.patch.set_alpha(0.0)
     plt.style.use('seaborn-v0_8-whitegrid')
@@ -816,9 +816,9 @@ def plot_bias_comparison(results, name1, name2, p_test="Wilcoxon_P", legend_anch
     ax.set_xticklabels(results_to_plot.index.values, rotation=45, ha='right', 
                        fontsize=21, fontweight='medium')
 
-    # Add refined legend
+    # Add refined legend (inside plot, above bars)
     ax.legend(fontsize=21, frameon=False,
-             loc='lower right', bbox_to_anchor=legend_anchor)
+             loc='upper left', bbox_to_anchor=legend_anchor)
 
     # Add zero line and grid
     ax.axhline(y=0, color='black', linestyle='-', linewidth=1, alpha=0.3)

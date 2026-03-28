@@ -26,18 +26,21 @@
 import sys
 import os
 
-ProjDIR = "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/"
-sys.path.insert(1, f'{ProjDIR}/src/')
+from pathlib import Path
+import yaml
+with open("/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/config/config.yaml") as f:
+    _cfg = yaml.safe_load(f)
+PROJ_DIR = Path(_cfg["ProjDIR"])
+sys.path.insert(0, str(PROJ_DIR / "src"))
 from CellType_PSY import *
 
-os.chdir(f"{ProjDIR}/notebooks/")
 plt.style.use('seaborn-v0_8-whitegrid')
 
 # %% [markdown]
 # ## Load data
 
 # %%
-Bias_Save_Dir = os.path.join(ProjDIR, "results/main_results/random/Centering/")
+Bias_Save_Dir = str(PROJ_DIR / "results/main_results/random/Centering/") + "/"
 
 HighIQ_ASD_Bias = pd.read_csv(Bias_Save_Dir + "ASD_HIQ_bias_addP.csv", index_col=0)
 LowIQ_ASD_Bias = pd.read_csv(Bias_Save_Dir + "ASD_LIQ_bias_addP.csv", index_col=0)
@@ -49,7 +52,7 @@ VNR_Neg_Bias = pd.read_csv(Bias_Save_Dir + "UKBB_VNR_Neg_bias_addP.csv", index_c
 EDU_Neg_Bias = pd.read_csv(Bias_Save_Dir + "UKBB_EDU_Neg_bias_addP.csv", index_col=0)
 
 # Pre-computed CGE annotations
-CONTRAST_DIR = os.path.join(ProjDIR, "results/main_results/contrasts/")
+CONTRAST_DIR = str(PROJ_DIR / "results/main_results/contrasts/") + "/"
 CGE_anno = pd.read_csv(CONTRAST_DIR + "CGE_VIP_annotation.csv", index_col=0)
 CGE_anno_22q = pd.read_csv(CONTRAST_DIR + "CGE_VIP_annotation_22q.csv", index_col=0)
 

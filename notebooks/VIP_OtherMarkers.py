@@ -19,27 +19,23 @@
 import sys
 import os
 
-ProjDIR = "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/" # Change to your project directory
-sys.path.insert(1, f'{ProjDIR}/src/')
+from pathlib import Path
+import yaml
+with open("/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/config/config.yaml") as f:
+    _cfg = yaml.safe_load(f)
+PROJ_DIR = Path(_cfg["ProjDIR"])
+sys.path.insert(0, str(PROJ_DIR / "src"))
 from CellType_PSY import *
 #import scanpy as sc
 HGNC, ENSID2Entrez, GeneSymbol2Entrez, Entrez2Symbol = LoadGeneINFO()
-
-try:
-    os.chdir(f"{ProjDIR}/notebooks/")
-    print(f"Current working directory: {os.getcwd()}")
-except FileNotFoundError as e:
-    print(f"Error: Could not change directory - {e}")
-except Exception as e:
-    print(f"Unexpected error: {e}")
 
 
 import statsmodels.api as sm
 from statsmodels.stats.multitest import fdrcorrection, multipletests
 
 # %%
-#HumanCT_res_df_GeneL = pd.read_csv("../dat/Pheno_Bias_vs_IQ/HumanCT.GeneL.cluster.June10.csv", index_col=0)
-#HumanCT_res_df_GeneL.head(5)
+HumanCT_res_df_GeneL = pd.read_csv("../dat/Pheno_Bias_vs_IQ/HumanCT.GeneL.cluster.June10.csv", index_col=0)
+HumanCT_res_df_GeneL.head(5)
 
 # %%
 ExpL = pd.read_csv("/home/jw3514/Work/CellType_Psy/dat/HumanCTExpressionMats/Human.CT.Exp.Entrez.csv", index_col=0)
@@ -411,32 +407,36 @@ def plot_beta_distribution(
     ax.tick_params(axis='y', labelsize=8)
     ax.tick_params(axis='x', labelsize=8)
 
-    # --- Statistics ---
-    h_stat, p_kw = stats.kruskal(*groups)
-    _, p_isi2 = stats.mannwhitneyu(
-        ISI2[label], CCKBC[label], alternative='greater'
-    )
-    _, p_isi3 = stats.mannwhitneyu(
-        ISI3[label], CCKBC[label], alternative='greater'
-    )
-    _, p_isi23_cck = stats.mannwhitneyu(
-        list(ISI2[label]) + list(ISI3[label]), list(CCKBC[label]), alternative='greater'
-    )
+    # --- Statistics (with empty-group protection) ---
+    non_empty = [g for g in groups if len(g) > 0]
+    stat_lines = []
+    if len(non_empty) >= 2:
+        h_stat, p_kw = stats.kruskal(*non_empty)
+        stat_lines.append(f"Kruskal-Wallis p = {p_kw:.2e}")
+    else:
+        stat_lines.append("Kruskal-Wallis: N/A (too few non-empty groups)")
 
-    _, p_isi23_vip_neg = stats.mannwhitneyu(
-        list(ISI2[label]) + list(ISI3[label]), list(VIP_Neg[label]), alternative='greater'
-    )
-    # stat_text = (
-    #     f"Kruskal–Wallis p = {p_kw:.2e}\n"
-    #     f"ISI2 > CCKBC: p = {p_isi2:.2e}\n"
-    #     f"ISI3 > CCKBC: p = {p_isi3:.2e}"
-    # )
+    isi23 = list(ISI2[label]) + list(ISI3[label])
+    if len(ISI2[label]) > 0 and len(CCKBC[label]) > 0:
+        _, p_isi2 = stats.mannwhitneyu(ISI2[label], CCKBC[label], alternative='greater')
+    else:
+        p_isi2 = float('nan')
+    if len(ISI3[label]) > 0 and len(CCKBC[label]) > 0:
+        _, p_isi3 = stats.mannwhitneyu(ISI3[label], CCKBC[label], alternative='greater')
+    else:
+        p_isi3 = float('nan')
+    if len(isi23) > 0 and len(CCKBC[label]) > 0:
+        _, p_isi23_cck = stats.mannwhitneyu(isi23, list(CCKBC[label]), alternative='greater')
+        stat_lines.append(f"ISI2+ISI3 > CCKBC: p = {p_isi23_cck:.2e}")
+    else:
+        stat_lines.append("ISI2+ISI3 > CCKBC: N/A")
+    if len(isi23) > 0 and len(VIP_Neg[label]) > 0:
+        _, p_isi23_vip_neg = stats.mannwhitneyu(isi23, list(VIP_Neg[label]), alternative='greater')
+        stat_lines.append(f"ISI2+ISI3 > VIP-: p = {p_isi23_vip_neg:.2e}")
+    else:
+        stat_lines.append("ISI2+ISI3 > VIP-: N/A")
 
-    stat_text = (
-        f"Kruskal–Wallis p = {p_kw:.2e}\n"
-        f"ISI2+ISI3 > CCKBC: p = {p_isi23_cck:.2e}\n"
-        f"ISI2+ISI3 > VIP-: p = {p_isi23_vip_neg:.2e}\n"
-    )
+    stat_text = "\n".join(stat_lines)
 
     ax.text(
         0.02, 0.98,
@@ -494,6 +494,25 @@ Biases_CGE_TPM.loc[:, "SNCG_ExpL"] = TPM.loc[GeneSymbol2Entrez["SNCG"], Biases_C
 Biases_CGE_TPM.loc[:, "M2R_ExpL"]  = TPM.loc[GeneSymbol2Entrez["CHRM2"], Biases_CGE_TPM.index].values
 Biases_CGE_TPM.loc[:, "CNR1_ExpL"] = TPM.loc[GeneSymbol2Entrez["CNR1"], Biases_CGE_TPM.index].values
 
+# Define feature_names and cutoffs for the CPM section
+feature_names = [
+    ("VIP_ExpL", "VIP"),
+    ("CCK_ExpL", "CCK"),
+    ("CR_ExpL", "CR (CALB2)"),
+    ("SNCG_ExpL", "SNCG"),
+    ("M2R_ExpL", "M2R (CHRM2)"),
+    ("CNR1_ExpL", "CNR1"),
+]
+
+cutoffs = {
+    "VIP_ExpL": 1,
+    "CCK_ExpL": 2,
+    "CR_ExpL": 1.5,
+    "SNCG_ExpL": 0.5,
+    "M2R_ExpL": 2,
+    "CNR1_ExpL": 1,
+}
+
 # %%
 # -- Fixed: Dynamically compute rows/cols based on number of features to avoid IndexError --
 
@@ -541,7 +560,7 @@ plt.show()
 
 # %%
 Biases_CGE_TPM.sort_values(by="SNCG_ExpL", ascending=False, inplace=True)
-Biases_CGE_TPM[Biases_CGE_TPM["VIP_ExpL"]>VIP_Cutoff]
+Biases_CGE_TPM[Biases_CGE_TPM["VIP_ExpL"]>cutoffs["VIP_ExpL"]]
 
 # %%
 VIP_Pos = Biases_CGE_TPM[Biases_CGE_TPM["VIP_ExpL"] > cutoffs["VIP_ExpL"]]
@@ -626,7 +645,7 @@ plot_gene_scatter(Biases_CGE_TPM, "VIP_ExpL", "CR_ExpL")
 #plot_gene_scatter(Biases_CGE, "CR_ExpL", "SNCG_ExpL")
 
 # %%
-test = Biases_CGE[["VIP_ExpL", "CCK_ExpL", "CNR1_ExpL", "CR_ExpL", "M2R_ExpL"]]
+test = Biases_CGE_TPM[["VIP_ExpL", "CCK_ExpL", "CNR1_ExpL", "CR_ExpL", "M2R_ExpL"]]
 
 # %%
 from sklearn.decomposition import PCA
