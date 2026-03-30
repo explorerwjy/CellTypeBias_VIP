@@ -465,9 +465,9 @@ for disorder in gw_tdep:
         panelE_data[disorder]["tdep"].append(n_t / k)
 
 # %%
-# Panel F: LOO stability — capped vs uncapped for SCZ and ASD
-# Uncapped, mean-centered specificity
-spec_uncap = spec_unclip.subtract(spec_unclip.mean(axis=1), axis=0)
+# Panel F: LOO stability — capped vs TDEP uncapped for SCZ and ASD
+# Use TDEP specificity (proportion-based, uncapped) as the comparison,
+# consistent with Panel E
 
 loo_gw = {"SCZ": gw_tdep["SCZ"], "ASD": gw_tdep["ASD"]}
 
@@ -502,7 +502,7 @@ def run_loo_analysis(spec_mat, gw_dict, label=""):
 loo_results = {}
 for disorder, gw in loo_gw.items():
     loo_results[disorder] = {}
-    for spec_label, spec_mat in [("Capped (2×)", our_spec), ("Uncapped", spec_uncap)]:
+    for spec_label, spec_mat in [("Capped (2×)", our_spec), ("TDEP (uncapped)", tdep_mc)]:
         key = f"{disorder} | {spec_label}"
         print(f"Running LOO: {key}")
         loo_results[disorder][spec_label] = run_loo_analysis(spec_mat, gw, label=key)
@@ -512,7 +512,7 @@ for disorder, gw in loo_gw.items():
 print("\nLOO Stability Summary (Spearman ρ vs full gene set)")
 print("=" * 70)
 for disorder in loo_gw:
-    for spec_label in ["Capped (2×)", "Uncapped"]:
+    for spec_label in ["Capped (2×)", "TDEP (uncapped)"]:
         rhos = loo_results[disorder][spec_label]["rhos"]
         print(f"  {disorder:12s} | {spec_label:12s} | "
               f"min={rhos.min():.4f}  median={np.median(rhos):.4f}  "
@@ -523,7 +523,7 @@ for disorder in loo_gw:
 # ## Assemble Figure S4
 
 # %%
-fig, axes = plt.subplots(3, 2, figsize=(14, 16), dpi=150)
+fig, axes = plt.subplots(4, 2, figsize=(14, 21), dpi=150)
 
 # ============================================================
 # Panel A: Empirical specificity inflation vs UMI depth
@@ -697,13 +697,13 @@ all_colors = []
 xtick_labels = []
 pos = 0
 for disorder in loo_disorders:
-    for spec_label, color in [("Capped (2×)", cap_color), ("Uncapped", uncap_color)]:
+    for spec_label, color in [("Capped (2×)", cap_color), ("TDEP (uncapped)", uncap_color)]:
         rhos = loo_results[disorder][spec_label]["rhos"]
         positions.append(pos)
         all_rhos.append(rhos)
         all_colors.append(color)
         short_d = "SCZ" if disorder == "SCZ" else "ASD"
-        short_s = "Cap" if "Cap" in spec_label else "Uncap"
+        short_s = "Capped" if "Cap" in spec_label else "TDEP"
         xtick_labels.append(f"{short_d}\n{short_s}")
         pos += 1
     pos += 0.5
@@ -737,10 +737,79 @@ ax.set_ylim(ymin, 1.005)
 
 legend_elems = [
     Patch(facecolor=cap_color, alpha=0.5, label="Capped (2×)"),
-    Patch(facecolor=uncap_color, alpha=0.5, label="Uncapped"),
+    Patch(facecolor=uncap_color, alpha=0.5, label="TDEP (uncapped)"),
 ]
 ax.legend(handles=legend_elems, fontsize=9, loc="lower left", framealpha=0.8)
 ax.set_title("F", fontweight="bold", loc="left", fontsize=16, pad=8)
+
+# ============================================================
+# Panels G & H: Worst-case gene rank scatter (ASD, SLC6A1)
+# Capped (G) vs Uncapped (H) — same gene removal
+# ============================================================
+NEUR_COLOR = "#D04040"
+NONNEUR_COLOR = "#3070B0"
+
+# Use ASD as the example disorder
+disorder_gh = "ASD"
+loo_tdep_gh = loo_results[disorder_gh]["TDEP (uncapped)"]
+loo_cap_gh = loo_results[disorder_gh]["Capped (2×)"]
+
+# Find worst gene from TDEP uncapped
+rhos_uncap_gh = loo_tdep_gh["rhos"]
+worst_idx_uncap = np.argmin(rhos_uncap_gh)
+worst_gene_gh = loo_tdep_gh["genes"][worst_idx_uncap]
+
+HGNC, _, _, Entrez2Symbol = LoadGeneINFO()
+worst_symbol_gh = Entrez2Symbol.get(worst_gene_gh,
+                                     Entrez2Symbol.get(int(worst_gene_gh), str(worst_gene_gh)))
+
+# Max TDEP fold-enrichment for this gene
+gene_id_gh = int(worst_gene_gh) if int(worst_gene_gh) in tdep_fold.index else worst_gene_gh
+if gene_id_gh in tdep_fold.index:
+    max_spec_gh = tdep_fold.loc[gene_id_gh].max()
+    max_ct_gh = tdep_fold.loc[gene_id_gh].idxmax()
+    max_ct_name_gh = Anno.loc[int(max_ct_gh), "Supercluster"] if int(max_ct_gh) in Anno.index else "?"
+else:
+    max_spec_gh = np.nan
+    max_ct_name_gh = "?"
+
+# Find same gene in capped LOO
+cap_gene_list = loo_cap_gh["genes"]
+worst_idx_cap = cap_gene_list.index(worst_gene_gh) if worst_gene_gh in cap_gene_list else None
+
+for col_idx, (panel_label, spec_label, loo_data, idx) in enumerate([
+    ("G", "Capped (2×)", loo_cap_gh, worst_idx_cap),
+    ("H", "TDEP (uncapped)", loo_tdep_gh, worst_idx_uncap),
+]):
+    ax = axes[3, col_idx]
+
+    full_bias_gh = loo_data["full_bias"]
+    loo_bias_gh = loo_data["loo_biases"][idx]
+    rho_gh = loo_data["rhos"][idx]
+
+    common_cts_gh = full_bias_gh.index.intersection(loo_bias_gh.index)
+    rank_full_gh = full_bias_gh.loc[common_cts_gh, "EFFECT"].rank(ascending=False)
+    rank_loo_gh = loo_bias_gh.loc[common_cts_gh, "EFFECT"].rank(ascending=False)
+    neur_mask_gh = np.array([int(ct) in Neur_idx for ct in common_cts_gh])
+
+    ax.scatter(rank_full_gh.values[neur_mask_gh], rank_loo_gh.values[neur_mask_gh],
+               color=NEUR_COLOR, alpha=0.4, s=16, label="Neuronal", zorder=3)
+    ax.scatter(rank_full_gh.values[~neur_mask_gh], rank_loo_gh.values[~neur_mask_gh],
+               color=NONNEUR_COLOR, alpha=0.5, s=16, label="Non-neuronal", zorder=4)
+
+    max_rank_gh = max(rank_full_gh.max(), rank_loo_gh.max())
+    ax.plot([1, max_rank_gh], [1, max_rank_gh], "k--", linewidth=0.8, alpha=0.5)
+
+    ax.set_xlabel("Rank (all genes)")
+    ax.set_ylabel(f"Rank (remove {worst_symbol_gh})")
+    ax.set_title(panel_label, fontweight="bold", loc="left", fontsize=16, pad=8)
+
+    # Subtitle with details
+    subtitle = (f"ASD {spec_label}: remove {worst_symbol_gh} "
+                f"(max spec = {max_spec_gh:.0f}×, ρ = {rho_gh:.3f})")
+    ax.text(0.5, 1.0, subtitle, transform=ax.transAxes, ha="center", va="bottom",
+            fontsize=10, style="italic")
+    ax.legend(fontsize=8, loc="upper left", framealpha=0.8)
 
 # ============================================================
 # Save
@@ -790,20 +859,24 @@ for disorder in corr_df.columns:
 
 print("\n--- Section 1.4: LOO stability ---")
 for disorder in loo_disorders:
-    for spec_label in ["Capped (2×)", "Uncapped"]:
+    for spec_label in ["Capped (2×)", "TDEP (uncapped)"]:
         rhos = loo_results[disorder][spec_label]["rhos"]
         print(f"  {disorder} {spec_label}: min ρ = {rhos.min():.4f}, "
               f"median = {np.median(rhos):.4f}")
 
 # %% [markdown]
 # ---
-# ## Bonus: Worst-Case Gene Rank Scatter (not in Figure S4)
+# ## Bonus: Worst-Case Gene Rank Scatter — Capped vs Uncapped (not in Figure S4)
 #
-# Shows that removing the single most influential gene from the uncapped specificity
-# causes large rank rearrangements across cell types. Each dot is one cell type;
-# deviation from the diagonal = rank change when that gene is removed.
-# This illustrates how one gene with extreme uncapped specificity can dominate
-# the entire bias ranking.
+# For each disorder, find the gene whose removal causes the largest rank
+# rearrangement under uncapped specificity, then show the same gene removal
+# under capped specificity side by side.
+#
+# **Layout (2 rows × 2 columns):**
+# - Top row: SCZ (worst gene = CACNA1G)
+# - Bottom row: ASD (worst gene = SLC6A1)
+# - Left column: Capped (2×) — dots should cluster tightly on the diagonal
+# - Right column: Uncapped — dots scatter widely off the diagonal
 
 # %%
 HGNC, _, _, Entrez2Symbol = LoadGeneINFO()
@@ -811,60 +884,78 @@ HGNC, _, _, Entrez2Symbol = LoadGeneINFO()
 NEUR_COLOR = "#D04040"
 NONNEUR_COLOR = "#3070B0"
 
-fig_bonus, axes_bonus = plt.subplots(1, 2, figsize=(14, 6), dpi=150)
+fig_bonus, axes_bonus = plt.subplots(2, 2, figsize=(13, 12), dpi=150)
 
-for ax_idx, disorder_b in enumerate(loo_disorders):
-    ax = axes_bonus[ax_idx]
-
-    loo_uncap = loo_results[disorder_b]["Uncapped"]
-    rhos_uncap = loo_uncap["rhos"]
-    worst_idx = np.argmin(rhos_uncap)
-    worst_gene = loo_uncap["genes"][worst_idx]
-    worst_rho = rhos_uncap[worst_idx]
-    worst_loo_bias = loo_uncap["loo_biases"][worst_idx]
-    full_bias_uncap = loo_uncap["full_bias"]
-
+for row_idx, disorder_b in enumerate(loo_disorders):
+    # Identify worst gene from TDEP LOO
+    loo_tdep_b = loo_results[disorder_b]["TDEP (uncapped)"]
+    rhos_tdep_b = loo_tdep_b["rhos"]
+    worst_idx_tdep = np.argmin(rhos_tdep_b)
+    worst_gene = loo_tdep_b["genes"][worst_idx_tdep]
     worst_symbol = Entrez2Symbol.get(worst_gene, Entrez2Symbol.get(int(worst_gene), str(worst_gene)))
 
-    # Check uncapped specificity of this gene
-    gene_id = int(worst_gene) if int(worst_gene) in spec_unclip.index else worst_gene
-    if gene_id in spec_unclip.index:
-        max_spec_gene = spec_unclip.loc[gene_id].max()
-        max_ct = spec_unclip.loc[gene_id].idxmax()
+    # Max TDEP fold-enrichment for this gene
+    gene_id = int(worst_gene) if int(worst_gene) in tdep_fold.index else worst_gene
+    if gene_id in tdep_fold.index:
+        max_spec_gene = tdep_fold.loc[gene_id].max()
+        max_ct = tdep_fold.loc[gene_id].idxmax()
         max_ct_name = Anno.loc[int(max_ct), "Supercluster"] if int(max_ct) in Anno.index else "?"
     else:
         max_spec_gene = np.nan
         max_ct_name = "?"
 
-    # Compute ranks (align by cell type index)
-    common_cts = full_bias_uncap.index.intersection(worst_loo_bias.index)
-    rank_full = full_bias_uncap.loc[common_cts, "EFFECT"].rank(ascending=False)
-    rank_loo = worst_loo_bias.loc[common_cts, "EFFECT"].rank(ascending=False)
+    # Find same gene index in capped LOO
+    loo_cap = loo_results[disorder_b]["Capped (2×)"]
+    cap_gene_list = loo_cap["genes"]
+    if worst_gene in cap_gene_list:
+        worst_idx_cap = cap_gene_list.index(worst_gene)
+    else:
+        worst_idx_cap = None
 
-    neur_mask_b = np.array([int(ct) in Neur_idx for ct in common_cts])
+    print(f"\n{disorder_b}: worst gene = {worst_symbol} (Entrez {worst_gene}), "
+          f"max TDEP spec = {max_spec_gene:.1f}× in {max_ct_name}")
 
-    ax.scatter(rank_full.values[neur_mask_b], rank_loo.values[neur_mask_b],
-               color=NEUR_COLOR, alpha=0.4, s=18, label="Neuronal", zorder=3)
-    ax.scatter(rank_full.values[~neur_mask_b], rank_loo.values[~neur_mask_b],
-               color=NONNEUR_COLOR, alpha=0.5, s=18, label="Non-neuronal", zorder=4)
+    for col_idx, (spec_label, loo_data, idx) in enumerate([
+        ("Capped (2×)", loo_cap, worst_idx_cap),
+        ("TDEP (uncapped)", loo_tdep_b, worst_idx_tdep),
+    ]):
+        ax = axes_bonus[row_idx, col_idx]
 
-    max_rank = max(rank_full.max(), rank_loo.max())
-    ax.plot([1, max_rank], [1, max_rank], "k--", linewidth=0.8, alpha=0.5)
+        if idx is None:
+            ax.text(0.5, 0.5, "Gene not found", transform=ax.transAxes,
+                    ha="center", va="center")
+            continue
 
-    ax.set_xlabel("Rank (all genes)")
-    ax.set_ylabel(f"Rank (remove {worst_symbol})")
-    ax.set_title(
-        f"{disorder_b} uncapped: remove {worst_symbol}\n"
-        f"(max spec = {max_spec_gene:.1f}× in {max_ct_name}, "
-        f"LOO ρ = {worst_rho:.3f})",
-        fontsize=10,
-    )
-    ax.legend(fontsize=9, loc="upper left", framealpha=0.8)
+        full_bias = loo_data["full_bias"]
+        loo_bias = loo_data["loo_biases"][idx]
+        rho_val = loo_data["rhos"][idx]
 
-    print(f"{disorder_b}: worst gene = {worst_symbol} (Entrez {worst_gene}), "
-          f"max uncapped spec = {max_spec_gene:.1f}×, LOO ρ = {worst_rho:.4f}")
+        # Align by cell type index and compute ranks
+        common_cts = full_bias.index.intersection(loo_bias.index)
+        rank_full = full_bias.loc[common_cts, "EFFECT"].rank(ascending=False)
+        rank_loo = loo_bias.loc[common_cts, "EFFECT"].rank(ascending=False)
+        neur_mask_b = np.array([int(ct) in Neur_idx for ct in common_cts])
 
-fig_bonus.tight_layout(w_pad=3)
+        ax.scatter(rank_full.values[neur_mask_b], rank_loo.values[neur_mask_b],
+                   color=NEUR_COLOR, alpha=0.4, s=16, label="Neuronal", zorder=3)
+        ax.scatter(rank_full.values[~neur_mask_b], rank_loo.values[~neur_mask_b],
+                   color=NONNEUR_COLOR, alpha=0.5, s=16, label="Non-neuronal", zorder=4)
+
+        max_rank = max(rank_full.max(), rank_loo.max())
+        ax.plot([1, max_rank], [1, max_rank], "k--", linewidth=0.8, alpha=0.5)
+
+        ax.set_xlabel("Rank (all genes)")
+        ax.set_ylabel(f"Rank (remove {worst_symbol})")
+        ax.set_title(
+            f"{disorder_b} — {spec_label}\n"
+            f"Remove {worst_symbol} (ρ = {rho_val:.3f})",
+            fontsize=11,
+        )
+        ax.legend(fontsize=8, loc="upper left", framealpha=0.8)
+
+        print(f"  {spec_label}: LOO ρ = {rho_val:.4f}")
+
+fig_bonus.tight_layout(h_pad=3, w_pad=2.5)
 fig_bonus.savefig(FIG_DIR / "worst_gene_rank_scatter.pdf",
                   dpi=300, transparent=True, bbox_inches="tight")
 fig_bonus.savefig(FIG_DIR / "worst_gene_rank_scatter.png",
