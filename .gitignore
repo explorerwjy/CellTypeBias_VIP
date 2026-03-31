@@ -49,6 +49,12 @@ notebooks/Tests/
 scripts/Commands.sh
 scripts/test/
 
+# Docs (manuscript, analysis notes, confidential)
+docs/
+
+# Dev notebooks (exploratory, not for publication)
+dev_notebooks/
+
 # Large binary docs (use git-lfs if needed)
 *.docx
 
