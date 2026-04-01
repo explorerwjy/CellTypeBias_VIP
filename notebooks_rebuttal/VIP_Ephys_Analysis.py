@@ -2445,3 +2445,241 @@ else:
     print(f"\nSummary: {n_direct} direct, {n_2hop} bridged (2-hop), "
           f"{n_none} no path; {n_hub_src}/{len(bridge_df)} from hub sources")
     print(f"Background 2-hop rate: {bg_rate:.3f}")
+
+# %% [markdown]
+# ## 16. Convergence Matrix
+# Rows: 22q genes. Columns: Ephys features.
+# Color = |r| of best family-level profile similarity.
+# Annotations: PPI evidence, CGE concordance.
+
+# %%
+# --- Section 16a: Build convergence matrix ---
+#
+# For each 22q gene x ephys feature:
+# 1. Find which channel families control this feature
+# 2. Among those families, find the best hit from fam_df (q_family < 0.05, highest |best_r|)
+# 3. Check PPI evidence (from bridge_df)
+# 4. Check CGE concordance (from tier3_df)
+
+# Map CHANNEL_FAMILIES "feature" groups to individual EPHYS_FEATURES keys
+feature_group_to_keys = {
+    "Rise slope/Peak voltage": ["AP_rise_slope", "AP_peak_voltage"],
+    "AP width/Decay slope": ["AP_width", "AP_decay_slope"],
+    "RMP/Input resistance": ["RMP", "input_resistance"],
+    "Scaffolding": [],  # scaffolding doesn't map to a single ephys feature
+    "Reverse prediction": ["AHP_amplitude", "firing_rate", "ISI_CV"],
+}
+
+# Build reverse map: ephys_feature_key -> list of family names that control it
+feature_to_families = {}
+for fam_name, fam_info in CHANNEL_FAMILIES.items():
+    feat_group = fam_info["feature"]
+    for feat_key in feature_group_to_keys.get(feat_group, []):
+        feature_to_families.setdefault(feat_key, []).append(fam_name)
+
+# Only include ephys features that have at least one mapped family
+active_features = [k for k in EPHYS_FEATURES if k in feature_to_families]
+
+# Build CGE concordance lookup: (source, family) -> bool
+cge_lookup = {}
+if "tier3_df" in dir() and len(tier3_df) > 0:
+    for _, t3row in tier3_df.iterrows():
+        key = (t3row["source"], t3row["family"])
+        # Mark concordant if sign-concordant and CI excludes zero
+        cge_lookup[key] = bool(t3row["t2_sign_concordant"] and t3row["excludes_zero"])
+
+# Build PPI lookup: (source, target) -> ppi_type ("direct", "2-hop", or None)
+ppi_lookup = {}
+if len(bridge_df) > 0:
+    for _, brow in bridge_df.iterrows():
+        key = (brow["source"], brow["target"])
+        if brow["path_length"] == 1:
+            ppi_lookup[key] = "direct"
+        elif brow["path_length"] == 2:
+            ppi_lookup[key] = "2-hop"
+        # no path -> not added
+
+# Build convergence records
+convergence_records = []
+for gene in GENES_22Q:
+    for feat_key in active_features:
+        families_for_feat = feature_to_families[feat_key]
+
+        # Filter fam_df for this gene and these families, significant only
+        if len(fam_df) > 0:
+            mask = (
+                (fam_df["source"] == gene)
+                & (fam_df["family"].isin(families_for_feat))
+                & (fam_df["q_family"] < 0.05)
+            )
+            hits = fam_df.loc[mask].copy()
+        else:
+            hits = pd.DataFrame()
+
+        if len(hits) > 0:
+            # Pick the hit with highest |best_r|
+            hits["abs_r"] = hits["best_r"].abs()
+            best_row = hits.loc[hits["abs_r"].idxmax()]
+            best_fam = best_row["family"]
+            best_target = best_row["best_target"]
+            best_r = best_row["best_r"]
+            best_q = best_row["q_family"]
+
+            # PPI check
+            ppi_type = ppi_lookup.get((gene, best_target))
+
+            # CGE concordance check — check all targets in the family
+            cge_concordant = cge_lookup.get((gene, best_fam), False)
+
+            convergence_records.append({
+                "gene_22q": gene,
+                "feature": feat_key,
+                "family": best_fam,
+                "best_target": best_target,
+                "rho": best_r,
+                "q": best_q,
+                "significant": True,
+                "ppi_type": ppi_type,
+                "cge_concordant": cge_concordant,
+            })
+        else:
+            # Also record best non-significant hit for context
+            if len(fam_df) > 0:
+                mask_all = (
+                    (fam_df["source"] == gene)
+                    & (fam_df["family"].isin(families_for_feat))
+                )
+                all_hits = fam_df.loc[mask_all].copy()
+            else:
+                all_hits = pd.DataFrame()
+
+            if len(all_hits) > 0:
+                all_hits["abs_r"] = all_hits["best_r"].abs()
+                best_row = all_hits.loc[all_hits["abs_r"].idxmax()]
+                convergence_records.append({
+                    "gene_22q": gene,
+                    "feature": feat_key,
+                    "family": best_row["family"],
+                    "best_target": best_row["best_target"],
+                    "rho": best_row["best_r"],
+                    "q": best_row["q_family"],
+                    "significant": False,
+                    "ppi_type": None,
+                    "cge_concordant": False,
+                })
+            else:
+                convergence_records.append({
+                    "gene_22q": gene,
+                    "feature": feat_key,
+                    "family": None,
+                    "best_target": None,
+                    "rho": np.nan,
+                    "q": np.nan,
+                    "significant": False,
+                    "ppi_type": None,
+                    "cge_concordant": False,
+                })
+
+conv_df = pd.DataFrame(convergence_records)
+n_sig = conv_df["significant"].sum()
+n_ppi = conv_df["ppi_type"].notna().sum()
+n_cge = conv_df["cge_concordant"].sum()
+print(f"Convergence matrix: {len(GENES_22Q)} genes x {len(active_features)} features")
+print(f"  Significant entries (q < 0.05): {n_sig}")
+print(f"  With PPI support: {n_ppi}")
+print(f"  With CGE concordance: {n_cge}")
+
+# %%
+# --- Section 16b: Convergence heatmap ---
+
+if n_sig == 0:
+    print("No significant convergence entries; skipping heatmap.")
+else:
+    # Pivot: genes x features, values = rho (only significant; NaN otherwise for color)
+    # For the heatmap, show rho for significant entries, NaN for non-significant
+    conv_df["rho_display"] = np.where(conv_df["significant"], conv_df["rho"], np.nan)
+
+    # Filter rows/columns to those with at least one significant entry
+    genes_with_sig = conv_df.loc[conv_df["significant"], "gene_22q"].unique()
+    feats_with_sig = conv_df.loc[conv_df["significant"], "feature"].unique()
+
+    if len(genes_with_sig) == 0 or len(feats_with_sig) == 0:
+        print("No significant entries to display.")
+    else:
+        # Subset
+        plot_df = conv_df[
+            conv_df["gene_22q"].isin(genes_with_sig)
+            & conv_df["feature"].isin(feats_with_sig)
+        ].copy()
+
+        # Pivot for heatmap values
+        pivot_vals = plot_df.pivot(
+            index="gene_22q", columns="feature", values="rho_display"
+        )
+        # Reorder columns by feature order in EPHYS_FEATURES
+        feat_order = [f for f in EPHYS_FEATURES if f in pivot_vals.columns]
+        pivot_vals = pivot_vals[feat_order]
+        # Sort rows by number of significant entries (descending)
+        row_sig_count = plot_df.groupby("gene_22q")["significant"].sum()
+        row_order = row_sig_count.reindex(pivot_vals.index).sort_values(ascending=False).index
+        pivot_vals = pivot_vals.loc[row_order]
+
+        # Build annotation strings: PPI symbol + CGE star
+        annot_strings = pd.DataFrame("", index=pivot_vals.index, columns=pivot_vals.columns)
+        for _, row in plot_df.iterrows():
+            g, f = row["gene_22q"], row["feature"]
+            if g in annot_strings.index and f in annot_strings.columns and row["significant"]:
+                txt = ""
+                if row["ppi_type"] == "direct":
+                    txt += "\u25cf"  # filled circle
+                elif row["ppi_type"] == "2-hop":
+                    txt += "\u25cb"  # hollow circle
+                if row["cge_concordant"]:
+                    txt += "*"
+                annot_strings.at[g, f] = txt
+
+        # Feature labels
+        feat_labels = [EPHYS_FEATURES[f]["label"] for f in feat_order]
+
+        # Figure
+        n_rows, n_cols = pivot_vals.shape
+        fig_w = max(6, 1.2 * n_cols + 2)
+        fig_h = max(4, 0.45 * n_rows + 2)
+
+        fig, ax = plt.subplots(figsize=(fig_w, fig_h))
+        fig.patch.set_alpha(0)
+        ax.patch.set_alpha(0)
+
+        # Determine color range — symmetric around 0
+        vmax = max(0.3, np.nanmax(np.abs(pivot_vals.values)))
+
+        sns.heatmap(
+            pivot_vals,
+            ax=ax,
+            cmap="RdBu_r",
+            center=0,
+            vmin=-vmax,
+            vmax=vmax,
+            annot=annot_strings.values,
+            fmt="",
+            linewidths=0.5,
+            linecolor="grey",
+            cbar_kws={"label": "Profile similarity (r)", "shrink": 0.8},
+            xticklabels=feat_labels,
+            yticklabels=pivot_vals.index,
+            mask=pivot_vals.isna(),
+        )
+
+        ax.set_xlabel("")
+        ax.set_ylabel("22q11.2 gene")
+        ax.set_title("Convergence Matrix: 22q Genes x Ephys Features\n"
+                      "(color = r; \u25cf direct PPI, \u25cb 2-hop PPI, * CGE concordant)")
+        plt.xticks(rotation=45, ha="right")
+        plt.yticks(rotation=0)
+        plt.tight_layout()
+
+        fig_path = EPHYS_DIR / "figures" / "Fig_Convergence_Heatmap.png"
+        fig_path.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(str(fig_path), dpi=150, transparent=True, bbox_inches="tight")
+        print(f"Saved: {fig_path}")
+        plt.show()
