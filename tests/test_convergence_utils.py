@@ -18,6 +18,7 @@ from convergence_utils import (
     compute_residuals,
     map_symbols_to_entrez,
     pearson_partial,
+    run_profile_similarity,
 )
 
 
@@ -182,3 +183,47 @@ class TestPearsonPartial:
         assert abs(r) < abs(raw_rho), (
             f"Partial r ({r}) should be lower in abs value than raw rho ({raw_rho})"
         )
+
+
+class TestRunProfileSimilarity:
+    """Tests for run_profile_similarity pipeline function."""
+
+    def test_run_profile_similarity(self):
+        rng = np.random.default_rng(42)
+        n_ct = 50
+        n_genes = 10
+        spec_mat = pd.DataFrame(
+            rng.normal(size=(n_genes, n_ct)),
+            index=[f"gene_{i}" for i in range(n_genes)],
+            columns=range(n_ct),
+        )
+        source_ids = {"SRC1": "gene_0", "SRC2": "gene_1"}
+        target_ids = {"TGT1": "gene_2", "TGT2": "gene_3", "TGT3": "gene_4"}
+        target_families = {"FamA": ["TGT1", "TGT2"], "FamB": ["TGT3"]}
+        class_labels = pd.Series(["A"] * 25 + ["B"] * 25, index=range(n_ct))
+        scope_idx = list(range(n_ct))
+
+        results = run_profile_similarity(
+            spec_mat, source_ids, target_ids, target_families,
+            scope_idx, class_labels,
+        )
+
+        # Pair results
+        pair_df = results["pair_results"]
+        assert len(pair_df) == 6  # 2 sources x 3 targets
+        for col in ["source", "target", "family", "rho_raw", "p_raw",
+                     "r_partial", "p_partial", "q_partial"]:
+            assert col in pair_df.columns
+
+        # Family results
+        fam_df = results["family_results"]
+        assert len(fam_df) == 4  # 2 sources x 2 families
+        for col in ["source", "family", "stouffer_z", "stouffer_p",
+                     "n_genes", "best_target", "best_r", "q_family"]:
+            assert col in fam_df.columns
+
+        # FamA should have n_genes=2, FamB should have n_genes=1
+        fam_a = fam_df[fam_df["family"] == "FamA"]
+        assert (fam_a["n_genes"] == 2).all()
+        fam_b = fam_df[fam_df["family"] == "FamB"]
+        assert (fam_b["n_genes"] == 1).all()

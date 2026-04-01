@@ -7,9 +7,11 @@ genes, ephys feature metadata, and statistical functions for computing
 Pearson partial correlations controlling for cell-class membership.
 """
 
+import numpy as np
 import pandas as pd
-from scipy.stats import pearsonr
+from scipy.stats import pearsonr, spearmanr, norm
 from statsmodels.regression.linear_model import OLS
+from statsmodels.stats.multitest import multipletests
 from statsmodels.tools import add_constant
 
 # ---------------------------------------------------------------------------
@@ -269,3 +271,153 @@ def pearson_partial(gene_a, gene_b, class_labels):
     resid_b = compute_residuals(gene_b, class_labels)
     r, pvalue = pearsonr(resid_a, resid_b)
     return r, pvalue
+
+
+# ---------------------------------------------------------------------------
+# Profile similarity pipeline
+# ---------------------------------------------------------------------------
+def run_profile_similarity(spec_mat, source_ids, target_ids, target_families,
+                           scope_idx, class_labels):
+    """Run full profile similarity analysis (Tiers 1-2) with family collapsing.
+
+    For every source x target gene pair, computes:
+      - Tier 1: Spearman rho on raw specificity profiles
+      - Tier 2: Pearson r on OLS residuals (controlling for cell class)
+
+    Results are FDR-corrected and collapsed to families via Stouffer's
+    signed z method.
+
+    Parameters
+    ----------
+    spec_mat : pd.DataFrame
+        Genes (rows) x cell types (columns). Index = gene IDs (e.g. Entrez).
+    source_ids : dict
+        {symbol: gene_id} for source genes (22q).
+    target_ids : dict
+        {symbol: gene_id} for target genes (ion channels, scaffolds).
+    target_families : dict
+        {family_name: [symbol, ...]} grouping targets into families.
+    scope_idx : list of int
+        Column indices (cell types) to restrict analysis to.
+    class_labels : pd.Series
+        Cell-class labels indexed by cell-type ID, matching the columns
+        selected by *scope_idx*.
+
+    Returns
+    -------
+    dict with keys:
+        ``"pair_results"`` : pd.DataFrame
+            Columns: source, target, family, rho_raw, p_raw, r_partial,
+            p_partial, q_partial
+        ``"family_results"`` : pd.DataFrame
+            Columns: source, family, stouffer_z, stouffer_p, n_genes,
+            best_target, best_r, q_family
+    """
+    # --- 1. Build symbol -> family lookup ---
+    symbol_to_family = {}
+    for fam_name, symbols in target_families.items():
+        for sym in symbols:
+            symbol_to_family[sym] = fam_name
+
+    # --- 2. Subset spec_mat to scope and precompute residuals ---
+    cols = [spec_mat.columns[i] for i in scope_idx]
+    spec_scope = spec_mat[cols]
+    class_scope = class_labels.loc[cols]
+
+    # Precompute OLS residuals for ALL genes in scope (cache per gene_id)
+    all_gene_ids = set()
+    for gid in source_ids.values():
+        all_gene_ids.add(gid)
+    for gid in target_ids.values():
+        all_gene_ids.add(gid)
+
+    resid_cache = {}
+    for gid in all_gene_ids:
+        if gid in spec_scope.index:
+            gene_spec = spec_scope.loc[gid]
+            resid_cache[gid] = compute_residuals(gene_spec, class_scope)
+
+    # --- 3. Pairwise analysis ---
+    pair_records = []
+    for src_sym, src_id in source_ids.items():
+        if src_id not in spec_scope.index:
+            continue
+        src_raw = spec_scope.loc[src_id]
+        src_resid = resid_cache[src_id]
+
+        for tgt_sym, tgt_id in target_ids.items():
+            if tgt_id not in spec_scope.index:
+                continue
+            tgt_raw = spec_scope.loc[tgt_id]
+            tgt_resid = resid_cache[tgt_id]
+
+            # Tier 1: Spearman on raw specificity
+            rho_raw, p_raw = spearmanr(src_raw.values, tgt_raw.values)
+
+            # Tier 2: Pearson on cached residuals
+            r_partial, p_partial = pearsonr(src_resid.values, tgt_resid.values)
+
+            pair_records.append({
+                "source": src_sym,
+                "target": tgt_sym,
+                "family": symbol_to_family.get(tgt_sym, "unknown"),
+                "rho_raw": rho_raw,
+                "p_raw": p_raw,
+                "r_partial": r_partial,
+                "p_partial": p_partial,
+            })
+
+    pair_df = pd.DataFrame(pair_records)
+
+    # --- 4. BH FDR on pair-level p_partial ---
+    if len(pair_df) > 0:
+        _, q_vals, _, _ = multipletests(pair_df["p_partial"], method="fdr_bh")
+        pair_df["q_partial"] = q_vals
+    else:
+        pair_df["q_partial"] = []
+
+    # --- 5. Family-level collapsing via Stouffer's signed z ---
+    family_records = []
+    if len(pair_df) > 0:
+        for (src_sym, fam_name), group in pair_df.groupby(["source", "family"]):
+            n = len(group)
+            # Convert each pair's two-sided p_partial to signed z
+            # CRITICAL: pearsonr returns two-sided p-values.
+            # Use p/2 to get one-tail probability, then norm.ppf(1 - p/2)
+            # gives the z-magnitude. Multiply by sign(r) for directionality.
+            signed_zs = np.sign(group["r_partial"].values) * norm.ppf(
+                1 - group["p_partial"].values / 2
+            )
+            # Stouffer's combined z
+            stouffer_z = np.sum(signed_zs) / np.sqrt(n)
+            # Two-sided p-value for the combined z
+            stouffer_p = 2 * (1 - norm.cdf(np.abs(stouffer_z)))
+
+            # Best individual target (highest |r_partial|)
+            best_idx = group["r_partial"].abs().idxmax()
+            best_target = group.loc[best_idx, "target"]
+            best_r = group.loc[best_idx, "r_partial"]
+
+            family_records.append({
+                "source": src_sym,
+                "family": fam_name,
+                "stouffer_z": stouffer_z,
+                "stouffer_p": stouffer_p,
+                "n_genes": n,
+                "best_target": best_target,
+                "best_r": best_r,
+            })
+
+    fam_df = pd.DataFrame(family_records)
+
+    # BH FDR on family-level p-values
+    if len(fam_df) > 0:
+        _, q_fam, _, _ = multipletests(fam_df["stouffer_p"], method="fdr_bh")
+        fam_df["q_family"] = q_fam
+    else:
+        fam_df["q_family"] = []
+
+    return {
+        "pair_results": pair_df,
+        "family_results": fam_df,
+    }
