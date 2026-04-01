@@ -526,6 +526,39 @@ class TestExtractAllEphysFeatures:
         assert df["rise_slope"].max() < 500  # should be ~100-300 V/s
 
 
+class TestGetGoIonChannelGenes:
+    """Tests for get_go_ion_channel_genes function."""
+
+    @pytest.mark.slow
+    def test_get_go_ion_channel_genes(self):
+        from convergence_utils import get_go_ion_channel_genes
+        genes = get_go_ion_channel_genes()
+        assert isinstance(genes, set)
+        assert len(genes) > 100  # GO:0005216 should have >200 genes
+        # Should include well-known channels
+        assert "SCN1A" in genes or "KCNJ2" in genes or "HCN1" in genes
+
+    @pytest.mark.slow
+    def test_returns_only_strings(self):
+        from convergence_utils import get_go_ion_channel_genes
+        genes = get_go_ion_channel_genes()
+        assert all(isinstance(g, str) for g in genes)
+
+    @pytest.mark.slow
+    def test_caching_reuses_files(self):
+        """Second call should reuse cached files without re-downloading."""
+        import time
+        from convergence_utils import get_go_ion_channel_genes
+        t0 = time.time()
+        genes1 = get_go_ion_channel_genes()
+        t1 = time.time()
+        genes2 = get_go_ion_channel_genes()
+        t2 = time.time()
+        # Second call should be at least as fast (no download)
+        assert genes1 == genes2
+        # Can't strictly test timing, but at least results are identical
+
+
 class TestCompareFeature:
     """Tests for compare_feature function."""
 

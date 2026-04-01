@@ -7,6 +7,12 @@ genes, ephys feature metadata, and statistical functions for computing
 Pearson partial correlations controlling for cell-class membership.
 """
 
+import logging
+import os
+import warnings
+from datetime import datetime
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 from joblib import Parallel, delayed
@@ -14,6 +20,8 @@ from scipy.stats import pearsonr, spearmanr, norm, ttest_ind
 from statsmodels.regression.linear_model import OLS
 from statsmodels.stats.multitest import multipletests
 from statsmodels.tools import add_constant
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # 22q11.2 deletion region genes (19 genes)
@@ -618,6 +626,181 @@ def convergence_permutation_test(spec_mat, source_eids, target_ids,
         "p_value": float(p_value),
         "z_score": float(z_score),
     }
+
+
+# ---------------------------------------------------------------------------
+# GO-derived ion channel gene set
+# ---------------------------------------------------------------------------
+
+# Target GO terms for ion channel genes
+_GO_ION_CHANNEL_TERMS = [
+    "GO:0005216",  # ion channel activity
+    "GO:0034765",  # regulation of ion transmembrane transport
+]
+
+_OBO_URL = "http://purl.obolibrary.org/obo/go/go-basic.obo"
+_GAF_URL = "http://geneontology.org/gene-associations/goa_human.gaf.gz"
+
+
+def _find_or_download(cache_dir, prefix, suffix, url):
+    """Find a date-pinned file or download it.
+
+    Looks for ``<prefix>.<YYYY-MM><suffix>`` in *cache_dir*.  If a file
+    matching the current month exists, reuse it.  If only an older-dated
+    file exists, warn and reuse it.  Otherwise, download from *url*.
+
+    Returns the path to the (possibly just-downloaded) file.
+    """
+    import urllib.request
+
+    cache_dir = Path(cache_dir)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+
+    current_month = datetime.now().strftime("%Y-%m")
+    current_name = f"{prefix}.{current_month}{suffix}"
+    current_path = cache_dir / current_name
+
+    if current_path.exists():
+        logger.info("Reusing cached %s", current_path)
+        return current_path
+
+    # Check for any older-dated file
+    pattern = f"{prefix}.*{suffix}"
+    import glob as _glob
+    existing = sorted(_glob.glob(str(cache_dir / f"{prefix}.*{suffix}")))
+    if existing:
+        old_path = existing[-1]  # most recent by name sort
+        warnings.warn(
+            f"Found older GO file {os.path.basename(old_path)} "
+            f"(current month is {current_month}). Reusing it. "
+            f"Delete it and re-run to force a fresh download.",
+            stacklevel=2,
+        )
+        return Path(old_path)
+
+    # Download (use a proper User-Agent to avoid 403 errors)
+    logger.info("Downloading %s -> %s", url, current_path)
+    req = urllib.request.Request(
+        url,
+        headers={"User-Agent": "goatools-downloader/1.0"},
+    )
+    with urllib.request.urlopen(req) as response:
+        with open(str(current_path), "wb") as out_f:
+            import shutil as _shutil
+            _shutil.copyfileobj(response, out_f)
+    return current_path
+
+
+def get_go_ion_channel_genes(cache_dir=None):
+    """Get human gene symbols annotated with ion channel GO terms.
+
+    Uses ``goatools`` to parse the Gene Ontology OBO file and the human
+    GAF annotation file.  Collects all descendant terms of:
+
+    - GO:0005216 (ion channel activity)
+    - GO:0034765 (regulation of ion transmembrane transport)
+
+    and returns gene symbols annotated to any of these terms.
+
+    Parameters
+    ----------
+    cache_dir : str or Path or None
+        Directory for caching downloaded GO files.  Defaults to ``dat/GO/``
+        relative to the project root.
+
+    Returns
+    -------
+    set of str
+        Gene symbols annotated with ion channel GO terms.
+    """
+    from goatools.obo_parser import GODag
+    from goatools.anno.gaf_reader import GafReader
+
+    if cache_dir is None:
+        # Default: dat/GO/ relative to this source file's project root
+        project_root = Path(__file__).resolve().parents[1]
+        cache_dir = project_root / "dat" / "GO"
+
+    cache_dir = Path(cache_dir)
+
+    # 1. Download / find OBO and GAF files
+    obo_path = _find_or_download(cache_dir, "go-basic", ".obo", _OBO_URL)
+    gaf_path = _find_or_download(
+        cache_dir, "goa_human", ".gaf.gz", _GAF_URL
+    )
+
+    # 2. Parse OBO
+    godag = GODag(str(obo_path), prt=None)
+
+    # 3. Collect all descendant GO terms (children of children, recursively)
+    target_go_ids = set()
+    for root_term in _GO_ION_CHANNEL_TERMS:
+        if root_term not in godag:
+            warnings.warn(f"GO term {root_term} not found in OBO file")
+            continue
+        # BFS to collect all descendants (terms that have this as ancestor)
+        target_go_ids.add(root_term)
+        _collect_descendants(godag, root_term, target_go_ids)
+
+    logger.info(
+        "Collected %d GO terms (from %d root terms)",
+        len(target_go_ids),
+        len(_GO_ION_CHANNEL_TERMS),
+    )
+
+    # 4. Parse GAF — need to decompress .gaf.gz first for goatools
+    #    GafReader expects a plain text file, not gzipped
+    import gzip as _gzip
+    import shutil
+    import tempfile
+
+    # Check if we need to decompress
+    gaf_plain = cache_dir / gaf_path.name.replace(".gz", "")
+    if not gaf_plain.exists():
+        logger.info("Decompressing %s", gaf_path)
+        with _gzip.open(str(gaf_path), "rb") as f_in:
+            with open(str(gaf_plain), "wb") as f_out:
+                shutil.copyfileobj(f_in, f_out)
+
+    # Read all namespaces (MF for ion channel activity, BP for regulation)
+    gaf_reader = GafReader(str(gaf_plain), godag=godag, prt=None,
+                           namespaces={"MF", "BP", "CC"})
+    associations = gaf_reader.get_associations()
+
+    # 5. Find gene symbols annotated to any target GO term
+    gene_symbols = set()
+    for nt in associations:
+        if nt.GO_ID in target_go_ids:
+            gene_symbols.add(nt.DB_Symbol)
+
+    logger.info(
+        "Found %d gene symbols annotated with ion channel GO terms",
+        len(gene_symbols),
+    )
+
+    return gene_symbols
+
+
+def _collect_descendants(godag, go_id, collected):
+    """Recursively collect all descendant GO terms via 'is_a' and 'part_of'.
+
+    Traverses the GO DAG downward from *go_id*, adding all child terms
+    to *collected*.
+
+    Parameters
+    ----------
+    godag : GODag
+        Parsed Gene Ontology DAG.
+    go_id : str
+        Root GO term ID (e.g. "GO:0005216").
+    collected : set
+        Accumulator set; modified in place.
+    """
+    term = godag[go_id]
+    for child in term.children:
+        if child.id not in collected:
+            collected.add(child.id)
+            _collect_descendants(godag, child.id, collected)
 
 
 # ---------------------------------------------------------------------------
