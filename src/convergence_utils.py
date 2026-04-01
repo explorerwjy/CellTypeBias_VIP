@@ -9,6 +9,7 @@ Pearson partial correlations controlling for cell-class membership.
 
 import numpy as np
 import pandas as pd
+from joblib import Parallel, delayed
 from scipy.stats import pearsonr, spearmanr, norm
 from statsmodels.regression.linear_model import OLS
 from statsmodels.stats.multitest import multipletests
@@ -420,4 +421,200 @@ def run_profile_similarity(spec_mat, source_ids, target_ids, target_families,
     return {
         "pair_results": pair_df,
         "family_results": fam_df,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Convergence permutation test
+# ---------------------------------------------------------------------------
+def _single_permutation(spec_mat, n_source, target_ids, target_families,
+                        scope_idx, class_labels, residuals_cache_targets,
+                        z_threshold, rng_seed):
+    """Run one permutation iteration and return the number of family-level hits.
+
+    Samples ``n_source`` random genes from *spec_mat* (excluding target gene
+    Entrez IDs), computes OLS residuals for each, then for every sampled-gene x
+    target-family pair computes Stouffer's signed z.  Returns the count of
+    source x family pairs where ``|Z| >= z_threshold``.
+
+    Parameters
+    ----------
+    spec_mat : pd.DataFrame
+        Expression specificity matrix (genes x cell types), already scoped
+        to the cell types of interest.
+    n_source : int
+        Number of source genes to sample (matches the real source gene set size).
+    target_ids : dict
+        ``{symbol: gene_id}`` for target genes.
+    target_families : dict
+        ``{family_name: [symbol, ...]}`` grouping targets into families.
+    scope_idx : list of int
+        Column indices (unused here; kept for API consistency).
+    class_labels : pd.Series
+        Cell-class labels indexed by cell-type ID, matching *spec_mat* columns.
+    residuals_cache_targets : dict
+        ``{symbol: pd.Series}`` of precomputed OLS residuals for each target gene.
+    z_threshold : float
+        Minimum ``|Stouffer Z|`` to count a source x family pair as a hit.
+    rng_seed : int
+        Seed for the random number generator (reproducibility).
+
+    Returns
+    -------
+    int
+        Total number of source x family hits in this permutation.
+    """
+    rng = np.random.default_rng(rng_seed)
+
+    # Build set of target Entrez IDs to exclude from sampling
+    target_entrez_set = set(target_ids.values())
+
+    # Pool of eligible genes (everything in spec_mat except targets)
+    eligible = [gid for gid in spec_mat.index if gid not in target_entrez_set]
+
+    # Sample n_source genes
+    sampled_idx = rng.choice(len(eligible), size=n_source, replace=False)
+    sampled_genes = [eligible[i] for i in sampled_idx]
+
+    # Compute OLS residuals for each sampled gene
+    sampled_resids = {}
+    for gid in sampled_genes:
+        gene_spec = spec_mat.loc[gid]
+        sampled_resids[gid] = compute_residuals(gene_spec, class_labels)
+
+    # For each sampled gene x family, compute Stouffer's signed z
+    hit_count = 0
+    for gid in sampled_genes:
+        src_resid = sampled_resids[gid]
+
+        for fam_name, symbols in target_families.items():
+            signed_zs = []
+            for sym in symbols:
+                if sym not in residuals_cache_targets:
+                    continue
+                tgt_resid = residuals_cache_targets[sym]
+
+                r, p = pearsonr(src_resid.values, tgt_resid.values)
+
+                # Convert two-sided p to signed z
+                # Clamp p away from 0 to avoid inf
+                p_clamped = max(p, 1e-300)
+                z_i = np.sign(r) * norm.ppf(1 - p_clamped / 2)
+                signed_zs.append(z_i)
+
+            if len(signed_zs) == 0:
+                continue
+
+            # Stouffer's combined z
+            n_genes = len(signed_zs)
+            stouffer_z = np.sum(signed_zs) / np.sqrt(n_genes)
+
+            if np.abs(stouffer_z) >= z_threshold:
+                hit_count += 1
+
+    return int(hit_count)
+
+
+def convergence_permutation_test(spec_mat, source_eids, target_ids,
+                                 target_families, scope_idx, class_labels,
+                                 observed_hits, z_threshold,
+                                 n_perms=10000, seed=42, n_jobs=10):
+    """Permutation test for convergence significance using Stouffer's z.
+
+    Assesses whether the observed number of significant source x family hits
+    (defined by ``|Stouffer Z| >= z_threshold``) exceeds what is expected by
+    chance, by repeatedly sampling random gene sets of the same size as the
+    source set and recomputing the test statistic.
+
+    Parameters
+    ----------
+    spec_mat : pd.DataFrame
+        Genes (rows) x cell types (columns).  Index = gene IDs.
+    source_eids : list
+        Gene IDs (Entrez or equivalent) for the source gene set (e.g. 22q genes).
+    target_ids : dict
+        ``{symbol: gene_id}`` for target genes.
+    target_families : dict
+        ``{family_name: [symbol, ...]}`` grouping targets into families.
+    scope_idx : list of int
+        Column indices (cell types) to restrict analysis to.
+    class_labels : pd.Series
+        Cell-class labels indexed by cell-type ID.
+    observed_hits : int
+        Number of source x family pairs with ``|Stouffer Z| >= z_threshold``
+        in the real data.
+    z_threshold : float
+        Minimum ``|Stouffer Z|`` for a hit (calibrated from observed data,
+        typically the min |stouffer_z| among family-level hits with
+        q_family < 0.05).
+    n_perms : int
+        Number of permutations (default 10,000).
+    seed : int
+        Master random seed for reproducibility.
+    n_jobs : int
+        Number of parallel workers (default 10).
+
+    Returns
+    -------
+    dict
+        ``"null_hits"`` : np.ndarray of int, length *n_perms*
+            Hit count from each permutation.
+        ``"p_value"`` : float
+            Empirical p-value: ``(sum(null >= observed) + 1) / (n_perms + 1)``.
+        ``"z_score"`` : float
+            Z-score of observed vs null distribution:
+            ``(observed - mean(null)) / std(null)``.
+    """
+    # --- 1. Scope the data ---
+    cols = [spec_mat.columns[i] for i in scope_idx]
+    spec_scope = spec_mat[cols]
+    class_scope = class_labels.loc[cols]
+
+    # --- 2. Precompute target residuals (invariant across permutations) ---
+    residuals_cache_targets = {}
+    for sym, gid in target_ids.items():
+        if gid in spec_scope.index:
+            residuals_cache_targets[sym] = compute_residuals(
+                spec_scope.loc[gid], class_scope
+            )
+
+    n_source = len(source_eids)
+
+    # --- 3. Generate reproducible per-permutation seeds ---
+    master_rng = np.random.default_rng(seed)
+    perm_seeds = master_rng.integers(0, 2**31, size=n_perms).tolist()
+
+    # --- 4. Run permutations in parallel ---
+    null_hits_list = Parallel(n_jobs=n_jobs)(
+        delayed(_single_permutation)(
+            spec_mat=spec_scope,
+            n_source=n_source,
+            target_ids=target_ids,
+            target_families=target_families,
+            scope_idx=scope_idx,
+            class_labels=class_scope,
+            residuals_cache_targets=residuals_cache_targets,
+            z_threshold=z_threshold,
+            rng_seed=s,
+        )
+        for s in perm_seeds
+    )
+    null_hits = np.array(null_hits_list, dtype=int)
+
+    # --- 5. Compute empirical p-value (with pseudocount) ---
+    p_value = (np.sum(null_hits >= observed_hits) + 1) / (n_perms + 1)
+
+    # --- 6. Compute z-score ---
+    null_mean = np.mean(null_hits)
+    null_std = np.std(null_hits)
+    if null_std > 0:
+        z_score = (observed_hits - null_mean) / null_std
+    else:
+        # All null hits identical; use sign-based z
+        z_score = np.inf if observed_hits > null_mean else 0.0
+
+    return {
+        "null_hits": null_hits,
+        "p_value": float(p_value),
+        "z_score": float(z_score),
     }

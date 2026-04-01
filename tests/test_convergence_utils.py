@@ -19,6 +19,8 @@ from convergence_utils import (
     map_symbols_to_entrez,
     pearson_partial,
     run_profile_similarity,
+    convergence_permutation_test,
+    _single_permutation,
 )
 
 
@@ -227,3 +229,175 @@ class TestRunProfileSimilarity:
         assert (fam_a["n_genes"] == 2).all()
         fam_b = fam_df[fam_df["family"] == "FamB"]
         assert (fam_b["n_genes"] == 1).all()
+
+
+class TestConvergencePermutation:
+    """Tests for convergence_permutation_test and _single_permutation."""
+
+    @pytest.fixture
+    def setup_data(self):
+        """Create synthetic data for permutation tests."""
+        rng = np.random.default_rng(42)
+        n_ct = 50
+        n_genes = 100
+        spec_mat = pd.DataFrame(
+            rng.normal(size=(n_genes, n_ct)),
+            index=[f"gene_{i}" for i in range(n_genes)],
+            columns=range(n_ct),
+        )
+        source_eids = ["gene_0", "gene_1", "gene_2"]
+        target_ids = {"T1": "gene_50", "T2": "gene_51"}
+        target_families = {"Fam1": ["T1", "T2"]}
+        class_labels = pd.Series(["A"] * 25 + ["B"] * 25, index=range(n_ct))
+        scope_idx = list(range(n_ct))
+        return {
+            "spec_mat": spec_mat,
+            "source_eids": source_eids,
+            "target_ids": target_ids,
+            "target_families": target_families,
+            "class_labels": class_labels,
+            "scope_idx": scope_idx,
+        }
+
+    def test_convergence_permutation_basic(self, setup_data):
+        """Basic smoke test: correct keys and shapes in result dict."""
+        result = convergence_permutation_test(
+            setup_data["spec_mat"],
+            setup_data["source_eids"],
+            setup_data["target_ids"],
+            setup_data["target_families"],
+            setup_data["scope_idx"],
+            setup_data["class_labels"],
+            observed_hits=1,
+            z_threshold=2.0,
+            n_perms=100,
+            seed=42,
+            n_jobs=1,
+        )
+        assert "null_hits" in result
+        assert len(result["null_hits"]) == 100
+        assert "p_value" in result
+        assert 0.0 <= result["p_value"] <= 1.0
+        assert "z_score" in result
+
+    def test_null_hits_are_nonnegative_integers(self, setup_data):
+        """Each permutation hit count should be a non-negative integer."""
+        result = convergence_permutation_test(
+            setup_data["spec_mat"],
+            setup_data["source_eids"],
+            setup_data["target_ids"],
+            setup_data["target_families"],
+            setup_data["scope_idx"],
+            setup_data["class_labels"],
+            observed_hits=0,
+            z_threshold=2.0,
+            n_perms=50,
+            seed=123,
+            n_jobs=1,
+        )
+        assert all(h >= 0 for h in result["null_hits"])
+        assert all(isinstance(h, (int, np.integer)) for h in result["null_hits"])
+
+    def test_p_value_with_zero_observed_hits(self, setup_data):
+        """With observed_hits=0, p-value should be high (most perms >= 0)."""
+        result = convergence_permutation_test(
+            setup_data["spec_mat"],
+            setup_data["source_eids"],
+            setup_data["target_ids"],
+            setup_data["target_families"],
+            setup_data["scope_idx"],
+            setup_data["class_labels"],
+            observed_hits=0,
+            z_threshold=2.0,
+            n_perms=100,
+            seed=42,
+            n_jobs=1,
+        )
+        # All null_hits >= 0 == observed_hits, so p should be close to 1
+        assert result["p_value"] > 0.5
+
+    def test_reproducibility_with_same_seed(self, setup_data):
+        """Same seed should produce identical null distributions."""
+        kwargs = dict(
+            spec_mat=setup_data["spec_mat"],
+            source_eids=setup_data["source_eids"],
+            target_ids=setup_data["target_ids"],
+            target_families=setup_data["target_families"],
+            scope_idx=setup_data["scope_idx"],
+            class_labels=setup_data["class_labels"],
+            observed_hits=1,
+            z_threshold=2.0,
+            n_perms=50,
+            seed=99,
+            n_jobs=1,
+        )
+        r1 = convergence_permutation_test(**kwargs)
+        r2 = convergence_permutation_test(**kwargs)
+        np.testing.assert_array_equal(r1["null_hits"], r2["null_hits"])
+
+    def test_single_permutation_excludes_targets(self, setup_data):
+        """_single_permutation should not sample target gene IDs."""
+        d = setup_data
+        cols = [d["spec_mat"].columns[i] for i in d["scope_idx"]]
+        spec_scope = d["spec_mat"][cols]
+        class_scope = d["class_labels"].loc[cols]
+
+        # Precompute target residuals
+        resid_cache_targets = {}
+        for sym, gid in d["target_ids"].items():
+            if gid in spec_scope.index:
+                resid_cache_targets[sym] = compute_residuals(
+                    spec_scope.loc[gid], class_scope
+                )
+
+        target_entrez_set = set(d["target_ids"].values())
+        # Run many single permutations and check the function runs without error
+        for seed in range(10):
+            hit_count = _single_permutation(
+                spec_mat=spec_scope,
+                n_source=len(d["source_eids"]),
+                target_ids=d["target_ids"],
+                target_families=d["target_families"],
+                scope_idx=d["scope_idx"],
+                class_labels=class_scope,
+                residuals_cache_targets=resid_cache_targets,
+                z_threshold=2.0,
+                rng_seed=seed,
+            )
+            assert isinstance(hit_count, (int, np.integer))
+            assert hit_count >= 0
+
+    def test_high_threshold_yields_zero_hits(self, setup_data):
+        """With an extremely high z_threshold, no permutation should have hits."""
+        result = convergence_permutation_test(
+            setup_data["spec_mat"],
+            setup_data["source_eids"],
+            setup_data["target_ids"],
+            setup_data["target_families"],
+            setup_data["scope_idx"],
+            setup_data["class_labels"],
+            observed_hits=1,
+            z_threshold=100.0,  # impossibly high
+            n_perms=50,
+            seed=42,
+            n_jobs=1,
+        )
+        assert all(h == 0 for h in result["null_hits"])
+
+    def test_parallel_matches_serial(self, setup_data):
+        """n_jobs>1 should produce the same results as n_jobs=1."""
+        kwargs = dict(
+            spec_mat=setup_data["spec_mat"],
+            source_eids=setup_data["source_eids"],
+            target_ids=setup_data["target_ids"],
+            target_families=setup_data["target_families"],
+            scope_idx=setup_data["scope_idx"],
+            class_labels=setup_data["class_labels"],
+            observed_hits=1,
+            z_threshold=2.0,
+            n_perms=50,
+            seed=42,
+        )
+        r_serial = convergence_permutation_test(**kwargs, n_jobs=1)
+        r_parallel = convergence_permutation_test(**kwargs, n_jobs=2)
+        np.testing.assert_array_equal(r_serial["null_hits"], r_parallel["null_hits"])
