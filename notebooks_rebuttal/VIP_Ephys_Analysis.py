@@ -1867,3 +1867,296 @@ print(f"Neuronal cell types: {len(neuron_anno)} / {len(Anno)} total")
 print(f"\nCell-class counts:")
 print(class_labels.value_counts().to_string())
 print(f"\nCGE cell types (for Tier 3): {len(cge_idx)}")
+
+# Compute positional neuron indices for run_profile_similarity
+neuron_ct_ids = neuron_anno.index.astype(int).tolist()
+neuron_idx = [i for i, c in enumerate(SpecMat.columns) if c in neuron_ct_ids]
+print(f"Neuronal positional indices in SpecMat: {len(neuron_idx)}")
+
+# %% [markdown]
+# ---
+# ## 13. Expression Profile Similarity: Tiers 1–3
+# Tier 1: Raw Spearman across neurons — initial screen
+# Tier 2: Pearson partial (cell-class corrected) — primary test
+# Tier 3: CGE only (n=21) — directional confirmation with BCa CIs
+
+# %%
+# --- Section 13a: Run Tier 1 + Tier 2 (mean-centered) ---
+
+results_mc = run_profile_similarity(
+    SpecMat, q22_eids, target_eids, CURATED_TARGETS,
+    neuron_idx, class_labels,
+)
+pair_df = results_mc["pair_results"]
+fam_df = results_mc["family_results"]
+
+# Summary counts
+n_tier1_hits = (pair_df["p_raw"] < 0.05).sum() if len(pair_df) > 0 else 0
+n_tier2_hits = (pair_df["q_partial"] < 0.05).sum() if len(pair_df) > 0 else 0
+n_fam_hits = (fam_df["q_family"] < 0.05).sum() if len(fam_df) > 0 else 0
+
+print("=== Profile Similarity: Mean-Centered Matrix ===")
+print(f"Total pairs tested: {len(pair_df)}")
+print(f"Tier 1 (raw Spearman p < 0.05): {n_tier1_hits}")
+print(f"Tier 2 (partial r, q < 0.05):   {n_tier2_hits}")
+print(f"Family-level (q < 0.05):         {n_fam_hits}")
+
+if len(pair_df) > 0 and n_tier2_hits > 0:
+    print("\nTier 2 significant pairs (q < 0.05):")
+    sig_pairs = pair_df[pair_df["q_partial"] < 0.05].sort_values("q_partial")
+    for _, row in sig_pairs.iterrows():
+        print(f"  {row['source']:>8s} x {row['target']:<10s} "
+              f"({row['family']})  r={row['r_partial']:+.3f}  "
+              f"q={row['q_partial']:.4f}")
+
+if len(fam_df) > 0 and n_fam_hits > 0:
+    print("\nSignificant families (q < 0.05):")
+    sig_fams = fam_df[fam_df["q_family"] < 0.05].sort_values("q_family")
+    for _, row in sig_fams.iterrows():
+        print(f"  {row['source']:>8s} x {row['family']:<12s}  "
+              f"Z={row['stouffer_z']:+.3f}  q={row['q_family']:.4f}  "
+              f"(n={row['n_genes']}, best: {row['best_target']} "
+              f"r={row['best_r']:+.3f})")
+
+# Calibrate |Z| threshold for permutation test (Section 14)
+sig_fams_df = fam_df[fam_df["q_family"] < 0.05] if len(fam_df) > 0 else fam_df
+if len(sig_fams_df) > 0:
+    Z_THRESHOLD = sig_fams_df["stouffer_z"].abs().min()
+else:
+    Z_THRESHOLD = 2.0  # fallback
+print(f"\n|Z| threshold for permutation null: {Z_THRESHOLD:.3f}")
+
+# %%
+# --- Section 13b: Robustness check with raw specificity matrix ---
+
+results_raw = run_profile_similarity(
+    SpecMat_raw, q22_eids, target_eids, CURATED_TARGETS,
+    neuron_idx, class_labels,
+)
+pair_df_raw = results_raw["pair_results"]
+fam_df_raw = results_raw["family_results"]
+
+n_tier2_raw_hits = (pair_df_raw["q_partial"] < 0.05).sum() if len(pair_df_raw) > 0 else 0
+n_fam_raw_hits = (fam_df_raw["q_family"] < 0.05).sum() if len(fam_df_raw) > 0 else 0
+
+print("=== Profile Similarity: Raw Specificity Matrix ===")
+print(f"Total pairs tested: {len(pair_df_raw)}")
+print(f"Tier 2 (partial r, q < 0.05): {n_tier2_raw_hits}")
+print(f"Family-level (q < 0.05):      {n_fam_raw_hits}")
+
+# Check overlap with mean-centered results
+if len(pair_df) > 0 and len(pair_df_raw) > 0:
+    mc_sig_pairs = set(
+        zip(pair_df.loc[pair_df["q_partial"] < 0.05, "source"],
+            pair_df.loc[pair_df["q_partial"] < 0.05, "target"])
+    )
+    raw_sig_pairs = set(
+        zip(pair_df_raw.loc[pair_df_raw["q_partial"] < 0.05, "source"],
+            pair_df_raw.loc[pair_df_raw["q_partial"] < 0.05, "target"])
+    )
+    overlap = mc_sig_pairs & raw_sig_pairs
+    n_union = len(mc_sig_pairs | raw_sig_pairs)
+    jaccard = len(overlap) / n_union if n_union > 0 else 0.0
+
+    print(f"\nReplication (MC vs Raw):")
+    print(f"  MC-only significant pairs:  {len(mc_sig_pairs - raw_sig_pairs)}")
+    print(f"  Raw-only significant pairs: {len(raw_sig_pairs - mc_sig_pairs)}")
+    print(f"  Overlapping pairs:          {len(overlap)}")
+    print(f"  Jaccard similarity:         {jaccard:.3f}")
+
+    # Sign concordance: among overlapping pairs, do partial r signs agree?
+    if len(overlap) > 0:
+        mc_signs = {}
+        for _, row in pair_df.iterrows():
+            mc_signs[(row["source"], row["target"])] = np.sign(row["r_partial"])
+        raw_signs = {}
+        for _, row in pair_df_raw.iterrows():
+            raw_signs[(row["source"], row["target"])] = np.sign(row["r_partial"])
+        concordant = sum(
+            1 for k in overlap if mc_signs.get(k, 0) == raw_signs.get(k, 0)
+        )
+        print(f"  Sign concordance (overlap):  {concordant}/{len(overlap)}")
+
+# %%
+# --- Section 13c: Tier 3 — CGE confirmation with BCa bootstrap CIs ---
+
+from scipy.stats import spearmanr, norm
+
+
+def bca_ci_spearman(x, y, n_boot=2000, alpha=0.05, seed=42):
+    """BCa (bias-corrected accelerated) bootstrap 95% CI on Spearman rho."""
+    rng = np.random.default_rng(seed)
+    n = len(x)
+    rho_obs, _ = spearmanr(x, y)
+
+    boot_rhos = np.empty(n_boot)
+    for i in range(n_boot):
+        idx = rng.integers(0, n, size=n)
+        boot_rhos[i], _ = spearmanr(x[idx], y[idx])
+
+    # Bias correction: z0
+    prop_below = np.mean(boot_rhos < rho_obs)
+    z0 = norm.ppf(max(1e-10, min(1 - 1e-10, prop_below)))
+
+    # Acceleration via jackknife
+    jack_rhos = np.empty(n)
+    for i in range(n):
+        idx = np.concatenate([np.arange(i), np.arange(i + 1, n)])
+        jack_rhos[i], _ = spearmanr(x[idx], y[idx])
+    jack_mean = jack_rhos.mean()
+    num = np.sum((jack_mean - jack_rhos) ** 3)
+    den = 6 * np.sum((jack_mean - jack_rhos) ** 2) ** 1.5
+    a = num / den if den != 0 else 0.0
+
+    # Adjusted percentiles
+    z_alpha = norm.ppf(alpha / 2)
+    z_1alpha = norm.ppf(1 - alpha / 2)
+    p_low = norm.cdf(z0 + (z0 + z_alpha) / (1 - a * (z0 + z_alpha)))
+    p_high = norm.cdf(z0 + (z0 + z_1alpha) / (1 - a * (z0 + z_1alpha)))
+
+    ci_low = np.percentile(boot_rhos, np.clip(p_low * 100, 0, 100))
+    ci_high = np.percentile(boot_rhos, np.clip(p_high * 100, 0, 100))
+
+    return rho_obs, ci_low, ci_high
+
+
+# --- Run Tier 3 on significant family hits from mean-centered analysis ---
+# Use CGE cell types only (n=21) for directional confirmation
+
+# Get CGE positional indices
+cge_positional = [i for i, c in enumerate(SpecMat.columns) if c in cge_idx]
+cge_cols = [SpecMat.columns[i] for i in cge_positional]
+
+print(f"=== Tier 3: CGE-only Spearman with BCa CIs (n={len(cge_cols)}) ===\n")
+
+sig_fam_entries = fam_df[fam_df["q_family"] < 0.05] if len(fam_df) > 0 else fam_df
+
+if len(sig_fam_entries) == 0:
+    print("No significant family-level hits to confirm in Tier 3.")
+else:
+    tier3_records = []
+    for _, fam_row in sig_fam_entries.iterrows():
+        src_sym = fam_row["source"]
+        fam_name = fam_row["family"]
+        t2_sign = np.sign(fam_row["stouffer_z"])
+
+        src_id = q22_eids.get(src_sym)
+        if src_id is None or src_id not in SpecMat.index:
+            continue
+
+        # Get target genes in this family that are in the matrix
+        fam_targets = CURATED_TARGETS.get(fam_name, [])
+        for tgt_sym in fam_targets:
+            tgt_id = target_eids.get(tgt_sym)
+            if tgt_id is None or tgt_id not in SpecMat.index:
+                continue
+
+            x = SpecMat.loc[src_id, cge_cols].values.astype(float)
+            y = SpecMat.loc[tgt_id, cge_cols].values.astype(float)
+
+            rho_obs, ci_lo, ci_hi = bca_ci_spearman(x, y, n_boot=2000, seed=42)
+            excludes_zero = (ci_lo > 0) or (ci_hi < 0)
+            concordant = (np.sign(rho_obs) == t2_sign)
+
+            tier3_records.append({
+                "source": src_sym,
+                "target": tgt_sym,
+                "family": fam_name,
+                "rho_cge": rho_obs,
+                "ci_lo": ci_lo,
+                "ci_hi": ci_hi,
+                "excludes_zero": excludes_zero,
+                "t2_sign_concordant": concordant,
+            })
+
+    tier3_df = pd.DataFrame(tier3_records)
+    if len(tier3_df) > 0:
+        n_concordant = tier3_df["t2_sign_concordant"].sum()
+        n_excl_zero = tier3_df["excludes_zero"].sum()
+        print(f"Pairs tested:         {len(tier3_df)}")
+        print(f"Sign-concordant:      {n_concordant}/{len(tier3_df)}")
+        print(f"CI excludes zero:     {n_excl_zero}/{len(tier3_df)}")
+        print()
+        print(tier3_df.to_string(index=False, float_format="{:.3f}".format))
+    else:
+        print("No valid pairs for Tier 3 analysis.")
+
+# %%
+# --- Section 13d: Tier 1 vs Tier 2 comparison heatmap ---
+
+if len(pair_df) > 0:
+    # Build family ordering for targets
+    family_order = list(CHANNEL_FAMILIES.keys())
+    # Map each target to its family
+    target_to_family = {}
+    for fam_name, syms in CURATED_TARGETS.items():
+        for sym in syms:
+            target_to_family[sym] = fam_name
+
+    # Order targets by family, then alphabetically within family
+    unique_targets = pair_df["target"].unique()
+    target_sorted = sorted(
+        unique_targets,
+        key=lambda t: (
+            family_order.index(target_to_family.get(t, "zzz"))
+            if target_to_family.get(t, "zzz") in family_order
+            else len(family_order),
+            t,
+        ),
+    )
+    unique_sources = sorted(pair_df["source"].unique())
+
+    # Pivot for heatmaps
+    pivot_rho = pair_df.pivot(
+        index="source", columns="target", values="rho_raw"
+    ).reindex(index=unique_sources, columns=target_sorted)
+
+    pivot_rpartial = pair_df.pivot(
+        index="source", columns="target", values="r_partial"
+    ).reindex(index=unique_sources, columns=target_sorted)
+
+    fig, axes = plt.subplots(1, 2, figsize=(14, 8))
+
+    # Left: Tier 1 raw Spearman
+    sns.heatmap(
+        pivot_rho, ax=axes[0], cmap="RdBu_r", center=0,
+        vmin=-0.6, vmax=0.6, linewidths=0.3, linecolor="white",
+        cbar_kws={"shrink": 0.6, "label": "Spearman rho"},
+        xticklabels=True, yticklabels=True,
+    )
+    axes[0].set_title("Tier 1: Raw Spearman rho")
+    axes[0].set_xlabel("Target gene")
+    axes[0].set_ylabel("22q source gene")
+    axes[0].tick_params(axis="x", rotation=90, labelsize=7)
+    axes[0].tick_params(axis="y", labelsize=8)
+
+    # Right: Tier 2 partial Pearson
+    sns.heatmap(
+        pivot_rpartial, ax=axes[1], cmap="RdBu_r", center=0,
+        vmin=-0.6, vmax=0.6, linewidths=0.3, linecolor="white",
+        cbar_kws={"shrink": 0.6, "label": "Partial r"},
+        xticklabels=True, yticklabels=True,
+    )
+    axes[1].set_title("Tier 2: Pearson partial r\n(cell-class corrected)")
+    axes[1].set_xlabel("Target gene")
+    axes[1].set_ylabel("22q source gene")
+    axes[1].tick_params(axis="x", rotation=90, labelsize=7)
+    axes[1].tick_params(axis="y", labelsize=8)
+
+    fig.suptitle(
+        "22q x Channel/Scaffold Profile Similarity\n"
+        "Tier 1 (raw Spearman) vs Tier 2 (Pearson partial, cell-class corrected)",
+        fontsize=12, y=1.02,
+    )
+    fig.tight_layout()
+
+    fig_dir = EPHYS_DIR / "figures"
+    fig_dir.mkdir(parents=True, exist_ok=True)
+    fig.savefig(
+        fig_dir / "Fig_ProfileSim_22q_Channels_Neurons.png",
+        dpi=150, bbox_inches="tight", transparent=True,
+    )
+    plt.show()
+    print(f"Saved: {fig_dir / 'Fig_ProfileSim_22q_Channels_Neurons.png'}")
+else:
+    print("No pair results to plot.")
