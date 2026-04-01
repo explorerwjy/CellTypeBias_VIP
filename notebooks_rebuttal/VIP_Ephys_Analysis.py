@@ -2682,4 +2682,195 @@ else:
         fig_path.parent.mkdir(parents=True, exist_ok=True)
         fig.savefig(str(fig_path), dpi=150, transparent=True, bbox_inches="tight")
         print(f"Saved: {fig_path}")
+
+# %% [markdown]
+# ---
+# ## 17. Reverse Predictions and Analysis Summary
+# For 22q-channel pairs with significant profile similarity but where the
+# channel's primary feature is NOT significantly altered, check effect sizes.
+# Power context: min detectable Cohen's d ~ 1.0 at n=10,19.
+
+# %%
+# --- 17a: Extract ephys features ---
+
+ephys_all = extract_all_ephys_features(BUNDLE_DIR)
+n_wt = (ephys_all["genotype"] == "WT").sum()
+n_df16 = (ephys_all["genotype"] == "Df16").sum()
+print(f"Total cells: {len(ephys_all)}  (WT={n_wt}, Df16={n_df16})")
+
+# %%
+# --- 17b: Identify reverse-prediction targets ---
+#
+# These map convergence-level feature categories (from CHANNEL_FAMILIES with
+# feature="Reverse prediction") to the actual electrophysiology columns
+# returned by extract_all_ephys_features.
+
+reverse_feature_cols = {
+    "firing_adaptation": ["hero_cv_isi", "adapt_width_ratio", "adapt_trough_ratio"],
+    "sustained_firing": ["max_freq_Hz", "hero_freq_Hz"],
+    "first_spike_latency": ["hero_mean_isi_ms"],
+}
+
+# Check which reverse-prediction families are significant in fam_df
+reverse_families = [
+    fam for fam, info in CHANNEL_FAMILIES.items()
+    if info["feature"] == "Reverse prediction"
+]
+print(f"Reverse-prediction channel families: {reverse_families}")
+
+# Family-level hits in the reverse-prediction category
+if len(fam_df) > 0:
+    rp_fam_hits = fam_df[
+        (fam_df["family"].isin(reverse_families))
+        & (fam_df["q_family"] < 0.05)
+    ]
+else:
+    rp_fam_hits = pd.DataFrame()
+
+if len(rp_fam_hits) > 0:
+    print(f"\nSignificant reverse-prediction family hits: {len(rp_fam_hits)}")
+    for _, row in rp_fam_hits.iterrows():
+        print(f"  {row['source']:>8s} x {row['family']:<12s}  "
+              f"Z={row['stouffer_z']:+.3f}  q={row['q_family']:.4f}  "
+              f"best_target={row['best_target']}")
+else:
+    print("\nNo significant reverse-prediction family hits.")
+
+# Always include GP1BB-SK as a special case
+gp1bb_sk = fam_df[
+    (fam_df["source"] == "GP1BB") & (fam_df["family"] == "SK")
+] if len(fam_df) > 0 else pd.DataFrame()
+if len(gp1bb_sk) > 0:
+    row = gp1bb_sk.iloc[0]
+    print(f"\nSpecial case: GP1BB x SK  Z={row['stouffer_z']:+.3f}  "
+          f"q={row['q_family']:.4f}")
+
+# %%
+# --- 17c: Compare features (reverse-prediction ephys columns) ---
+
+all_reverse_cols = []
+for cols in reverse_feature_cols.values():
+    all_reverse_cols.extend(cols)
+all_reverse_cols = list(dict.fromkeys(all_reverse_cols))  # deduplicate, preserve order
+
+comparison_rows = []
+for col in all_reverse_cols:
+    res = compare_feature(ephys_all, col)
+    if res is None:
+        print(f"  {col}: insufficient data (skipped)")
+        continue
+
+    abs_d = abs(res["cohens_d"])
+    if abs_d > 1.0:
+        power_label = "detectable"
+    elif abs_d > 0.5:
+        power_label = "ambiguous (follow-up needed)"
+    else:
+        power_label = "insufficient power"
+
+    comparison_rows.append({
+        "feature": col,
+        "WT_mean": res["wt_mean"],
+        "WT_sd": res["wt_sd"],
+        "Df16_mean": res["df16_mean"],
+        "Df16_sd": res["df16_sd"],
+        "cohens_d": res["cohens_d"],
+        "p_value": res["p"],
+        "CI_low": res["ci_low"],
+        "CI_high": res["ci_high"],
+        "power_interpretation": power_label,
+    })
+
+comp_df = pd.DataFrame(comparison_rows)
+
+print("=== Reverse-Prediction Feature Comparisons (WT vs Df16) ===")
+print(f"{'Feature':<25s} {'WT mean+/-SD':>16s}  {'Df16 mean+/-SD':>16s}  "
+      f"{'d':>7s}  {'p':>7s}  {'CI':>20s}  Interpretation")
+print("-" * 120)
+for _, row in comp_df.iterrows():
+    wt_str = f"{row['WT_mean']:.3f}+/-{row['WT_sd']:.3f}"
+    df16_str = f"{row['Df16_mean']:.3f}+/-{row['Df16_sd']:.3f}"
+    ci_str = f"[{row['CI_low']:.3f}, {row['CI_high']:.3f}]"
+    print(f"{row['feature']:<25s} {wt_str:>16s}  {df16_str:>16s}  "
+          f"{row['cohens_d']:>+7.3f}  {row['p_value']:>7.4f}  "
+          f"{ci_str:>20s}  {row['power_interpretation']}")
+
+# %%
+# --- 17d: Analysis Summary ---
+
+print("=" * 70)
+print("  CONVERGENCE ANALYSIS SUMMARY")
+print("=" * 70)
+
+# 1. Profile similarity
+n_pairs_tested = len(pair_df) if len(pair_df) > 0 else 0
+n_pairs_sig = (pair_df["q_partial"] < 0.05).sum() if n_pairs_tested > 0 else 0
+n_families_sig = (fam_df["q_family"] < 0.05).sum() if len(fam_df) > 0 else 0
+print(f"\n1. Profile Similarity (Tier 2, cell-class corrected)")
+print(f"   Pairs tested:          {n_pairs_tested}")
+print(f"   Significant (q<0.05):  {n_pairs_sig}")
+print(f"   Family-level hits:     {n_families_sig}")
+
+# 2. CGE concordance
+if "tier3_df" in dir() and len(tier3_df) > 0:
+    n_t3_concordant = tier3_df["t2_sign_concordant"].sum()
+    n_t3_total = len(tier3_df)
+    print(f"\n2. CGE Concordance (Tier 3)")
+    print(f"   Concordant / total:    {n_t3_concordant}/{n_t3_total}")
+else:
+    print(f"\n2. CGE Concordance (Tier 3)")
+    print(f"   No Tier 3 results available.")
+
+# 3. Convergence null model
+print(f"\n3. Convergence Null Model (Permutation)")
+print(f"   Curated targets P:     {perm_result['p_value']:.4f}  "
+      f"(Z={perm_result['z_score']:.2f})")
+print(f"   GO targets P:          {perm_result_go['p_value']:.4f}  "
+      f"(Z={perm_result_go['z_score']:.2f})")
+
+# 4. PPI bridges
+if len(bridge_df) > 0:
+    n_direct_ppi = (bridge_df["path_length"] == 1).sum()
+    n_2hop_ppi = (bridge_df["path_length"] == 2).sum()
+else:
+    n_direct_ppi = 0
+    n_2hop_ppi = 0
+print(f"\n4. PPI Bridges (Significant Pairs)")
+print(f"   Direct interactions:   {n_direct_ppi}")
+print(f"   2-hop bridges:        {n_2hop_ppi}")
+
+# 5. Robustness (replicated pairs between MC and raw matrices)
+# Re-compute overlap from Section 13b variables
+if len(pair_df) > 0 and len(pair_df_raw) > 0:
+    mc_sig_set = set(
+        zip(pair_df.loc[pair_df["q_partial"] < 0.05, "source"],
+            pair_df.loc[pair_df["q_partial"] < 0.05, "target"])
+    )
+    raw_sig_set = set(
+        zip(pair_df_raw.loc[pair_df_raw["q_partial"] < 0.05, "source"],
+            pair_df_raw.loc[pair_df_raw["q_partial"] < 0.05, "target"])
+    )
+    replicated = mc_sig_set & raw_sig_set
+    n_replicated = len(replicated)
+else:
+    n_replicated = 0
+print(f"\n5. Robustness (MC vs Raw Specificity)")
+print(f"   Replicated pairs:      {n_replicated}")
+
+# 6. Reverse predictions
+n_ambiguous = (comp_df["power_interpretation"] == "ambiguous (follow-up needed)").sum()
+n_detectable = (comp_df["power_interpretation"] == "detectable").sum()
+n_insufficient = (comp_df["power_interpretation"] == "insufficient power").sum()
+print(f"\n6. Reverse Predictions (WT vs Df16 effect sizes)")
+print(f"   Features tested:       {len(comp_df)}")
+print(f"   Detectable (|d|>1.0):  {n_detectable}")
+print(f"   Ambiguous (0.5<|d|<1): {n_ambiguous}")
+print(f"   Insufficient (|d|<0.5):{n_insufficient}")
+if n_ambiguous > 0:
+    ambig_feats = comp_df.loc[
+        comp_df["power_interpretation"] == "ambiguous (follow-up needed)", "feature"
+    ].tolist()
+    print(f"   Ambiguous features:    {', '.join(ambig_feats)}")
+
+print(f"\n{'=' * 70}")
         plt.show()
