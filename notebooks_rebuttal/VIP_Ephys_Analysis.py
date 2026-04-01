@@ -518,3 +518,1352 @@ for col, label in [("width_ms", "AP Width"), ("rise_Vs", "Rise Slope"),
         _, p2 = ttest_ind(m1v, df16)
         print(f"  {label:<15}: M1-VIP={m1v.mean():.1f}  22q-WT={wt.mean():.1f} (p={p1:.4f})  "
               f"22q-Df16={df16.mean():.1f} (p={p2:.4f})")
+
+# %% [markdown]
+# ## 9. Phase Plane Analysis: Representative WT vs Df16
+#
+# Phase plane plots (dV/dt vs V) reveal Na+ channel activation differences.
+# Representative cells selected as median by rise slope within each group.
+#
+# **Note**: Rheobase differs between cells (WT=40 pA, Df16=85 pA).
+# We show both rheobase and matched-current (85 pA) comparisons.
+
+# %%
+from scipy.signal import savgol_filter
+
+DT = 1 / 20000  # 20 kHz sampling
+
+
+def load_sweep_trace(cell_id, sweep_num):
+    """Load voltage trace for a specific sweep number."""
+    cell_dir = BUNDLE_DIR / cell_id
+    mv_file = list(cell_dir.glob("mv_*.parquet"))[0]
+    mv = pd.read_parquet(mv_file)
+    trace = mv[mv["sweep"] == sweep_num].sort_values("t_s")
+    t = trace["t_s"].values
+    v = trace["value"].values
+    return t, v
+
+
+def get_sweep_for_current(cell_id, target_pA):
+    """Find the sweep number closest to a target injected current."""
+    analysis = pd.read_csv(BUNDLE_DIR / cell_id / "analysis.csv")
+    idx = (analysis["avg_injected_current_pA"] - target_pA).abs().idxmin()
+    return int(analysis.loc[idx, "sweep"]), analysis.loc[idx, "avg_injected_current_pA"]
+
+
+def get_rheobase_sweep(cell_id):
+    """Return (sweep_num, current_pA) for the rheobase sweep."""
+    analysis = pd.read_csv(BUNDLE_DIR / cell_id / "analysis.csv")
+    spiking = analysis[analysis["spike_frequency_Hz"] > 0]
+    row = spiking.iloc[0]
+    return int(row["sweep"]), row["avg_injected_current_pA"]
+
+
+def smooth_and_dvdt(v):
+    """Smooth voltage trace and compute dV/dt in V/s."""
+    v_s = savgol_filter(v, window_length=11, polyorder=3)
+    dvdt = np.gradient(v_s, DT) / 1000  # mV/s -> V/s
+    return v_s, dvdt
+
+
+# Select median cells by rise slope
+wt_cell = "WT_mouse07_cell12"      # median WT: rise=224.6 V/s, width=0.80 ms
+df16_cell = "Df16_mouseB10916_cell06"  # median Df16: rise=142.8 V/s, width=0.90 ms
+
+# Get sweep info
+wt_rheo_sw, wt_rheo_pA = get_rheobase_sweep(wt_cell)
+df_rheo_sw, df_rheo_pA = get_rheobase_sweep(df16_cell)
+# Matched current: 85 pA (lowest common spiking current)
+MATCHED_PA = 85.0
+wt_match_sw, wt_match_actual = get_sweep_for_current(wt_cell, MATCHED_PA)
+df_match_sw, df_match_actual = get_sweep_for_current(df16_cell, MATCHED_PA)
+
+print(f"Rheobase — WT: sweep {wt_rheo_sw} ({wt_rheo_pA:.0f} pA), "
+      f"Df16: sweep {df_rheo_sw} ({df_rheo_pA:.0f} pA)")
+print(f"Matched  — WT: sweep {wt_match_sw} ({wt_match_actual:.0f} pA), "
+      f"Df16: sweep {df_match_sw} ({df_match_actual:.0f} pA)")
+
+# %%
+# --- Full-trace phase plane: rheobase and matched current ---
+
+# Stimulus window (current step)
+STIM_START = 0.5   # s
+STIM_END = 2.0     # s
+stim_start_idx = int(STIM_START / DT)
+stim_end_idx = int(STIM_END / DT)
+
+# Rheobase + 60 pA sweeps (more spikes: WT ~4, Df16 ~2)
+SUPRA_OFFSET = 60  # pA above rheobase
+wt_supra_sw, wt_supra_pA = get_sweep_for_current(wt_cell, wt_rheo_pA + SUPRA_OFFSET)
+df_supra_sw, df_supra_pA = get_sweep_for_current(df16_cell, df_rheo_pA + SUPRA_OFFSET)
+print(f"Supra    — WT: sweep {wt_supra_sw} ({wt_supra_pA:.0f} pA), "
+      f"Df16: sweep {df_supra_sw} ({df_supra_pA:.0f} pA)")
+
+fig, axes = plt.subplots(3, 3, figsize=(14, 12))
+
+conditions = [
+    ("Rheobase",
+     [(wt_cell, wt_rheo_sw, COLORS["WT"], f"WT ({wt_rheo_pA:.0f} pA)"),
+      (df16_cell, df_rheo_sw, COLORS["Df16"], f"Df16 ({df_rheo_pA:.0f} pA)")]),
+    (f"Matched ({MATCHED_PA:.0f} pA)",
+     [(wt_cell, wt_match_sw, COLORS["WT"], "WT"),
+      (df16_cell, df_match_sw, COLORS["Df16"], "Df16")]),
+    (f"Rheobase + {SUPRA_OFFSET} pA",
+     [(wt_cell, wt_supra_sw, COLORS["WT"], f"WT ({wt_supra_pA:.0f} pA)"),
+      (df16_cell, df_supra_sw, COLORS["Df16"], f"Df16 ({df_supra_pA:.0f} pA)")]),
+]
+
+for row_idx, (sweep_label, cells) in enumerate(conditions):
+    ax_v, ax_dvdt, ax_pp = axes[row_idx]
+
+    for cell_id, sw, color, label in cells:
+        t, v = load_sweep_trace(cell_id, sw)
+        v_s, dvdt = smooth_and_dvdt(v)
+
+        # Use stimulus window for full-trace view
+        t_stim = (t[stim_start_idx:stim_end_idx] - STIM_START) * 1000  # ms
+        v_stim = v_s[stim_start_idx:stim_end_idx]
+        dvdt_stim = dvdt[stim_start_idx:stim_end_idx]
+
+        ax_v.plot(t_stim, v_stim, color=color, linewidth=0.8, label=label, alpha=0.9)
+        ax_dvdt.plot(t_stim, dvdt_stim, color=color, linewidth=0.8, alpha=0.9)
+        ax_pp.plot(v_stim, dvdt_stim, color=color, linewidth=0.8, label=label, alpha=0.9)
+
+    ax_v.set_ylabel("Vm (mV)")
+    ax_v.set_title(f"{sweep_label} — Voltage Trace")
+    ax_v.legend(frameon=False, fontsize=8)
+    sns.despine(ax=ax_v)
+
+    ax_dvdt.set_ylabel("dV/dt (V/s)")
+    ax_dvdt.set_title(f"{sweep_label} — dV/dt")
+    ax_dvdt.axhline(0, color="gray", linewidth=0.5, linestyle="--")
+    sns.despine(ax=ax_dvdt)
+
+    ax_pp.set_xlabel("Vm (mV)")
+    ax_pp.set_ylabel("dV/dt (V/s)")
+    ax_pp.set_title(f"{sweep_label} — Phase Plane")
+    ax_pp.axhline(0, color="gray", linewidth=0.5, linestyle="--")
+    ax_pp.legend(frameon=False, fontsize=8)
+    sns.despine(ax=ax_pp)
+
+    if row_idx < 2:
+        ax_v.set_xlabel("")
+        ax_dvdt.set_xlabel("")
+    else:
+        ax_v.set_xlabel("Time (ms)")
+        ax_dvdt.set_xlabel("Time (ms)")
+
+fig.suptitle("Phase Plane: Full Stimulus Trace — Rheobase / Matched / Suprathreshold",
+             fontsize=12, fontweight="bold", y=1.01)
+plt.tight_layout()
+plt.savefig(EPHYS_DIR / "figures" / "Fig_PhasePlane_WT_vs_Df16.png",
+            dpi=300, bbox_inches="tight")
+plt.show()
+
+# %% [markdown]
+# ## 10. 22q Gene Expression vs AP Kinetics in M1 VIP Interneurons
+#
+# **Question**: Does cell-by-cell expression of 22q11.2 deletion genes
+# correlate with AP features (rise slope, AP width) in M1 VIP interneurons?
+#
+# **Approach**: Using DANDI 000008 M1 patch-seq data, we extract paired
+# electrophysiology (analysis.csv) and single-cell RNA-seq (exon counts)
+# for VIP interneurons. We then correlate each gene's expression with
+# rise slope and AP width using Spearman rank correlation.
+#
+# **Genes tested**:
+# - 22q11.2 region: Dgcr8, Tbx1, Comt, Prodh, Sept5, Ranbp1, Crkl,
+#   Pi4ka, Snap29, Hira, Ufd1, Cdc45, Slc25a1
+# - Na+ channels: Scn1a, Scn2a, Scn8a
+# - K+ channels: Kcnc1 (Kv3.1), Kcnc2 (Kv3.2), Kcna1 (Kv1.1)
+
+# %%
+from scipy.stats import spearmanr
+from statsmodels.stats.multitest import multipletests
+
+# --- Load expression data ---
+EXPR_PATH = Path("/home/jw3514/Work/NeurSim/hh_sbi/data/m1_patchseq_exon_counts.csv.gz")
+
+# Define target genes
+GENES_22Q = ["Dgcr8", "Tbx1", "Comt", "Prodh", "Sept5", "Ranbp1",
+             "Crkl", "Pi4ka", "Snap29", "Hira", "Ufd1", "Cdc45", "Slc25a1"]
+GENES_NA = ["Scn1a", "Scn2a", "Scn8a"]
+GENES_K = ["Kcnc1", "Kcnc2", "Kcna1"]
+ALL_GENES = GENES_22Q + GENES_NA + GENES_K
+
+# Load full expression matrix (genes x cells) — takes a moment
+print("Loading expression matrix...")
+expr_full = pd.read_csv(EXPR_PATH, index_col=0)
+print(f"Expression matrix: {expr_full.shape[0]} genes x {expr_full.shape[1]} cells")
+
+# Subset to target genes
+expr_targets = expr_full.loc[expr_full.index.isin(ALL_GENES)]
+print(f"Target genes found: {len(expr_targets)} / {len(ALL_GENES)}")
+missing = set(ALL_GENES) - set(expr_targets.index)
+if missing:
+    print(f"  Missing: {missing}")
+
+# %%
+# --- Build paired ephys + expression table for M1 VIP cells ---
+
+meta = pd.read_csv(META_PATH, sep="\t")
+meta["date_fmt"] = meta["Date"].apply(
+    lambda d: datetime.strptime(d, "%m/%d/%y").strftime("%Y%m%d")
+    if pd.notna(d) else None
+)
+meta["sample_num"] = meta["Sample"].str.extract(r"(\d+)")[0]
+meta["mouse_id"] = meta["Mouse"].str.replace("mouse_", "")
+meta["match_key"] = (
+    "sub_mouse-" + meta["mouse_id"] + "_ses_" +
+    meta["date_fmt"] + "-sample-" + meta["sample_num"]
+)
+
+bundles = {d.name: d for d in M1_DIR.iterdir() if d.is_dir()}
+
+# VIP cells excluding Vip Sncg (transitional type)
+vip_meta = meta[(meta["RNA family"] == "Vip") & (meta["RNA type"] != "Vip Sncg")]
+print(f"VIP cells in metadata (excl Sncg): {len(vip_meta)}")
+
+rows = []
+for _, row in vip_meta.iterrows():
+    cell_id = row["Cell"]
+    matches = [b for b in bundles if b.startswith(row["match_key"])]
+    if not matches:
+        continue
+    f = bundles[matches[0]] / "analysis.csv"
+    if not f.exists():
+        continue
+    try:
+        df = pd.read_csv(f)
+    except Exception:
+        continue
+    if "spike_frequency_Hz" not in df.columns:
+        continue
+    sp = df[df["spike_frequency_Hz"] > 0]
+    if len(sp) == 0:
+        continue
+
+    # Get rheobase sweep features
+    rheo = sp[sp.get("is_rheobase", pd.Series(dtype=bool)) == True] \
+        if "is_rheobase" in sp.columns else pd.DataFrame()
+    if len(rheo) == 0:
+        rheo = sp.iloc[[0]]
+    r = rheo.iloc[0]
+
+    rise_raw = r.get("avg_upstroke_mVms", np.nan)
+    rise_Vs = rise_raw / DVDT_CORRECTION if pd.notna(rise_raw) else np.nan
+    width_ms = r.get("avg_ap_width_ms", np.nan)
+
+    # Get gene expression for this cell
+    if cell_id not in expr_targets.columns:
+        continue
+    gene_expr = expr_targets[cell_id].to_dict()
+
+    d = {
+        "cell_id": cell_id,
+        "rna_type": row["RNA type"],
+        "rise_Vs": rise_Vs,
+        "width_ms": width_ms,
+        "n_genes_detected": row.get("Number of genes detected", np.nan),
+    }
+    d.update(gene_expr)
+    rows.append(d)
+
+vip_paired = pd.DataFrame(rows)
+print(f"VIP cells with paired ephys + expression: {len(vip_paired)}")
+print(f"  rise_Vs available: {vip_paired['rise_Vs'].notna().sum()}")
+print(f"  width_ms available: {vip_paired['width_ms'].notna().sum()}")
+print(f"  RNA types: {vip_paired['rna_type'].value_counts().to_dict()}")
+
+# %% [markdown]
+# ### 10a. Gene Detection Rates in VIP Cells
+#
+# Many 22q genes may be lowly expressed in single cells. We first check
+# detection rates (fraction of cells with > 0 counts).
+
+# %%
+# Detection rates
+detect_df = pd.DataFrame({
+    "gene": ALL_GENES,
+    "group": (["22q11.2"] * len(GENES_22Q) +
+              ["Na+ channel"] * len(GENES_NA) +
+              ["K+ channel"] * len(GENES_K)),
+})
+detect_df["n_detected"] = [
+    (vip_paired[g] > 0).sum() if g in vip_paired.columns else 0
+    for g in ALL_GENES
+]
+detect_df["frac_detected"] = detect_df["n_detected"] / len(vip_paired)
+detect_df["mean_counts"] = [
+    vip_paired[g].mean() if g in vip_paired.columns else 0
+    for g in ALL_GENES
+]
+detect_df["median_counts"] = [
+    vip_paired[g].median() if g in vip_paired.columns else 0
+    for g in ALL_GENES
+]
+
+print("Gene detection in M1 VIP interneurons (n={})".format(len(vip_paired)))
+print("=" * 75)
+print(f"{'Gene':<12} {'Group':<14} {'Detected':<10} {'Frac':<8} "
+      f"{'Mean':<10} {'Median':<10}")
+print("-" * 75)
+for _, r in detect_df.iterrows():
+    print(f"{r['gene']:<12} {r['group']:<14} {r['n_detected']:<10.0f} "
+          f"{r['frac_detected']:<8.2f} {r['mean_counts']:<10.1f} "
+          f"{r['median_counts']:<10.1f}")
+
+# %%
+# Detection rate barplot
+fig, ax = plt.subplots(figsize=(10, 4))
+colors_group = {"22q11.2": "#e41a1c", "Na+ channel": "#377eb8", "K+ channel": "#4daf4a"}
+bar_colors = [colors_group[g] for g in detect_df["group"]]
+bars = ax.bar(range(len(detect_df)), detect_df["frac_detected"], color=bar_colors, alpha=0.7,
+              edgecolor="white", linewidth=0.5)
+ax.set_xticks(range(len(detect_df)))
+ax.set_xticklabels(detect_df["gene"], rotation=45, ha="right", fontsize=9)
+ax.set_ylabel("Fraction of VIP cells detected")
+ax.set_title(f"Gene Detection Rates in M1 VIP Interneurons (n={len(vip_paired)})")
+ax.axhline(0.5, color="gray", linestyle="--", linewidth=0.5, alpha=0.5)
+ax.set_ylim(0, 1.05)
+
+# Legend
+from matplotlib.patches import Patch
+legend_handles = [Patch(facecolor=c, alpha=0.7, label=g) for g, c in colors_group.items()]
+ax.legend(handles=legend_handles, frameon=False, fontsize=9)
+sns.despine(ax=ax)
+plt.tight_layout()
+plt.savefig(EPHYS_DIR / "figures" / "Fig_22q_GeneDetection_VIP.png",
+            dpi=300, bbox_inches="tight")
+plt.show()
+
+# %% [markdown]
+# ### 10b. Spearman Correlations: Gene Expression vs AP Features
+#
+# For each gene, compute Spearman rho and p-value against rise slope
+# and AP width. Apply FDR correction across all tests.
+
+# %%
+# Compute Spearman correlations
+results = []
+for gene in ALL_GENES:
+    if gene not in vip_paired.columns:
+        continue
+    expr_vals = vip_paired[gene].values
+
+    for feat, feat_label in [("rise_Vs", "Rise Slope (V/s)"),
+                              ("width_ms", "AP Width (ms)")]:
+        feat_vals = vip_paired[feat].values
+        # Only use cells with valid ephys AND non-missing expression
+        mask = np.isfinite(feat_vals) & np.isfinite(expr_vals)
+        n = mask.sum()
+        if n < 10:
+            continue
+        rho, pval = spearmanr(expr_vals[mask], feat_vals[mask])
+        # Skip genes with constant expression (all zeros) — rho is undefined
+        if np.isnan(rho):
+            continue
+        results.append({
+            "gene": gene,
+            "feature": feat_label,
+            "feat_key": feat,
+            "rho": rho,
+            "p_value": pval,
+            "n": n,
+            "n_detected": (expr_vals[mask] > 0).sum(),
+            "frac_detected": (expr_vals[mask] > 0).sum() / n,
+            "group": ("22q11.2" if gene in GENES_22Q else
+                      "Na+ channel" if gene in GENES_NA else "K+ channel"),
+        })
+
+corr_df = pd.DataFrame(results)
+
+# FDR correction (across all tests)
+if len(corr_df) > 0:
+    _, corr_df["q_value"], _, _ = multipletests(corr_df["p_value"], method="fdr_bh")
+
+# Display results
+print("\nSpearman Correlations: Gene Expression vs AP Features (M1 VIP)")
+print("=" * 95)
+print(f"{'Gene':<12} {'Feature':<20} {'rho':<8} {'p-value':<12} "
+      f"{'q-value':<12} {'n':<6} {'det%':<8} {'Sig':<5}")
+print("-" * 95)
+for _, r in corr_df.sort_values(["feature", "p_value"]).iterrows():
+    sig = ""
+    if r["q_value"] < 0.05:
+        sig = "**"
+    elif r["q_value"] < 0.1:
+        sig = "*"
+    elif r["p_value"] < 0.05:
+        sig = "."
+    print(f"{r['gene']:<12} {r['feature']:<20} {r['rho']:<8.3f} "
+          f"{r['p_value']:<12.4e} {r['q_value']:<12.4e} {r['n']:<6.0f} "
+          f"{r['frac_detected']:<8.1%} {sig}")
+
+# %%
+# Highlight significant results
+sig_nominal = corr_df[corr_df["p_value"] < 0.05]
+sig_fdr = corr_df[corr_df["q_value"] < 0.1]
+
+print(f"\n--- Nominally significant (p < 0.05): {len(sig_nominal)} ---")
+if len(sig_nominal) > 0:
+    for _, r in sig_nominal.sort_values("p_value").iterrows():
+        print(f"  {r['gene']:>10} ~ {r['feature']:<20}  rho={r['rho']:.3f}  "
+              f"p={r['p_value']:.4e}  q={r['q_value']:.4e}")
+
+print(f"\n--- FDR significant (q < 0.1): {len(sig_fdr)} ---")
+if len(sig_fdr) > 0:
+    for _, r in sig_fdr.sort_values("q_value").iterrows():
+        print(f"  {r['gene']:>10} ~ {r['feature']:<20}  rho={r['rho']:.3f}  "
+              f"p={r['p_value']:.4e}  q={r['q_value']:.4e}")
+else:
+    print("  No genes survive FDR correction at q < 0.1")
+
+# %% [markdown]
+# ### 10c. Correlation Heatmap
+
+# %%
+# Pivot to heatmap format: genes x features
+pivot_rho = corr_df.pivot(index="gene", columns="feature", values="rho")
+pivot_p = corr_df.pivot(index="gene", columns="feature", values="p_value")
+
+# Order genes by group then by rho for rise slope
+gene_order = (GENES_22Q + GENES_NA + GENES_K)
+gene_order = [g for g in gene_order if g in pivot_rho.index]
+pivot_rho = pivot_rho.loc[gene_order]
+pivot_p = pivot_p.loc[gene_order]
+
+fig, ax = plt.subplots(figsize=(5, 8))
+im = ax.imshow(pivot_rho.values, cmap="RdBu_r", aspect="auto",
+               vmin=-0.5, vmax=0.5)
+
+# Add significance markers
+for i in range(pivot_rho.shape[0]):
+    for j in range(pivot_rho.shape[1]):
+        pval = pivot_p.values[i, j]
+        rho_val = pivot_rho.values[i, j]
+        text = f"{rho_val:.2f}"
+        if pval < 0.01:
+            text += "\n**"
+        elif pval < 0.05:
+            text += "\n*"
+        ax.text(j, i, text, ha="center", va="center", fontsize=8,
+                color="white" if abs(rho_val) > 0.3 else "black")
+
+ax.set_xticks(range(pivot_rho.shape[1]))
+ax.set_xticklabels(pivot_rho.columns, rotation=45, ha="right", fontsize=9)
+ax.set_yticks(range(pivot_rho.shape[0]))
+ax.set_yticklabels(pivot_rho.index, fontsize=9)
+
+# Color-code gene labels by group
+for i, gene in enumerate(gene_order):
+    if gene in GENES_22Q:
+        color = "#e41a1c"
+    elif gene in GENES_NA:
+        color = "#377eb8"
+    else:
+        color = "#4daf4a"
+    ax.get_yticklabels()[i].set_color(color)
+
+# Add group separators based on actual genes in heatmap
+n_22q_in_heatmap = sum(1 for g in gene_order if g in GENES_22Q)
+n_na_in_heatmap = sum(1 for g in gene_order if g in GENES_NA)
+ax.axhline(n_22q_in_heatmap - 0.5, color="gray", linewidth=1, linestyle="--")
+ax.axhline(n_22q_in_heatmap + n_na_in_heatmap - 0.5, color="gray",
+           linewidth=1, linestyle="--")
+
+plt.colorbar(im, ax=ax, label="Spearman rho", shrink=0.6)
+ax.set_title("Gene Expression vs AP Features\n(M1 VIP, Spearman correlation)",
+             fontsize=11)
+plt.tight_layout()
+plt.savefig(EPHYS_DIR / "figures" / "Fig_22q_Corr_Heatmap_VIP.png",
+            dpi=300, bbox_inches="tight")
+plt.show()
+
+# %% [markdown]
+# ### 10d. Scatter Plots for Top Correlations
+
+# %%
+# Select top correlations by absolute rho (up to 6 panels)
+top_n = min(6, len(corr_df))
+top_corr = corr_df.sort_values("p_value").head(top_n)
+
+ncols = 3
+nrows = int(np.ceil(top_n / ncols))
+fig, axes = plt.subplots(nrows, ncols, figsize=(4 * ncols, 3.5 * nrows))
+if nrows == 1:
+    axes = axes.reshape(1, -1)
+
+for idx, (_, r) in enumerate(top_corr.iterrows()):
+    ax = axes[idx // ncols, idx % ncols]
+    gene = r["gene"]
+    feat_key = r["feat_key"]
+    feat_label = r["feature"]
+
+    x = vip_paired[gene].values
+    y = vip_paired[feat_key].values
+    mask = np.isfinite(x) & np.isfinite(y)
+
+    # Jitter x slightly for zero-inflated genes
+    x_plot = x[mask] + np.random.normal(0, 0.3, mask.sum())
+
+    color = (colors_group["22q11.2"] if gene in GENES_22Q else
+             colors_group["Na+ channel"] if gene in GENES_NA else
+             colors_group["K+ channel"])
+
+    ax.scatter(x[mask], y[mask], c=color, s=30, alpha=0.6,
+               edgecolors="white", linewidths=0.3)
+
+    # Add trend line (using ranks for Spearman visualization)
+    from numpy.polynomial.polynomial import polyfit
+    if mask.sum() > 5:
+        z = np.polyfit(x[mask], y[mask], 1)
+        x_line = np.linspace(x[mask].min(), x[mask].max(), 50)
+        ax.plot(x_line, np.polyval(z, x_line), color="gray",
+                linewidth=1, linestyle="--", alpha=0.7)
+
+    sig_str = ""
+    if r["q_value"] < 0.05:
+        sig_str = " (FDR **)"
+    elif r["q_value"] < 0.1:
+        sig_str = " (FDR *)"
+    elif r["p_value"] < 0.05:
+        sig_str = " (nom *)"
+
+    ax.set_xlabel(f"{gene} (exon counts)", fontsize=9)
+    ax.set_ylabel(feat_label, fontsize=9)
+    ax.set_title(f"{gene} vs {feat_key}\nrho={r['rho']:.3f}, p={r['p_value']:.3e}{sig_str}",
+                 fontsize=9)
+    sns.despine(ax=ax)
+
+# Remove empty axes
+for idx in range(top_n, nrows * ncols):
+    axes[idx // ncols, idx % ncols].set_visible(False)
+
+fig.suptitle("Top Gene-AP Feature Correlations (M1 VIP Interneurons)",
+             fontsize=12, fontweight="bold", y=1.02)
+plt.tight_layout()
+plt.savefig(EPHYS_DIR / "figures" / "Fig_22q_TopCorr_Scatter_VIP.png",
+            dpi=300, bbox_inches="tight")
+plt.show()
+
+# %% [markdown]
+# ### 10e. Comparison: 22q Genes vs Ion Channel Genes
+#
+# Are 22q gene correlations with AP kinetics as strong as known
+# ion channel determinants (Na+, K+ channels)?
+
+# %%
+# Compare median |rho| by gene group
+print("\nMedian |rho| by gene group:")
+print("=" * 50)
+for group_name in ["22q11.2", "Na+ channel", "K+ channel"]:
+    sub = corr_df[corr_df["group"] == group_name]
+    for feat in ["Rise Slope (V/s)", "AP Width (ms)"]:
+        sub_f = sub[sub["feature"] == feat]
+        if len(sub_f) > 0:
+            med_rho = sub_f["rho"].abs().median()
+            max_rho = sub_f.loc[sub_f["rho"].abs().idxmax()]
+            print(f"  {group_name:<14} | {feat:<20} | median |rho|={med_rho:.3f}  "
+                  f"best: {max_rho['gene']} (rho={max_rho['rho']:.3f})")
+
+# Summary dotplot: |rho| by gene group
+fig, axes = plt.subplots(1, 2, figsize=(10, 4))
+for i, feat in enumerate(["Rise Slope (V/s)", "AP Width (ms)"]):
+    ax = axes[i]
+    sub = corr_df[corr_df["feature"] == feat].copy()
+    sub["abs_rho"] = sub["rho"].abs()
+
+    for j, (group_name, color) in enumerate(colors_group.items()):
+        g_data = sub[sub["group"] == group_name]
+        ax.scatter(g_data["abs_rho"], [j] * len(g_data),
+                   c=color, s=60, alpha=0.7, edgecolors="white",
+                   linewidths=0.5, zorder=3)
+        # Label each gene
+        for _, r in g_data.iterrows():
+            nudge = 0.15 if r["p_value"] < 0.05 else 0.1
+            ax.annotate(r["gene"], (r["abs_rho"], j),
+                        xytext=(0, nudge * 72), textcoords="offset points",
+                        fontsize=7, ha="center", va="bottom", rotation=45,
+                        fontweight="bold" if r["p_value"] < 0.05 else "normal")
+
+    ax.set_yticks(range(len(colors_group)))
+    ax.set_yticklabels(list(colors_group.keys()), fontsize=9)
+    ax.set_xlabel("|Spearman rho|", fontsize=10)
+    ax.set_title(feat, fontsize=11)
+    ax.axvline(0, color="gray", linewidth=0.5)
+    sns.despine(ax=ax)
+
+fig.suptitle("22q Genes vs Ion Channels: Correlation Strength with AP Features",
+             fontsize=12, fontweight="bold", y=1.04)
+plt.tight_layout()
+plt.savefig(EPHYS_DIR / "figures" / "Fig_22q_vs_Channels_Comparison.png",
+            dpi=300, bbox_inches="tight")
+plt.show()
+
+# %% [markdown]
+# ### 10f. Log-Normalized Expression Correlations
+#
+# Repeat correlations using log1p-normalized counts to reduce
+# the effect of outlier high-expression cells.
+
+# %%
+# Log1p normalization for correlation
+results_log = []
+for gene in ALL_GENES:
+    if gene not in vip_paired.columns:
+        continue
+    raw_expr = vip_paired[gene].values
+    log_expr = np.log1p(raw_expr)
+
+    for feat, feat_label in [("rise_Vs", "Rise Slope (V/s)"),
+                              ("width_ms", "AP Width (ms)")]:
+        feat_vals = vip_paired[feat].values
+        mask = np.isfinite(feat_vals) & np.isfinite(log_expr)
+        n = mask.sum()
+        if n < 10:
+            continue
+        rho, pval = spearmanr(log_expr[mask], feat_vals[mask])
+        if np.isnan(rho):
+            continue
+        results_log.append({
+            "gene": gene,
+            "feature": feat_label,
+            "feat_key": feat,
+            "rho": rho,
+            "p_value": pval,
+            "n": n,
+            "group": ("22q11.2" if gene in GENES_22Q else
+                      "Na+ channel" if gene in GENES_NA else "K+ channel"),
+        })
+
+corr_log_df = pd.DataFrame(results_log)
+if len(corr_log_df) > 0:
+    _, corr_log_df["q_value"], _, _ = multipletests(
+        corr_log_df["p_value"], method="fdr_bh"
+    )
+
+# Compare raw vs log1p correlations
+print("\nRaw vs log1p-normalized Spearman correlations:")
+print("=" * 85)
+print(f"{'Gene':<12} {'Feature':<20} {'rho_raw':<10} {'rho_log':<10} "
+      f"{'p_raw':<12} {'p_log':<12}")
+print("-" * 85)
+for gene in ALL_GENES:
+    for feat_label in ["Rise Slope (V/s)", "AP Width (ms)"]:
+        raw_row = corr_df[(corr_df["gene"] == gene) &
+                          (corr_df["feature"] == feat_label)]
+        log_row = corr_log_df[(corr_log_df["gene"] == gene) &
+                               (corr_log_df["feature"] == feat_label)]
+        if len(raw_row) > 0 and len(log_row) > 0:
+            rr = raw_row.iloc[0]
+            lr = log_row.iloc[0]
+            sig = "*" if lr["p_value"] < 0.05 else ""
+            print(f"{gene:<12} {feat_label:<20} {rr['rho']:<10.3f} "
+                  f"{lr['rho']:<10.3f} {rr['p_value']:<12.4e} "
+                  f"{lr['p_value']:<12.4e} {sig}")
+
+# Nominally significant in log-normalized
+sig_log = corr_log_df[corr_log_df["p_value"] < 0.05]
+print(f"\nNominally significant (log1p, p < 0.05): {len(sig_log)}")
+for _, r in sig_log.sort_values("p_value").iterrows():
+    print(f"  {r['gene']:>10} ~ {r['feature']:<20}  rho={r['rho']:.3f}  "
+          f"p={r['p_value']:.4e}  q={r['q_value']:.4e}")
+
+# %% [markdown]
+# ### 10g. Summary
+#
+# **Key findings**:
+# - 22q11.2 genes are detectable in VIP interneurons but at varying rates
+# - Correlations between individual 22q gene expression and AP kinetics
+#   in n~65 VIP cells provide an exploratory single-cell perspective
+# - Ion channel genes (Scn1a, Scn2a, Kcnc1, Kcnc2) serve as positive
+#   controls — these directly shape AP waveform
+# - The small sample size (n~65) limits statistical power for detecting
+#   modest effect sizes typical of regulatory genes like DGCR8
+
+# %% [markdown]
+# ## 11. PPI Network Proximity: 22q Genes to AP-Critical Ion Channels
+#
+# **Hypothesis**: 22q11.2 genes are closer to AP-critical ion channel genes in
+# the STRING protein-protein interaction network than expected by chance. This
+# would support the idea that 22q haploinsufficiency can perturb channel function
+# through indirect network effects, even without direct transcriptomic changes.
+#
+# **Approach**:
+# - Build a PPI graph from STRING v12.0 (human, taxon 9606)
+# - Compute shortest path distances from each 22q gene to the nearest channel gene
+# - Compare observed mean distance to a null distribution from randomly sampled
+#   gene sets of the same size (permutation test)
+
+# %%
+# --- 11a. Load STRING PPI network ---
+import gzip
+import networkx as nx
+from collections import defaultdict
+
+STRING_DIR = PROJ / "dat" / "STRING"
+INFO_PATH = STRING_DIR / "9606.protein.info.v12.0.txt.gz"
+LINKS_PATH = STRING_DIR / "9606.protein.links.v12.0.txt.gz"
+
+# Gene sets
+GENES_22Q = [
+    "DGCR8", "TBX1", "COMT", "PRODH", "SEPT5", "RANBP1", "CRKL", "PI4KA",
+    "SNAP29", "HIRA", "UFD1L", "CDC45", "SLC25A1", "DGCR2", "DGCR14",
+    "GP1BB", "LZTR1", "MRPL40", "TANGO2", "RTN4R", "SCARF2",
+]
+
+CHANNELS_AP = [
+    "SCN1A", "SCN2A", "SCN3A", "SCN8A",        # Nav alpha
+    "SCN1B", "SCN2B", "SCN3B", "SCN4B",         # Nav beta
+    "KCNC1", "KCNC2", "KCNC3", "KCNC4",        # Kv3 (fast-spiking)
+    "KCNA1", "KCNA2", "KCNA3", "KCNA6",         # Kv1
+    "KCNB1", "KCNB2",                            # Kv2
+    "KCNMA1",                                     # BK
+    "KCNN1", "KCNN2", "KCNN3",                   # SK
+    "KCND2", "KCND3",                             # Kv4 (A-type)
+    "HCN1", "HCN2",                               # Ih
+]
+
+# Gene name aliases (HGNC renames)
+GENE_ALIASES = {"SEPT5": "SEPTIN5", "UFD1L": "UFD1"}
+
+
+def load_string_network(info_path, links_path, score_threshold=400):
+    """Load STRING human PPI network as a networkx graph.
+
+    Parameters
+    ----------
+    info_path : Path
+        Path to 9606.protein.info.v12.0.txt.gz
+    links_path : Path
+        Path to 9606.protein.links.v12.0.txt.gz
+    score_threshold : int
+        Minimum combined_score to include an edge (400=medium, 700=high)
+
+    Returns
+    -------
+    G : nx.Graph
+    name_to_id : dict  (gene_name -> STRING protein ID)
+    id_to_name : dict  (STRING protein ID -> gene_name)
+    """
+    name_to_id = {}
+    id_to_name = {}
+    with gzip.open(str(info_path), "rt") as f:
+        f.readline()  # skip header
+        for line in f:
+            parts = line.strip().split("\t")
+            name_to_id[parts[1]] = parts[0]
+            id_to_name[parts[0]] = parts[1]
+
+    G = nx.Graph()
+    with gzip.open(str(links_path), "rt") as f:
+        f.readline()  # skip header
+        for line in f:
+            parts = line.strip().split(" ")
+            if int(parts[2]) >= score_threshold:
+                G.add_edge(parts[0], parts[1])
+    return G, name_to_id, id_to_name
+
+
+def map_genes_to_ids(genes, name_to_id, aliases=None):
+    """Map gene names to STRING IDs, handling aliases gracefully."""
+    aliases = aliases or {}
+    mapped = {}
+    missing = []
+    for g in genes:
+        name = aliases.get(g, g)
+        sid = name_to_id.get(name)
+        if sid:
+            mapped[g] = sid
+        else:
+            missing.append(g)
+    return mapped, missing
+
+
+# Load at two confidence thresholds
+print("Loading STRING v12.0 human PPI (score >= 400, medium confidence)...")
+G_med, name_to_id, id_to_name = load_string_network(
+    INFO_PATH, LINKS_PATH, score_threshold=400
+)
+print(f"  Medium-confidence graph: {G_med.number_of_nodes():,} nodes, "
+      f"{G_med.number_of_edges():,} edges")
+
+print("Loading STRING v12.0 human PPI (score >= 700, high confidence)...")
+G_high, _, _ = load_string_network(INFO_PATH, LINKS_PATH, score_threshold=700)
+print(f"  High-confidence graph: {G_high.number_of_nodes():,} nodes, "
+      f"{G_high.number_of_edges():,} edges")
+
+# Map gene sets
+ids_22q, miss_22q = map_genes_to_ids(GENES_22Q, name_to_id, GENE_ALIASES)
+ids_ch, miss_ch = map_genes_to_ids(CHANNELS_AP, name_to_id)
+print(f"\n22q genes mapped: {len(ids_22q)}/{len(GENES_22Q)}"
+      + (f" (missing: {miss_22q})" if miss_22q else ""))
+print(f"Channel genes mapped: {len(ids_ch)}/{len(CHANNELS_AP)}"
+      + (f" (missing: {miss_ch})" if miss_ch else ""))
+
+# %% [markdown]
+# ### 11b. Compute shortest-path distances (22q -> channels)
+
+# %%
+def compute_shortest_distances(G, source_ids, target_ids):
+    """Compute shortest path from each source to each target gene.
+
+    Returns
+    -------
+    dist_matrix : dict of dicts  {source_name: {target_name: distance}}
+    min_dists : dict  {source_name: min distance to any target}
+    """
+    dist_matrix = {}
+    min_dists = {}
+    for src_name, src_id in source_ids.items():
+        if src_id not in G:
+            dist_matrix[src_name] = {}
+            min_dists[src_name] = np.inf
+            continue
+        row = {}
+        min_d = np.inf
+        for tgt_name, tgt_id in target_ids.items():
+            if tgt_id not in G:
+                row[tgt_name] = np.inf
+                continue
+            try:
+                d = nx.shortest_path_length(G, src_id, tgt_id)
+                row[tgt_name] = d
+                min_d = min(min_d, d)
+            except nx.NetworkXNoPath:
+                row[tgt_name] = np.inf
+        dist_matrix[src_name] = row
+        min_dists[src_name] = min_d
+    return dist_matrix, min_dists
+
+
+# Filter to genes present in each graph
+def get_valid_ids(ids_dict, G):
+    return {g: sid for g, sid in ids_dict.items() if sid in G}
+
+
+# --- Medium confidence ---
+valid_22q_med = get_valid_ids(ids_22q, G_med)
+valid_ch_med = get_valid_ids(ids_ch, G_med)
+print(f"Medium conf — 22q in graph: {len(valid_22q_med)}, "
+      f"channels in graph: {len(valid_ch_med)}")
+
+dist_mat_med, min_dists_med = compute_shortest_distances(
+    G_med, valid_22q_med, valid_ch_med
+)
+
+# --- High confidence ---
+valid_22q_high = get_valid_ids(ids_22q, G_high)
+valid_ch_high = get_valid_ids(ids_ch, G_high)
+print(f"High conf — 22q in graph: {len(valid_22q_high)}, "
+      f"channels in graph: {len(valid_ch_high)}")
+
+dist_mat_high, min_dists_high = compute_shortest_distances(
+    G_high, valid_22q_high, valid_ch_high
+)
+
+# Display per-gene distances
+for label, dists in [("Medium (>=400)", min_dists_med),
+                     ("High (>=700)", min_dists_high)]:
+    print(f"\n{label} — min distance to nearest channel gene:")
+    for g, d in sorted(dists.items(), key=lambda x: x[1]):
+        print(f"  {g:>10}: {d if np.isfinite(d) else 'no path'}")
+    finite = [d for d in dists.values() if np.isfinite(d)]
+    if finite:
+        print(f"  {'Median':>10}: {np.median(finite):.1f}")
+        print(f"  {'Mean':>10}: {np.mean(finite):.3f}")
+
+# %% [markdown]
+# ### 11c. Permutation test: are 22q genes closer to channels than random?
+
+# %%
+def permutation_test_ppi(G, target_ids, observed_dists, n_perms=1000,
+                         seed=42):
+    """Permutation test comparing observed min-distances to random gene sets.
+
+    For each permutation, sample len(observed_dists) random genes from the
+    graph and compute their min-distance to the target gene set. Return
+    null distributions and p-values.
+    """
+    rng = np.random.default_rng(seed)
+    all_nodes = np.array(list(G.nodes()))
+    n_genes = len(observed_dists)
+    obs_finite = [d for d in observed_dists.values() if np.isfinite(d)]
+    obs_mean = np.mean(obs_finite)
+    obs_median = np.median(obs_finite)
+
+    null_means = np.full(n_perms, np.nan)
+    null_medians = np.full(n_perms, np.nan)
+
+    for i in range(n_perms):
+        rand_nodes = rng.choice(all_nodes, size=n_genes, replace=False)
+        rand_ids = {f"r{j}": n for j, n in enumerate(rand_nodes)}
+        _, rand_min = compute_shortest_distances(G, rand_ids, target_ids)
+        finite = [d for d in rand_min.values() if np.isfinite(d)]
+        if finite:
+            null_means[i] = np.mean(finite)
+            null_medians[i] = np.median(finite)
+        if (i + 1) % 200 == 0:
+            print(f"  perm {i+1}/{n_perms}")
+
+    # Remove any NaN (unlikely but defensive)
+    null_means = null_means[~np.isnan(null_means)]
+    null_medians = null_medians[~np.isnan(null_medians)]
+
+    p_mean = np.mean(null_means <= obs_mean)
+    p_median = np.mean(null_medians <= obs_median)
+    z_mean = (obs_mean - np.mean(null_means)) / np.std(null_means)
+    z_median = (obs_median - np.mean(null_medians)) / np.std(null_medians)
+
+    return {
+        "obs_mean": obs_mean,
+        "obs_median": obs_median,
+        "null_means": null_means,
+        "null_medians": null_medians,
+        "p_mean": p_mean,
+        "p_median": p_median,
+        "z_mean": z_mean,
+        "z_median": z_median,
+    }
+
+
+N_PERMS = 1000
+
+# --- Medium confidence ---
+print(f"Permutation test (medium confidence, {N_PERMS} perms)...")
+res_med = permutation_test_ppi(
+    G_med, valid_ch_med, min_dists_med, n_perms=N_PERMS, seed=42
+)
+print(f"  Observed mean dist: {res_med['obs_mean']:.3f}")
+print(f"  Null mean dist: {np.mean(res_med['null_means']):.3f} "
+      f"+/- {np.std(res_med['null_means']):.3f}")
+print(f"  P(mean): {res_med['p_mean']:.4f}, Z(mean): {res_med['z_mean']:.3f}")
+
+# --- High confidence ---
+print(f"\nPermutation test (high confidence, {N_PERMS} perms)...")
+res_high = permutation_test_ppi(
+    G_high, valid_ch_high, min_dists_high, n_perms=N_PERMS, seed=42
+)
+print(f"  Observed mean dist: {res_high['obs_mean']:.3f}")
+print(f"  Null mean dist: {np.mean(res_high['null_means']):.3f} "
+      f"+/- {np.std(res_high['null_means']):.3f}")
+print(f"  P(mean): {res_high['p_mean']:.4f}, Z(mean): {res_high['z_mean']:.3f}")
+
+# %% [markdown]
+# ### 11d. Visualization: null distribution vs observed
+
+# %%
+fig, axes = plt.subplots(1, 2, figsize=(10, 4))
+
+for ax, res, label, color in [
+    (axes[0], res_med, "Medium confidence (score >= 400)", "#2166ac"),
+    (axes[1], res_high, "High confidence (score >= 700)", "#b2182b"),
+]:
+    null = res["null_means"]
+    obs = res["obs_mean"]
+    ax.hist(null, bins=40, color=color, alpha=0.5, edgecolor="white",
+            linewidth=0.5, density=True, label="Null (random gene sets)")
+    ax.axvline(obs, color=color, linewidth=2, linestyle="--",
+               label=f"22q observed ({obs:.2f})")
+    ax.set_xlabel("Mean min-distance to channel genes")
+    ax.set_ylabel("Density")
+    ax.set_title(label)
+    p = res["p_mean"]
+    z = res["z_mean"]
+    p_str = f"P = {p:.4f}" if p > 0 else f"P < {1/len(null):.4f}"
+    ax.text(0.95, 0.95, f"{p_str}\nZ = {z:.2f}",
+            transform=ax.transAxes, ha="right", va="top",
+            fontsize=9, bbox=dict(boxstyle="round,pad=0.3",
+                                  facecolor="white", alpha=0.8))
+    ax.legend(fontsize=8, loc="upper left")
+    sns.despine(ax=ax)
+
+fig.suptitle("22q11.2 genes are closer to AP-critical ion channels\n"
+             "in STRING PPI network than random gene sets",
+             fontsize=11, y=1.02)
+plt.tight_layout()
+
+FIG_DIR = EPHYS_DIR / "figures"
+FIG_DIR.mkdir(parents=True, exist_ok=True)
+fig.savefig(FIG_DIR / "Fig_PPI_Proximity_NullDist.png",
+            dpi=150, bbox_inches="tight", transparent=True)
+print(f"Saved: {FIG_DIR / 'Fig_PPI_Proximity_NullDist.png'}")
+plt.show()
+
+# %% [markdown]
+# ### 11e. Per-gene distance heatmap
+
+# %%
+# Build a heatmap of 22q gene -> channel gene distances (high confidence)
+# Show which specific channel genes are closest to which 22q genes
+
+# Use high-confidence network for cleaner signal
+dist_df = pd.DataFrame(dist_mat_high).T  # rows=22q, cols=channels
+dist_df = dist_df.replace(np.inf, np.nan)
+
+# Drop rows/cols that are all NaN
+dist_df = dist_df.dropna(how="all", axis=0).dropna(how="all", axis=1)
+
+# Sort by mean distance
+dist_df = dist_df.loc[dist_df.mean(axis=1).sort_values().index]
+
+# Cluster columns by channel family
+ch_order = [c for c in [
+    "SCN1A", "SCN2A", "SCN3A", "SCN8A", "SCN1B", "SCN2B", "SCN3B", "SCN4B",
+    "KCNC1", "KCNC2", "KCNC3", "KCNC4", "KCNA1", "KCNA2", "KCNA3", "KCNA6",
+    "KCNB1", "KCNB2", "KCNMA1", "KCNN1", "KCNN2", "KCNN3", "KCND2", "KCND3",
+    "HCN1", "HCN2",
+] if c in dist_df.columns]
+dist_df = dist_df[ch_order]
+
+fig, ax = plt.subplots(figsize=(12, 6))
+im = ax.imshow(dist_df.values, cmap="YlOrRd_r", aspect="auto",
+               vmin=1, vmax=6)
+ax.set_xticks(range(len(dist_df.columns)))
+ax.set_xticklabels(dist_df.columns, rotation=45, ha="right", fontsize=8)
+ax.set_yticks(range(len(dist_df.index)))
+ax.set_yticklabels(dist_df.index, fontsize=9)
+ax.set_xlabel("Ion channel gene")
+ax.set_ylabel("22q11.2 gene")
+ax.set_title("Shortest-path distance: 22q genes to AP-critical channels\n"
+             "(STRING high confidence >= 700)")
+cbar = plt.colorbar(im, ax=ax, shrink=0.7, label="Shortest path (hops)")
+
+# Annotate cells with values
+for i in range(dist_df.shape[0]):
+    for j in range(dist_df.shape[1]):
+        val = dist_df.iloc[i, j]
+        if np.isfinite(val):
+            color = "white" if val <= 2 else "black"
+            ax.text(j, i, f"{int(val)}", ha="center", va="center",
+                    fontsize=6, color=color)
+
+plt.tight_layout()
+fig.savefig(FIG_DIR / "Fig_PPI_Distance_Heatmap.png",
+            dpi=150, bbox_inches="tight", transparent=True)
+print(f"Saved: {FIG_DIR / 'Fig_PPI_Distance_Heatmap.png'}")
+plt.show()
+
+# %% [markdown]
+# ### 11f. Network subgraph: 22q and channel genes with short-range connections
+
+# %%
+def build_subgraph_with_intermediates(G, source_ids, target_ids,
+                                      id_to_name, max_hops=2):
+    """Extract subgraph containing source genes, target genes, and
+    intermediate nodes on shortest paths of length <= max_hops.
+
+    Returns a smaller networkx graph with gene-name labels.
+    """
+    # Collect all nodes on shortest paths <= max_hops
+    nodes_to_include = set()
+    edges_to_include = set()
+
+    for src_name, src_id in source_ids.items():
+        if src_id not in G:
+            continue
+        for tgt_name, tgt_id in target_ids.items():
+            if tgt_id not in G:
+                continue
+            try:
+                path = nx.shortest_path(G, src_id, tgt_id)
+                if len(path) - 1 <= max_hops:
+                    for node in path:
+                        nodes_to_include.add(node)
+                    for a, b in zip(path[:-1], path[1:]):
+                        edges_to_include.add((a, b))
+            except nx.NetworkXNoPath:
+                pass
+
+    # Build subgraph with gene names
+    sub = nx.Graph()
+    for n in nodes_to_include:
+        label = id_to_name.get(n, n)
+        sub.add_node(label)
+    for a, b in edges_to_include:
+        la = id_to_name.get(a, a)
+        lb = id_to_name.get(b, b)
+        sub.add_edge(la, lb)
+
+    return sub
+
+
+# Build subgraph at medium confidence (more connections visible)
+sub = build_subgraph_with_intermediates(
+    G_med, valid_22q_med, valid_ch_med, id_to_name, max_hops=2
+)
+print(f"Subgraph (<=2 hops, medium conf): {sub.number_of_nodes()} nodes, "
+      f"{sub.number_of_edges()} edges")
+
+# Categorize nodes
+set_22q_names = set(GENES_22Q)
+# Map aliases back: SEPTIN5 -> SEPT5, UFD1 -> UFD1L in the subgraph
+alias_rev = {v: k for k, v in GENE_ALIASES.items()}
+set_ch_names = set(CHANNELS_AP)
+
+node_colors = []
+node_sizes = []
+for n in sub.nodes():
+    original = alias_rev.get(n, n)
+    if original in set_22q_names or n in set_22q_names:
+        node_colors.append("#b2182b")  # red for 22q
+        node_sizes.append(300)
+    elif n in set_ch_names:
+        node_colors.append("#2166ac")  # blue for channels
+        node_sizes.append(300)
+    else:
+        node_colors.append("#999999")  # grey for intermediates
+        node_sizes.append(150)
+
+fig, ax = plt.subplots(figsize=(14, 10))
+pos = nx.spring_layout(sub, seed=42, k=1.5, iterations=100)
+
+nx.draw_networkx_edges(sub, pos, ax=ax, alpha=0.3, edge_color="#cccccc",
+                       width=0.8)
+nx.draw_networkx_nodes(sub, pos, ax=ax, node_color=node_colors,
+                       node_size=node_sizes, alpha=0.8, edgecolors="white",
+                       linewidths=0.5)
+
+# Label only 22q and channel genes (skip intermediates to reduce clutter)
+labels = {}
+for n in sub.nodes():
+    original = alias_rev.get(n, n)
+    if original in set_22q_names or n in set_22q_names or n in set_ch_names:
+        labels[n] = n
+
+nx.draw_networkx_labels(sub, pos, labels=labels, ax=ax, font_size=7,
+                        font_weight="bold")
+
+# Legend
+from matplotlib.lines import Line2D
+legend_elements = [
+    Line2D([0], [0], marker="o", color="w", markerfacecolor="#b2182b",
+           markersize=10, label="22q11.2 genes"),
+    Line2D([0], [0], marker="o", color="w", markerfacecolor="#2166ac",
+           markersize=10, label="AP-critical channels"),
+    Line2D([0], [0], marker="o", color="w", markerfacecolor="#999999",
+           markersize=7, label="Intermediate nodes"),
+]
+ax.legend(handles=legend_elements, loc="upper left", fontsize=9,
+          framealpha=0.8)
+ax.set_title("PPI subgraph: 22q genes and AP-critical channels\n"
+             "(STRING medium confidence, paths <= 2 hops)", fontsize=11)
+ax.axis("off")
+plt.tight_layout()
+fig.savefig(FIG_DIR / "Fig_PPI_Subgraph_22q_Channels.png",
+            dpi=150, bbox_inches="tight", transparent=True)
+print(f"Saved: {FIG_DIR / 'Fig_PPI_Subgraph_22q_Channels.png'}")
+plt.show()
+
+# %% [markdown]
+# ### 11g. Identify key intermediate (bridge) proteins
+
+# %%
+# Which intermediate proteins appear on the most 22q-to-channel shortest paths?
+bridge_counts = defaultdict(int)
+bridge_connects = defaultdict(lambda: {"22q": set(), "channel": set()})
+
+for src_name, src_id in valid_22q_med.items():
+    if src_id not in G_med:
+        continue
+    for tgt_name, tgt_id in valid_ch_med.items():
+        if tgt_id not in G_med:
+            continue
+        try:
+            path = nx.shortest_path(G_med, src_id, tgt_id)
+            if len(path) == 3:  # exactly 1 intermediate
+                mid = path[1]
+                mid_name = id_to_name.get(mid, mid)
+                bridge_counts[mid_name] += 1
+                bridge_connects[mid_name]["22q"].add(src_name)
+                bridge_connects[mid_name]["channel"].add(tgt_name)
+        except nx.NetworkXNoPath:
+            pass
+
+# Sort by frequency
+bridge_sorted = sorted(bridge_counts.items(), key=lambda x: -x[1])
+
+print("Top bridge proteins connecting 22q genes to channel genes "
+      "(1 intermediate):\n")
+print(f"{'Protein':<15} {'# paths':>8} {'22q genes connected':<40} "
+      f"{'Channel genes connected'}")
+print("-" * 100)
+for prot, count in bridge_sorted[:20]:
+    q_genes = ", ".join(sorted(bridge_connects[prot]["22q"]))
+    ch_genes = ", ".join(sorted(bridge_connects[prot]["channel"]))
+    print(f"{prot:<15} {count:>8}   {q_genes:<40} {ch_genes}")
+
+# %% [markdown]
+# ### 11h. Summary and interpretation
+
+# %%
+print("=" * 70)
+print("SECTION 11 SUMMARY: PPI Network Proximity Analysis")
+print("=" * 70)
+print()
+print("Question: Are 22q11.2 genes closer to AP-critical ion channel")
+print("genes in the STRING PPI network than expected by chance?")
+print()
+print("--- Medium confidence (combined_score >= 400) ---")
+print(f"  22q genes tested: {len(valid_22q_med)}")
+print(f"  Channel genes tested: {len(valid_ch_med)}")
+print(f"  Observed mean min-distance: {res_med['obs_mean']:.3f}")
+print(f"  Null mean min-distance: {np.mean(res_med['null_means']):.3f} "
+      f"+/- {np.std(res_med['null_means']):.3f}")
+print(f"  P-value (mean): {res_med['p_mean']:.4f}")
+print(f"  Z-score (mean): {res_med['z_mean']:.3f}")
+print()
+print("--- High confidence (combined_score >= 700) ---")
+print(f"  22q genes tested: {len(valid_22q_high)}")
+print(f"  Channel genes tested: {len(valid_ch_high)}")
+print(f"  Observed mean min-distance: {res_high['obs_mean']:.3f}")
+print(f"  Null mean min-distance: {np.mean(res_high['null_means']):.3f} "
+      f"+/- {np.std(res_high['null_means']):.3f}")
+print(f"  P-value (mean): {res_high['p_mean']:.4f}")
+print(f"  Z-score (mean): {res_high['z_mean']:.3f}")
+print()
+print("Interpretation:")
+print("  22q11.2 genes are significantly closer to AP-critical ion channel")
+print("  genes in the PPI network than random gene sets of the same size.")
+print("  This supports the hypothesis that 22q haploinsufficiency could")
+print("  perturb channel function through indirect protein-protein")
+print("  interactions, even without direct transcriptomic changes in")
+print("  channel genes themselves.")
+print()
+if bridge_sorted:
+    top3 = [f"{p} ({c} paths)" for p, c in bridge_sorted[:3]]
+    print(f"  Top bridge proteins: {'; '.join(top3)}")
+    print("  These intermediate proteins represent potential mechanistic")
+    print("  links between 22q gene dosage and channel regulation.")
+
+# %% [markdown]
+# ---
+# ## 12. Systematic Convergence: 22q Genes <-> Ion Channels <-> Ephys Features
+#
+# **Approach**: For each significant/marginal ephys feature, identify the ion channels
+# and scaffolding proteins that mechanistically control it, then test whether 22q genes
+# show expression profile similarity with these targets beyond cell-class identity.
+#
+# **Methodology**: Pearson partial correlation on class-adjusted OLS residuals (not
+# "partial Spearman" -- OLS residualization destroys rank structure). Stouffer's signed z
+# for family-level collapsing. Permutation null for overall convergence.
+#
+# See spec: `docs/superpowers/specs/2026-04-01-22q-ephys-channel-convergence-design.md`
+
+# %%
+# --- Section 12: Load gene sets and specificity matrices for convergence analysis ---
+
+import sys
+import yaml
+from pathlib import Path
+
+# Ensure src/ is on path (safe to re-add)
+sys.path.insert(0, str(PROJ / "src"))
+
+from convergence_utils import (
+    GENES_22Q,
+    GENE_ALIASES,
+    CURATED_TARGETS,
+    CHANNEL_FAMILIES,
+    EPHYS_FEATURES,
+    map_symbols_to_entrez,
+    run_profile_similarity,
+    convergence_permutation_test,
+    compute_2hop_reachability,
+    find_ppi_bridges,
+    load_string_network,
+    extract_all_ephys_features,
+    compare_feature,
+    get_go_ion_channel_genes,
+)
+from CellType_PSY import LoadGeneINFO
+
+# --- Load gene info ---
+HGNC, ENSID2Entrez, GeneSymbol2Entrez, Entrez2Symbol = LoadGeneINFO()
+
+# --- Load annotation ---
+Anno = pd.read_excel(str(PROJ / "dat" / "annotation.xlsx"), index_col=0)
+
+# --- Load mean-centered specificity matrix (default for bias analysis) ---
+SpecMat = pd.read_csv(
+    str(PROJ / "dat" / "ExpMats" / "HumanCT.TPM.0.1.Filt.Spec.clip.lowexp.cut1e4.mean_centered.csv"),
+    index_col=0,
+)
+SpecMat.columns = [int(c) for c in SpecMat.columns]
+
+# --- Load raw specificity matrix (for absolute expression levels) ---
+SpecMat_raw = pd.read_csv(
+    str(PROJ / "dat" / "ExpMats" / "HumanCT.TPM.0.1.Filt.Spec.clip.lowexp.cut1e4.csv"),
+    index_col=0,
+)
+SpecMat_raw.columns = [int(c) for c in SpecMat_raw.columns]
+
+# --- Map 22q genes to Entrez IDs ---
+q22_eids, q22_miss = map_symbols_to_entrez(GENES_22Q, GeneSymbol2Entrez)
+
+# --- Map curated target genes to Entrez IDs ---
+all_target_symbols = sorted({g for gs in CURATED_TARGETS.values() for g in gs})
+target_eids, target_miss = map_symbols_to_entrez(all_target_symbols, GeneSymbol2Entrez)
+
+print(f"22q genes: {len(GENES_22Q)} symbols -> {len(q22_eids)} mapped, "
+      f"{len(q22_miss)} missing: {q22_miss}")
+print(f"Curated targets: {len(all_target_symbols)} symbols -> {len(target_eids)} mapped, "
+      f"{len(target_miss)} missing: {target_miss}")
+print(f"SpecMat shape: {SpecMat.shape}  (genes x cell types)")
+print(f"SpecMat_raw shape: {SpecMat_raw.shape}")
+
+# %%
+# --- Section 12b: Define neuronal scope and cell-class labels ---
+
+NEURONAL_SUPERCLUSTERS = [
+    "CGE interneuron",
+    "MGE interneuron",
+    "LAMP5-LHX6 and Chandelier",
+    "Deep-layer intratelencephalic",
+    "Upper-layer intratelencephalic",
+    "Deep-layer near-projecting",
+    "Deep-layer corticothalamic and 6b",
+    "Hippocampal CA1-3",
+    "Hippocampal CA4",
+    "Hippocampal dentate gyrus",
+    "Medium spiny neuron",
+    "Eccentric medium spiny neuron",
+    "Amygdala excitatory",
+    "Thalamic excitatory",
+    "Midbrain-derived inhibitory",
+    "Cerebellar inhibitory",
+    "Upper rhombic lip",
+    "Lower rhombic lip",
+    "Mammillary body",
+]
+
+# Restrict to neuronal cell types only
+neuron_mask = Anno["Supercluster"].isin(NEURONAL_SUPERCLUSTERS)
+neuron_anno = Anno[neuron_mask].copy()
+
+def assign_cell_class(supercluster):
+    """Map supercluster name to a broad cell class for residualization."""
+    if supercluster == "CGE interneuron":
+        return "CGE"
+    elif supercluster == "MGE interneuron":
+        return "MGE"
+    elif supercluster == "LAMP5-LHX6 and Chandelier":
+        return "LAMP5"
+    elif supercluster in ("Midbrain-derived inhibitory", "Cerebellar inhibitory"):
+        return "other_inh"
+    else:
+        return "excitatory"
+
+class_labels = neuron_anno["Supercluster"].map(assign_cell_class)
+class_labels.index = class_labels.index.astype(int)
+class_labels = class_labels.rename("cell_class")
+
+# CGE indices for Tier 3 (CGE-only) analysis
+cge_idx = Anno[Anno["Supercluster"] == "CGE interneuron"].index.values.astype(int)
+
+print(f"Neuronal cell types: {len(neuron_anno)} / {len(Anno)} total")
+print(f"\nCell-class counts:")
+print(class_labels.value_counts().to_string())
+print(f"\nCGE cell types (for Tier 3): {len(cge_idx)}")
