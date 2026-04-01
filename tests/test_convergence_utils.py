@@ -505,3 +505,60 @@ class TestLoadStringNetwork:
         G, n2i, i2n = load_string_network(info, links, score_threshold=900)
         assert G.number_of_nodes() > 1000
         assert "SCN1A" in n2i or "COMT" in n2i  # common genes should be there
+
+
+class TestExtractAllEphysFeatures:
+    """Tests for extract_all_ephys_features function."""
+
+    def test_extract_ephys_features(self):
+        from convergence_utils import extract_all_ephys_features
+
+        bundle_dir = Path("dat/VIP_Ephys/analysis_bundles")
+        if not bundle_dir.exists():
+            pytest.skip("Ephys data not available")
+        df = extract_all_ephys_features(bundle_dir)
+        assert len(df) == 29
+        assert "genotype" in df.columns
+        assert "rise_slope" in df.columns
+        assert "hero_cv_isi" in df.columns
+        assert "max_freq_Hz" in df.columns
+        # Check rise_slope is in reasonable V/s range (not raw 1e6x values)
+        assert df["rise_slope"].max() < 500  # should be ~100-300 V/s
+
+
+class TestCompareFeature:
+    """Tests for compare_feature function."""
+
+    def test_compare_feature(self):
+        from convergence_utils import compare_feature
+
+        df = pd.DataFrame({
+            "genotype": ["WT"] * 10 + ["Df16"] * 10,
+            "feat": list(range(10, 20)) + list(range(5, 15)),
+        })
+        result = compare_feature(df, "feat")
+        assert result is not None
+        assert "cohens_d" in result
+        assert "ci_low" in result
+        assert result["n_wt"] == 10
+
+    def test_compare_feature_insufficient_data(self):
+        from convergence_utils import compare_feature
+
+        df = pd.DataFrame({
+            "genotype": ["WT"] * 2 + ["Df16"] * 10,
+            "feat": [1.0, 2.0] + list(range(10)),
+        })
+        result = compare_feature(df, "feat")
+        assert result is None
+
+    def test_compare_feature_with_nans(self):
+        from convergence_utils import compare_feature
+
+        df = pd.DataFrame({
+            "genotype": ["WT"] * 10 + ["Df16"] * 10,
+            "feat": [1.0, 2.0, np.nan] + [3.0] * 7 + [4.0] * 10,
+        })
+        result = compare_feature(df, "feat")
+        assert result is not None
+        assert result["n_wt"] == 9  # one NaN dropped

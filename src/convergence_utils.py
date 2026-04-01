@@ -10,7 +10,7 @@ Pearson partial correlations controlling for cell-class membership.
 import numpy as np
 import pandas as pd
 from joblib import Parallel, delayed
-from scipy.stats import pearsonr, spearmanr, norm
+from scipy.stats import pearsonr, spearmanr, norm, ttest_ind
 from statsmodels.regression.linear_model import OLS
 from statsmodels.stats.multitest import multipletests
 from statsmodels.tools import add_constant
@@ -780,3 +780,160 @@ def find_ppi_bridges(G, source_ids, target_ids, id_to_name, max_hops=2):
             })
 
     return results
+
+
+# ---------------------------------------------------------------------------
+# Ephys feature extraction and comparison
+# ---------------------------------------------------------------------------
+
+# EphysSumStats pipeline has a 1e6x factor error in dV/dt:
+# spike_detection_new.py line 391 uses *1000 instead of /1000
+DVDT_CORRECTION = 1e6
+
+
+def extract_all_ephys_features(bundle_dir):
+    """Extract per-cell electrophysiology summary from all analysis bundles.
+
+    Iterates over subdirectories in *bundle_dir*, reads each cell's
+    ``analysis.csv``, identifies rheobase and hero sweeps, and extracts
+    a standard feature set.
+
+    Parameters
+    ----------
+    bundle_dir : str or Path
+        Path to directory containing one subdirectory per cell, each with
+        an ``analysis.csv`` file.
+
+    Returns
+    -------
+    pd.DataFrame
+        One row per cell with columns: cell_id, genotype, and all extracted
+        electrophysiology features.
+    """
+    from pathlib import Path
+    bundle_dir = Path(bundle_dir)
+
+    records = []
+    for cell_dir in sorted(bundle_dir.iterdir()):
+        if not cell_dir.is_dir():
+            continue
+        analysis_file = cell_dir / "analysis.csv"
+        if not analysis_file.exists():
+            continue
+
+        cell_id = cell_dir.name
+        genotype = "WT" if cell_id.startswith("WT") else "Df16"
+
+        df = pd.read_csv(analysis_file)
+
+        # Filter to spiking sweeps
+        spiking = df[df["spike_frequency_Hz"] > 0].copy()
+        if len(spiking) == 0:
+            # No spiking sweeps -- skip this cell
+            continue
+
+        # Rheobase sweep = first spiking sweep (lowest injected current)
+        rheo_idx = spiking["avg_injected_current_pA"].idxmin()
+        rheo = spiking.loc[rheo_idx]
+
+        # Hero sweep = sweep with max spike_frequency_Hz
+        hero_idx = spiking["spike_frequency_Hz"].idxmax()
+        hero = spiking.loc[hero_idx]
+
+        # Max current among all spiking sweeps
+        max_current = spiking["avg_injected_current_pA"].max()
+        rheo_current = rheo["avg_injected_current_pA"]
+
+        rec = {
+            "cell_id": cell_id,
+            "genotype": genotype,
+            "rheobase_pA": rheo_current,
+            "RMP_mV": df["resting_vm_mean_mV"].mean(),
+            "rise_slope": rheo["avg_upstroke_mVms"] / DVDT_CORRECTION,
+            "decay_slope": rheo["avg_downstroke_mVms"] / DVDT_CORRECTION,
+            "ap_width": rheo["avg_ap_width_ms"],
+            "peak_voltage": rheo["avg_peak_voltage_mV"],
+            "threshold_mV": rheo["avg_threshold_voltage_mV"],
+            "amplitude_mV": rheo["avg_threshold_to_peak_mV"],
+            "ud_ratio": rheo["avg_upstroke_downstroke_ratio"],
+            "hero_freq_Hz": hero["spike_frequency_Hz"],
+            "hero_mean_isi_ms": hero["mean_isi_ms"],
+            "hero_cv_isi": hero["cv_isi"],
+            "max_freq_Hz": spiking["spike_frequency_Hz"].max(),
+            "adapt_width_ratio": hero["last_first_AP_width_ratio"],
+            "adapt_peak_thresh_ratio": hero["last_first_AP_peak_threshold_ratio"],
+            "adapt_trough_ratio": hero["last_first_AP_fast_trough_ratio"],
+        }
+
+        # F-I slope: max_freq / (max_current - rheobase_current)
+        denom = max_current - rheo_current
+        rec["fi_slope"] = rec["max_freq_Hz"] / denom if denom > 0 else np.nan
+
+        records.append(rec)
+
+    return pd.DataFrame(records)
+
+
+def compare_feature(ephys_df, feature_col):
+    """Compare an electrophysiology feature between WT and Df16 genotypes.
+
+    Computes a two-sample t-test, Cohen's d, and a 95% confidence interval
+    on the mean difference.
+
+    Parameters
+    ----------
+    ephys_df : pd.DataFrame
+        Must contain a ``"genotype"`` column (values ``"WT"`` or ``"Df16"``)
+        and the column specified by *feature_col*.
+    feature_col : str
+        Name of the numeric feature column to compare.
+
+    Returns
+    -------
+    dict or None
+        Dictionary with keys: wt_mean, wt_sd, n_wt, df16_mean, df16_sd,
+        n_df16, t, p, cohens_d, ci_low, ci_high.
+        Returns ``None`` if either group has fewer than 3 non-null values.
+    """
+    wt = ephys_df.loc[ephys_df["genotype"] == "WT", feature_col].dropna()
+    df16 = ephys_df.loc[ephys_df["genotype"] == "Df16", feature_col].dropna()
+
+    if len(wt) < 3 or len(df16) < 3:
+        return None
+
+    wt_mean = wt.mean()
+    df16_mean = df16.mean()
+    wt_sd = wt.std(ddof=1)
+    df16_sd = df16.std(ddof=1)
+    n_wt = len(wt)
+    n_df16 = len(df16)
+
+    # Two-sample t-test (Welch's by default)
+    t_stat, p_val = ttest_ind(wt, df16, equal_var=False)
+
+    # Cohen's d with pooled SD
+    pooled_sd = np.sqrt(
+        ((n_wt - 1) * wt_sd**2 + (n_df16 - 1) * df16_sd**2)
+        / (n_wt + n_df16 - 2)
+    )
+    cohens_d = (wt_mean - df16_mean) / pooled_sd if pooled_sd > 0 else np.nan
+
+    # 95% CI on the difference
+    diff = wt_mean - df16_mean
+    se_diff = np.sqrt(wt_sd**2 / n_wt + df16_sd**2 / n_df16)
+    ci_low = diff - 1.96 * se_diff
+    ci_high = diff + 1.96 * se_diff
+
+    return {
+        "wt_mean": wt_mean,
+        "wt_sd": wt_sd,
+        "n_wt": n_wt,
+        "df16_mean": df16_mean,
+        "df16_sd": df16_sd,
+        "n_df16": n_df16,
+        "t": t_stat,
+        "p": p_val,
+        "cohens_d": cohens_d,
+        "ci_low": ci_low,
+        "ci_high": ci_high,
+    }
