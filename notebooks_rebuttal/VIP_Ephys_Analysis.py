@@ -2276,3 +2276,172 @@ fig.savefig(
 )
 plt.show()
 print(f"Saved: {fig_dir / 'Fig_Convergence_NullDist.png'}")
+
+# %% [markdown]
+# ## 15. PPI Bridge Analysis for Significant Pairs
+# For family-level hits (q < 0.05, Tier 2), check STRING for direct interactions
+# and mechanistically annotated 2-hop bridges. Includes 2-hop reachability baseline.
+
+# %%
+# --- 15a. Load STRING network (high confidence) ---
+
+STRING_DIR = PROJ / "dat" / "STRING"
+G_high, name_to_id, id_to_name = load_string_network(
+    STRING_DIR / "9606.protein.info.v12.0.txt.gz",
+    STRING_DIR / "9606.protein.links.v12.0.txt.gz",
+    score_threshold=700,
+)
+print(f"STRING high-confidence graph: {G_high.number_of_nodes():,} nodes, "
+      f"{G_high.number_of_edges():,} edges")
+
+# Map 22q genes to STRING IDs (handle aliases)
+ids_22q_str = {}
+miss_22q_str = []
+for g in GENES_22Q:
+    name = GENE_ALIASES.get(g, g)
+    sid = name_to_id.get(name)
+    if sid:
+        ids_22q_str[g] = sid
+    else:
+        miss_22q_str.append(g)
+
+# Map curated target genes to STRING IDs
+all_target_symbols = sorted({g for gs in CURATED_TARGETS.values() for g in gs})
+ids_tgt_str = {}
+miss_tgt_str = []
+for g in all_target_symbols:
+    name = GENE_ALIASES.get(g, g)
+    sid = name_to_id.get(name)
+    if sid:
+        ids_tgt_str[g] = sid
+    else:
+        miss_tgt_str.append(g)
+
+print(f"22q genes mapped to STRING: {len(ids_22q_str)}/{len(GENES_22Q)}  "
+      f"missing: {miss_22q_str}")
+print(f"Target genes mapped to STRING: {len(ids_tgt_str)}/{len(all_target_symbols)}  "
+      f"missing: {miss_tgt_str}")
+
+# %%
+# --- 15b. 2-hop reachability baseline ---
+import random as _random
+
+# Compute 2-hop reachability for each 22q gene in the network
+reachability_rows = []
+for gene, sid in ids_22q_str.items():
+    reach = compute_2hop_reachability(G_high, sid)
+    reachability_rows.append({"gene": gene, "string_id": sid, "reachability_2hop": reach})
+
+reach_df = pd.DataFrame(reachability_rows).sort_values("reachability_2hop", ascending=False)
+reach_df["is_hub"] = reach_df["reachability_2hop"] > 0.50
+
+print("=== 2-hop reachability for 22q genes (high-confidence STRING) ===")
+for _, row in reach_df.iterrows():
+    hub_flag = " ** HUB" if row["is_hub"] else ""
+    print(f"  {row['gene']:>10s}  {row['reachability_2hop']:.3f}{hub_flag}")
+
+n_hubs = reach_df["is_hub"].sum()
+print(f"\nHub genes (>50% reachability): {n_hubs}/{len(reach_df)}")
+
+# Background pair-connectivity rate: sample 1000 random pairs, check shortest_path <= 2
+all_nodes = list(G_high.nodes())
+_random.seed(42)
+n_bg_pairs = 1000
+n_connected_2hop = 0
+for _ in range(n_bg_pairs):
+    a, b = _random.sample(all_nodes, 2)
+    try:
+        sp = nx.shortest_path_length(G_high, a, b)
+        if sp <= 2:
+            n_connected_2hop += 1
+    except nx.NetworkXNoPath:
+        pass
+
+bg_rate = n_connected_2hop / n_bg_pairs
+print(f"\nBackground 2-hop connectivity: {n_connected_2hop}/{n_bg_pairs} = {bg_rate:.3f}")
+
+# %%
+# --- 15c. Find PPI bridges for significant family-level pairs ---
+
+# Build hub lookup from reachability
+hub_genes = set(reach_df.loc[reach_df["is_hub"], "gene"])
+
+# Get significant families (q < 0.05)
+sig_fams_for_ppi = fam_df[fam_df["q_family"] < 0.05].copy() if len(fam_df) > 0 else fam_df.iloc[:0].copy()
+
+bridge_results_all = []
+for _, frow in sig_fams_for_ppi.iterrows():
+    src_gene = frow["source"]
+    tgt_gene = frow["best_target"]
+    fam_name = frow["family"]
+
+    # Build single-gene dicts for source and target
+    src_dict = {}
+    if src_gene in ids_22q_str:
+        src_dict[src_gene] = ids_22q_str[src_gene]
+    tgt_dict = {}
+    if tgt_gene in ids_tgt_str:
+        tgt_dict[tgt_gene] = ids_tgt_str[tgt_gene]
+
+    if not src_dict or not tgt_dict:
+        bridge_results_all.append({
+            "source": src_gene,
+            "family": fam_name,
+            "target": tgt_gene,
+            "path_length": None,
+            "bridge": None,
+            "path_names": None,
+            "source_is_hub": src_gene in hub_genes,
+            "note": "gene not in STRING",
+        })
+        continue
+
+    bridges = find_ppi_bridges(G_high, src_dict, tgt_dict, id_to_name, max_hops=2)
+    if bridges:
+        for br in bridges:
+            bridge_results_all.append({
+                "source": br["source"],
+                "family": fam_name,
+                "target": br["target"],
+                "path_length": br["path_length"],
+                "bridge": br["bridge"],
+                "path_names": " -> ".join(br["path_names"]),
+                "source_is_hub": br["source"] in hub_genes,
+                "note": "direct" if br["path_length"] == 1 else "2-hop bridge",
+            })
+    else:
+        bridge_results_all.append({
+            "source": src_gene,
+            "family": fam_name,
+            "target": tgt_gene,
+            "path_length": None,
+            "bridge": None,
+            "path_names": None,
+            "source_is_hub": src_gene in hub_genes,
+            "note": "no path <= 2 hops",
+        })
+
+bridge_df = pd.DataFrame(bridge_results_all)
+
+print("=== PPI Bridges for Significant Families (q < 0.05) ===")
+if len(bridge_df) == 0:
+    print("  No significant families to analyze.")
+else:
+    for _, brow in bridge_df.iterrows():
+        hub_tag = " [HUB]" if brow["source_is_hub"] else ""
+        if brow["path_length"] is not None:
+            print(f"  {brow['source']}{hub_tag} -> {brow['target']} ({brow['family']}): "
+                  f"{brow['note']}  path={brow['path_names']}  "
+                  f"(length={brow['path_length']})")
+        else:
+            print(f"  {brow['source']}{hub_tag} -> {brow['target']} ({brow['family']}): "
+                  f"{brow['note']}")
+
+    # Summary
+    n_direct = (bridge_df["path_length"] == 1).sum()
+    n_2hop = (bridge_df["path_length"] == 2).sum()
+    n_none = bridge_df["path_length"].isna().sum()
+    n_hub_src = bridge_df["source_is_hub"].sum()
+    print(f"\nSummary: {n_direct} direct, {n_2hop} bridged (2-hop), "
+          f"{n_none} no path; {n_hub_src}/{len(bridge_df)} from hub sources")
+    print(f"Background 2-hop rate: {bg_rate:.3f}")
