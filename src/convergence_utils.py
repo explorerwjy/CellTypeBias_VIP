@@ -618,3 +618,165 @@ def convergence_permutation_test(spec_mat, source_eids, target_ids,
         "p_value": float(p_value),
         "z_score": float(z_score),
     }
+
+
+# ---------------------------------------------------------------------------
+# PPI bridge utilities (STRING network)
+# ---------------------------------------------------------------------------
+import gzip
+import networkx as nx
+
+
+def load_string_network(info_path, links_path, score_threshold=400):
+    """Load STRING PPI network as a networkx graph.
+
+    Parameters
+    ----------
+    info_path : str or Path
+        Path to gzipped STRING protein info file
+        (tab-separated: string_protein_id, preferred_name, ...).
+    links_path : str or Path
+        Path to gzipped STRING protein links file
+        (space-separated: protein1, protein2, combined_score).
+    score_threshold : int
+        Minimum combined_score to include an edge (default 400).
+
+    Returns
+    -------
+    G : nx.Graph
+        Undirected graph with STRING protein IDs as nodes.
+    name_to_id : dict
+        ``{gene_symbol: string_protein_id}``
+    id_to_name : dict
+        ``{string_protein_id: gene_symbol}``
+    """
+    # --- 1. Parse info file to build name <-> id mappings ---
+    name_to_id = {}
+    id_to_name = {}
+    with gzip.open(info_path, "rt") as f:
+        header = f.readline()  # skip header
+        for line in f:
+            parts = line.rstrip("\n").split("\t")
+            if len(parts) < 2:
+                continue
+            string_id = parts[0]
+            preferred_name = parts[1]
+            name_to_id[preferred_name] = string_id
+            id_to_name[string_id] = preferred_name
+
+    # --- 2. Parse links file and build graph ---
+    G = nx.Graph()
+    # Add all protein nodes
+    for string_id in id_to_name:
+        G.add_node(string_id)
+
+    with gzip.open(links_path, "rt") as f:
+        header = f.readline()  # skip header
+        for line in f:
+            parts = line.rstrip("\n").split()
+            if len(parts) < 3:
+                continue
+            p1 = parts[0]
+            p2 = parts[1]
+            score = int(parts[2])
+            if score >= score_threshold:
+                G.add_edge(p1, p2)
+
+    return G, name_to_id, id_to_name
+
+
+def compute_2hop_reachability(G, node):
+    """Fraction of graph nodes reachable from *node* within 2 hops.
+
+    Parameters
+    ----------
+    G : nx.Graph
+        Undirected graph.
+    node
+        Node identifier to start from.
+
+    Returns
+    -------
+    float
+        ``len(reachable) / (G.number_of_nodes() - 1)``, or 0.0 if *node*
+        is not in the graph.
+    """
+    if node not in G:
+        return 0.0
+
+    total = G.number_of_nodes() - 1
+    if total <= 0:
+        return 0.0
+
+    # 1-hop neighbors
+    neighbors_1 = set(G.neighbors(node))
+    # 2-hop: neighbors of neighbors
+    neighbors_2 = set()
+    for n1 in neighbors_1:
+        neighbors_2.update(G.neighbors(n1))
+    # Union of 1-hop and 2-hop, excluding the node itself
+    reachable = (neighbors_1 | neighbors_2) - {node}
+
+    return len(reachable) / total
+
+
+def find_ppi_bridges(G, source_ids, target_ids, id_to_name, max_hops=2):
+    """Find bridge proteins on shortest paths between source and target genes.
+
+    Parameters
+    ----------
+    G : nx.Graph
+        PPI network graph.
+    source_ids : dict
+        ``{symbol: node_id}`` for source genes.
+    target_ids : dict
+        ``{symbol: node_id}`` for target genes.
+    id_to_name : dict
+        ``{node_id: gene_symbol}`` for translating node IDs to names.
+    max_hops : int
+        Maximum path length (number of edges) to consider (default 2).
+
+    Returns
+    -------
+    list of dict
+        Each dict has keys: ``source``, ``target``, ``bridge``,
+        ``path_length``, ``path_names``.
+
+        - ``bridge`` is ``None`` for direct interactions (path_length == 1)
+        - ``bridge`` is the gene symbol of the intermediate node for
+          path_length == 2
+    """
+    results = []
+    for src_sym, src_id in source_ids.items():
+        if src_id not in G:
+            continue
+        for tgt_sym, tgt_id in target_ids.items():
+            if tgt_id not in G:
+                continue
+            try:
+                path = nx.shortest_path(G, src_id, tgt_id)
+            except nx.NetworkXNoPath:
+                continue
+
+            path_length = len(path) - 1  # number of edges
+            if path_length > max_hops:
+                continue
+
+            path_names = [id_to_name.get(n, n) for n in path]
+
+            if path_length == 1:
+                bridge = None
+            elif path_length == 2:
+                bridge = id_to_name.get(path[1], path[1])
+            else:
+                bridge = None  # shouldn't happen with max_hops=2
+
+            results.append({
+                "source": src_sym,
+                "target": tgt_sym,
+                "bridge": bridge,
+                "path_length": path_length,
+                "path_names": path_names,
+            })
+
+    return results

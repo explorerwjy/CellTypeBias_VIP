@@ -401,3 +401,107 @@ class TestConvergencePermutation:
         r_serial = convergence_permutation_test(**kwargs, n_jobs=1)
         r_parallel = convergence_permutation_test(**kwargs, n_jobs=2)
         np.testing.assert_array_equal(r_serial["null_hits"], r_parallel["null_hits"])
+
+
+class TestPPI2HopReachability:
+    """Tests for compute_2hop_reachability function."""
+
+    def test_ppi_2hop_reachability(self):
+        import networkx as nx
+        from convergence_utils import compute_2hop_reachability
+
+        G = nx.Graph()
+        G.add_edges_from([(0, 1), (1, 2), (1, 3), (3, 4), (4, 5)])
+        # Node 1 reaches 0,2,3 in 1 hop, 4 in 2 hops -> 4/5 = 0.8
+        frac = compute_2hop_reachability(G, 1)
+        assert 0.7 < frac < 0.9
+
+    def test_node_not_in_graph(self):
+        import networkx as nx
+        from convergence_utils import compute_2hop_reachability
+
+        G = nx.Graph()
+        G.add_edges_from([(0, 1), (1, 2)])
+        assert compute_2hop_reachability(G, 99) == 0.0
+
+    def test_isolated_node(self):
+        import networkx as nx
+        from convergence_utils import compute_2hop_reachability
+
+        G = nx.Graph()
+        G.add_nodes_from([0, 1, 2])
+        # Node 0 has no neighbors -> reachable = 0 -> 0 / 2 = 0.0
+        assert compute_2hop_reachability(G, 0) == 0.0
+
+
+class TestFindPPIBridges:
+    """Tests for find_ppi_bridges function."""
+
+    def test_find_bridges(self):
+        import networkx as nx
+        from convergence_utils import find_ppi_bridges
+
+        G = nx.Graph()
+        G.add_edges_from([("A", "BRIDGE"), ("BRIDGE", "B"), ("A", "C")])
+        id_to_name = {"A": "A", "BRIDGE": "BRIDGE", "B": "B", "C": "C"}
+        bridges = find_ppi_bridges(
+            G, {"SRC": "A"}, {"TGT": "B"}, id_to_name, max_hops=2
+        )
+        assert len(bridges) == 1
+        assert bridges[0]["bridge"] == "BRIDGE"
+        assert bridges[0]["path_length"] == 2
+
+    def test_direct_interaction(self):
+        import networkx as nx
+        from convergence_utils import find_ppi_bridges
+
+        G = nx.Graph()
+        G.add_edges_from([("A", "B")])
+        id_to_name = {"A": "A", "B": "B"}
+        bridges = find_ppi_bridges(
+            G, {"SRC": "A"}, {"TGT": "B"}, id_to_name, max_hops=2
+        )
+        assert len(bridges) == 1
+        assert bridges[0]["bridge"] is None
+        assert bridges[0]["path_length"] == 1
+
+    def test_no_path(self):
+        import networkx as nx
+        from convergence_utils import find_ppi_bridges
+
+        G = nx.Graph()
+        G.add_nodes_from(["A", "B"])  # No edge
+        id_to_name = {"A": "A", "B": "B"}
+        bridges = find_ppi_bridges(
+            G, {"SRC": "A"}, {"TGT": "B"}, id_to_name, max_hops=2
+        )
+        assert len(bridges) == 0
+
+    def test_path_too_long(self):
+        import networkx as nx
+        from convergence_utils import find_ppi_bridges
+
+        G = nx.Graph()
+        G.add_edges_from([("A", "X"), ("X", "Y"), ("Y", "B")])
+        id_to_name = {"A": "A", "X": "X", "Y": "Y", "B": "B"}
+        bridges = find_ppi_bridges(
+            G, {"SRC": "A"}, {"TGT": "B"}, id_to_name, max_hops=2
+        )
+        # Shortest path is A->X->Y->B, length 3 > max_hops=2
+        assert len(bridges) == 0
+
+
+class TestLoadStringNetwork:
+    """Tests for load_string_network function."""
+
+    def test_load_string_network(self):
+        """Test with actual STRING data if available."""
+        from convergence_utils import load_string_network
+
+        info = Path("dat/STRING/9606.protein.info.v12.0.txt.gz")
+        links = Path("dat/STRING/9606.protein.links.v12.0.txt.gz")
+        if not info.exists():
+            pytest.skip("STRING data not available")
+        G, n2i, i2n = load_string_network(info, links, score_threshold=900)
+        assert G.number_of_nodes() > 1000
+        assert "SCN1A" in n2i or "COMT" in n2i  # common genes should be there
