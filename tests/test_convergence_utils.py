@@ -6,6 +6,8 @@ from pathlib import Path
 # Add src to path so we can import convergence_utils
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+import numpy as np
+import pandas as pd
 import pytest
 from convergence_utils import (
     GENES_22Q,
@@ -13,7 +15,9 @@ from convergence_utils import (
     CHANNEL_FAMILIES,
     CURATED_TARGETS,
     EPHYS_FEATURES,
+    compute_residuals,
     map_symbols_to_entrez,
+    pearson_partial,
 )
 
 
@@ -118,3 +122,63 @@ class TestMapSymbolsToEntrez:
         )
         assert mapped == {"GENE_A": 12345}
         assert missing == ["GENE_C"]
+
+
+class TestComputeResiduals:
+    """Tests for compute_residuals function."""
+
+    def test_compute_residuals(self):
+        """Residuals should have near-zero group means after removing class effect."""
+        np.random.seed(42)
+        n = 50
+        idx = [f"ct_{i}" for i in range(n)]
+        # Create class labels: first 25 = "exc", last 25 = "inh"
+        class_labels = pd.Series(
+            ["exc"] * 25 + ["inh"] * 25, index=idx
+        )
+        # Create specificity with strong class effect: inh cells += 5.0
+        gene_spec = pd.Series(np.random.randn(n), index=idx)
+        gene_spec.iloc[:25] += 0.0
+        gene_spec.iloc[25:] += 5.0
+
+        resid = compute_residuals(gene_spec, class_labels)
+        assert isinstance(resid, pd.Series)
+        assert len(resid) == n
+        assert list(resid.index) == idx
+
+        # Group means of residuals should be near zero
+        resid_exc = resid.iloc[:25].mean()
+        resid_inh = resid.iloc[25:].mean()
+        assert abs(resid_exc) < 0.1, f"Exc group mean residual {resid_exc} not near zero"
+        assert abs(resid_inh) < 0.1, f"Inh group mean residual {resid_inh} not near zero"
+
+
+class TestPearsonPartial:
+    """Tests for pearson_partial function."""
+
+    def test_pearson_partial(self):
+        """Pearson partial should remove class-driven correlation."""
+        np.random.seed(123)
+        n = 50
+        idx = [f"ct_{i}" for i in range(n)]
+        class_labels = pd.Series(
+            ["exc"] * 25 + ["inh"] * 25, index=idx
+        )
+        # Two genes both elevated in "inh" class -> class-driven correlation
+        gene_a = pd.Series(np.random.randn(n), index=idx)
+        gene_b = pd.Series(np.random.randn(n), index=idx)
+        gene_a.iloc[25:] += 5.0
+        gene_b.iloc[25:] += 5.0
+
+        # Raw Spearman rho should be > 0.3 (class-driven)
+        from scipy.stats import spearmanr
+        raw_rho, _ = spearmanr(gene_a, gene_b)
+        assert abs(raw_rho) > 0.3, (
+            f"Expected raw Spearman rho > 0.3, got {raw_rho}"
+        )
+
+        # Pearson partial should have lower absolute correlation
+        r, pval = pearson_partial(gene_a, gene_b, class_labels)
+        assert abs(r) < abs(raw_rho), (
+            f"Partial r ({r}) should be lower in abs value than raw rho ({raw_rho})"
+        )

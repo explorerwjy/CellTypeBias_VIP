@@ -1,9 +1,16 @@
 """
-Convergence analysis utilities: gene set constants and mapping functions.
+Convergence analysis utilities: gene set constants, mapping functions,
+and partial-correlation helpers.
 
 Defines curated ion channel / scaffolding gene families, 22q11.2 deletion
-genes, and ephys feature metadata used throughout the convergence pipeline.
+genes, ephys feature metadata, and statistical functions for computing
+Pearson partial correlations controlling for cell-class membership.
 """
+
+import pandas as pd
+from scipy.stats import pearsonr
+from statsmodels.regression.linear_model import OLS
+from statsmodels.tools import add_constant
 
 # ---------------------------------------------------------------------------
 # 22q11.2 deletion region genes (19 genes)
@@ -201,3 +208,64 @@ def map_symbols_to_entrez(symbols, gene_symbol_to_entrez=None):
         else:
             missing.append(sym)
     return mapped, missing
+
+
+# ---------------------------------------------------------------------------
+# Partial correlation helpers
+# ---------------------------------------------------------------------------
+def compute_residuals(gene_spec, class_labels):
+    """Regress out cell-class membership from gene specificity values.
+
+    Fits an OLS model: gene_spec ~ one-hot(class_labels) + constant,
+    and returns the residuals.
+
+    Parameters
+    ----------
+    gene_spec : pd.Series
+        Gene specificity values indexed by cell-type ID.
+    class_labels : pd.Series
+        Cell-class labels (e.g. "exc", "inh", "glia") with the same index
+        as *gene_spec*.
+
+    Returns
+    -------
+    pd.Series
+        OLS residuals, same index as *gene_spec*.
+    """
+    dummies = pd.get_dummies(class_labels, drop_first=True, dtype=float)
+    X = add_constant(dummies)
+    model = OLS(gene_spec.values, X).fit()
+    return pd.Series(model.resid, index=gene_spec.index)
+
+
+def pearson_partial(gene_a, gene_b, class_labels):
+    """Pearson correlation between two genes after regressing out cell class.
+
+    Computes OLS residuals for each gene (removing the linear effect of
+    cell-class dummies) and then returns Pearson *r* and *p*-value on the
+    residuals.
+
+    **Methodological note**: OLS residualization is a linear operation that
+    destroys rank structure. Pearson correlation on residuals is a
+    well-defined partial correlation. Spearman on OLS residuals would be
+    methodologically unsound because rank ordering is not preserved under
+    linear projection.
+
+    Parameters
+    ----------
+    gene_a, gene_b : pd.Series
+        Gene specificity values indexed by cell-type ID.
+    class_labels : pd.Series
+        Cell-class labels with the same index.
+
+    Returns
+    -------
+    r : float
+        Pearson correlation coefficient on residuals.
+    pvalue : float
+        Two-sided p-value for the correlation.
+    """
+    resid_a = compute_residuals(gene_a, class_labels)
+    resid_b = compute_residuals(gene_b, class_labels)
+    r, pvalue = pearsonr(resid_a, resid_b)
+    return r, pvalue
