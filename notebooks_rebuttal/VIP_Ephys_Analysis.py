@@ -2160,3 +2160,119 @@ if len(pair_df) > 0:
     print(f"Saved: {fig_dir / 'Fig_ProfileSim_22q_Channels_Neurons.png'}")
 else:
     print("No pair results to plot.")
+
+# %% [markdown]
+# ## 14. Convergence Null Model: Is 22q Special?
+# Permutation test: do 19 random genes show as much convergence with the
+# channel/scaffold target set as the 22q gene set? Uses same Stouffer's z
+# statistic and threshold as observed.
+
+# %%
+# --- Curated targets permutation ---
+observed_hits = int((fam_df["q_family"] < 0.05).sum())
+print(f"Observed significant family hits (q < 0.05): {observed_hits}")
+print(f"|Z| threshold from observed data: {Z_THRESHOLD:.3f}")
+
+perm_result = convergence_permutation_test(
+    spec_mat=SpecMat,
+    source_eids=list(q22_eids.values()),
+    target_ids=target_eids,
+    target_families=CURATED_TARGETS,
+    scope_idx=neuron_idx,
+    class_labels=class_labels,
+    observed_hits=observed_hits,
+    z_threshold=Z_THRESHOLD,
+    n_perms=10000,
+    seed=42,
+    n_jobs=10,
+)
+
+null_hits_curated = perm_result["null_hits"]
+p_curated = perm_result["p_value"]
+z_curated = perm_result["z_score"]
+
+print(f"\n--- Curated targets permutation results ---")
+print(f"Observed hits:       {observed_hits}")
+print(f"Null mean +/- SD:    {null_hits_curated.mean():.2f} +/- {null_hits_curated.std():.2f}")
+print(f"Permutation P-value: {p_curated:.4f}")
+print(f"Z-score:             {z_curated:.2f}")
+
+# %%
+# --- GO-derived ion channel targets ---
+go_genes = get_go_ion_channel_genes()
+go_eids, go_miss = map_symbols_to_entrez(list(go_genes), GeneSymbol2Entrez)
+go_eids_in_mat = {s: e for s, e in go_eids.items() if e in SpecMat.index}
+print(f"GO ion channel genes in matrix: {len(go_eids_in_mat)}")
+
+# One family per gene for GO targets
+go_families = {s: [s] for s in go_eids_in_mat}
+
+results_go = run_profile_similarity(
+    SpecMat, q22_eids, go_eids_in_mat, go_families,
+    neuron_idx, class_labels,
+)
+go_fam_df = results_go["family_results"]
+observed_hits_go = int((go_fam_df["q_family"] < 0.05).sum())
+print(f"Observed GO family hits (q < 0.05): {observed_hits_go}")
+
+perm_result_go = convergence_permutation_test(
+    spec_mat=SpecMat,
+    source_eids=list(q22_eids.values()),
+    target_ids=go_eids_in_mat,
+    target_families=go_families,
+    scope_idx=neuron_idx,
+    class_labels=class_labels,
+    observed_hits=observed_hits_go,
+    z_threshold=Z_THRESHOLD,
+    n_perms=10000,
+    seed=42,
+    n_jobs=10,
+)
+
+null_hits_go = perm_result_go["null_hits"]
+p_go = perm_result_go["p_value"]
+z_go = perm_result_go["z_score"]
+
+print(f"\n--- GO-derived targets permutation results ---")
+print(f"Observed hits:       {observed_hits_go}")
+print(f"Null mean +/- SD:    {null_hits_go.mean():.2f} +/- {null_hits_go.std():.2f}")
+print(f"Permutation P-value: {p_go:.4f}")
+print(f"Z-score:             {z_go:.2f}")
+
+# %%
+# --- Visualization: two-panel null distribution ---
+fig, axes = plt.subplots(1, 2, figsize=(10, 4))
+fig.patch.set_alpha(0)
+
+for ax, null_hits, obs_h, pval, zscore, title in [
+    (axes[0], null_hits_curated, observed_hits, p_curated, z_curated,
+     "Curated channel/scaffold\ntargets"),
+    (axes[1], null_hits_go, observed_hits_go, p_go, z_go,
+     "GO-derived ion channel\ntargets"),
+]:
+    ax.patch.set_alpha(0)
+    ax.hist(null_hits, bins=range(0, int(null_hits.max()) + 3),
+            color="steelblue", alpha=0.7, edgecolor="white", label="Null")
+    ax.axvline(obs_h, color="crimson", lw=2, ls="--", label=f"Observed = {obs_h}")
+    ax.set_xlabel("Number of significant families (|Z| >= threshold)")
+    ax.set_ylabel("Count (permutations)")
+    ax.set_title(title)
+    ax.legend(loc="upper right", fontsize=8)
+
+    # Text box with stats
+    text_str = f"P = {pval:.4f}\nZ = {zscore:.2f}"
+    ax.text(0.95, 0.75, text_str, transform=ax.transAxes,
+            fontsize=9, verticalalignment="top", horizontalalignment="right",
+            bbox=dict(boxstyle="round,pad=0.3", facecolor="wheat", alpha=0.8))
+
+fig.suptitle("Is 22q convergence with ion channels special?", fontsize=13, y=1.02)
+fig.tight_layout()
+
+fig_dir = EPHYS_DIR / "figures"
+fig_dir.mkdir(parents=True, exist_ok=True)
+fig.savefig(
+    fig_dir / "Fig_Convergence_NullDist.png",
+    dpi=150, bbox_inches="tight", transparent=True,
+)
+plt.show()
+print(f"Saved: {fig_dir / 'Fig_Convergence_NullDist.png'}")
