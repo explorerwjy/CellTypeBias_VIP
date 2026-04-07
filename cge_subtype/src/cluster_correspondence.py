@@ -1,9 +1,18 @@
-"""Cross-species cluster correspondence: pseudobulk, Spearman RBH, MetaNeighbor AUROC."""
+"""Cross-species cluster correspondence: pseudobulk, Spearman RBH, MetaNeighbor AUROC.
+
+The MetaNeighbor implementation in this module is a Python port of Bakken
+et al. 2021's BICCN_M1_Evo R helpers (`metaneighbor.R::compute_best_hits`),
+which is itself a re-implementation of MetaNeighbor (Crow et al. 2018).
+We mirror Bakken 2021 because that is the paper we cite for cross-species
+interneuron comparison.
+
+Reference:
+  https://github.com/AllenInstitute/BICCN_M1_Evo/blob/master/MetaNeighbor/metaneighbor.R
+"""
 
 import numpy as np
 import pandas as pd
 from scipy.stats import spearmanr, rankdata
-from sklearn.metrics import roc_auc_score
 
 
 # ---------------------------------------------------------------------------
@@ -208,8 +217,208 @@ def determine_rbh_threshold(
 
 
 # ---------------------------------------------------------------------------
-# Round 3: MetaNeighbor AUROC
+# Round 3: MetaNeighbor AUROC (canonical, after Bakken 2021)
 # ---------------------------------------------------------------------------
+#
+# Python port of Bakken et al. 2021 BICCN_M1_Evo `metaneighbor.R` helpers.
+# The reference R implementation is reproduced below for traceability:
+#
+#     normalize_cols = function(M, ranked = TRUE) {
+#       M = as.matrix(M)
+#       if (ranked) M = matrixStats::colRanks(M, ties.method = "average",
+#                                             preserveShape = TRUE)
+#       return(scale_cols(M))
+#     }
+#
+#     compute_aurocs = function(predictors, label_matrix) {
+#       n_positives = colSums(label_matrix)
+#       n_negatives = nrow(label_matrix) - n_positives
+#       ranks = matrixStats::colRanks(predictors, ties.method = "average",
+#                                     preserveShape=TRUE)
+#       sum_of_positive_ranks = crossprod(label_matrix, ranks)
+#       result = (sum_of_positive_ranks / n_positives - (n_positives+1)/2) /
+#                n_negatives
+#       return(result)
+#     }
+#
+#     compute_best_hits = function(dataset, labels, one_vs_all=TRUE) {
+#       normalized_data = normalize_cols(assay(dataset))
+#       colnames(normalized_data) = paste(dataset$study_id, labels, sep = "|")
+#       voter_id = design_matrix(colnames(normalized_data))
+#       voters = normalized_data %*% voter_id
+#       result = c()
+#       for (study in unique(dataset$study_id)) {
+#         candidates = normalized_data[, dataset$study_id == study]
+#         votes = crossprod(candidates, voters)
+#         aurocs = compute_aurocs(votes, design_matrix(rownames(votes)))
+#         result = rbind(result, aurocs)
+#       }
+#       result = result[, rownames(result)]
+#       return(result)
+#     }
+
+
+def _normalize_cols_metaneighbor(M: np.ndarray) -> np.ndarray:
+    """Per-cell rank-normalize expression (Bakken 2021 ``normalize_cols``).
+
+    Parameters
+    ----------
+    M : np.ndarray
+        ``(n_genes, n_cells)`` raw expression matrix. Each column is one cell.
+
+    Returns
+    -------
+    np.ndarray
+        Same shape; each column has been replaced by its gene ranks (average
+        ties), then mean-centered and L2-normalized so that the inner product
+        of two columns equals their Spearman correlation.
+    """
+    M = np.asarray(M, dtype=float)
+    # Rank gene expression within each cell (rank down each column)
+    ranked = np.apply_along_axis(rankdata, axis=0, arr=M)
+    centered = ranked - ranked.mean(axis=0, keepdims=True)
+    norms = np.linalg.norm(centered, axis=0, keepdims=True)
+    norms[norms == 0] = 1.0
+    return centered / norms
+
+
+def _design_matrix_metaneighbor(labels: np.ndarray) -> tuple[np.ndarray, list]:
+    """One-hot encoding (Bakken 2021 ``design_matrix``).
+
+    Parameters
+    ----------
+    labels : np.ndarray
+        ``(n_cells,)`` array of categorical labels (any hashable).
+
+    Returns
+    -------
+    tuple
+        ``(M, categories)`` where ``M`` is ``(n_cells, n_categories)`` binary
+        and ``categories`` is the column order.
+    """
+    labels = np.asarray(labels)
+    categories = sorted(set(labels.tolist()))
+    n = len(labels)
+    k = len(categories)
+    M = np.zeros((n, k), dtype=float)
+    cat_to_idx = {c: i for i, c in enumerate(categories)}
+    for i, lbl in enumerate(labels):
+        M[i, cat_to_idx[lbl]] = 1.0
+    return M, categories
+
+
+def _compute_aurocs_mannwhitney(
+    predictors: np.ndarray, label_matrix: np.ndarray
+) -> np.ndarray:
+    """Vectorized Mann-Whitney AUROC (Bakken 2021 ``compute_aurocs``).
+
+    Computes one AUROC for each (label class, predictor column) pair using
+    the Mann-Whitney U statistic in closed form (no per-cell loops):
+
+        auroc = (sum_of_positive_ranks / n_pos - (n_pos+1)/2) / n_neg
+
+    Parameters
+    ----------
+    predictors : np.ndarray
+        ``(n_obs, n_columns)`` matrix of scores. Each column is a separate
+        ranking signal (e.g., similarity to one voter group).
+    label_matrix : np.ndarray
+        ``(n_obs, n_classes)`` binary matrix encoding which observations
+        belong to each class.
+
+    Returns
+    -------
+    np.ndarray
+        ``(n_classes, n_columns)`` AUROC matrix. Entry ``[c, j]`` is the
+        AUROC for ranking class-``c`` observations using column-``j`` scores.
+    """
+    predictors = np.asarray(predictors, dtype=float)
+    label_matrix = np.asarray(label_matrix, dtype=float)
+    n_obs = label_matrix.shape[0]
+    n_positives = label_matrix.sum(axis=0)  # (n_classes,)
+    n_negatives = n_obs - n_positives
+    # Rank each column independently (with average ties)
+    ranks = np.apply_along_axis(rankdata, axis=0, arr=predictors)  # (n_obs, n_columns)
+    # Sum of ranks of positive observations, per (class, column)
+    sum_of_positive_ranks = label_matrix.T @ ranks  # (n_classes, n_columns)
+    n_pos_col = n_positives[:, None]
+    n_neg_col = n_negatives[:, None]
+    # Avoid division by zero — return 0.5 (chance) for degenerate cases
+    safe_pos = np.where(n_pos_col == 0, 1.0, n_pos_col)
+    safe_neg = np.where(n_neg_col == 0, 1.0, n_neg_col)
+    auroc = (sum_of_positive_ranks / safe_pos - (n_pos_col + 1) / 2.0) / safe_neg
+    auroc[(n_pos_col == 0).ravel(), :] = 0.5
+    auroc[:, ...][np.broadcast_to(n_neg_col == 0, auroc.shape)] = 0.5
+    return auroc
+
+
+def compute_best_hits_metaneighbor(
+    expr_genes_x_cells: np.ndarray,
+    labels: np.ndarray,
+    study_ids: np.ndarray,
+    cell_names: list | None = None,
+) -> pd.DataFrame:
+    """Cross-study MetaNeighbor AUROC matrix (Bakken 2021 ``compute_best_hits``).
+
+    Implements the leave-one-study-out cross-validation procedure: for each
+    study, its cells are used as test queries and **all** cells (including
+    other studies) provide voter centroids; the resulting per-test-cluster
+    AUROC rows are concatenated across studies.
+
+    Parameters
+    ----------
+    expr_genes_x_cells : np.ndarray
+        ``(n_genes, n_cells)`` raw expression matrix.
+    labels : np.ndarray
+        ``(n_cells,)`` cluster label for each cell.
+    study_ids : np.ndarray
+        ``(n_cells,)`` study/dataset identifier (e.g., ``"mouse"``, ``"human"``).
+    cell_names : list, optional
+        Cell barcodes for traceability. Not used in computation.
+
+    Returns
+    -------
+    pd.DataFrame
+        Square AUROC matrix indexed by ``"<study>|<cluster>"``. Entry
+        ``[A, B]`` is the AUROC of group ``B`` voters discriminating cells
+        of group ``A`` from other cells in group ``A``'s test study.
+        Following Bakken's R code, the result is column-reordered to match
+        the row order so that the matrix is square.
+    """
+    expr_genes_x_cells = np.asarray(expr_genes_x_cells, dtype=float)
+    labels = np.asarray(labels).astype(str)
+    study_ids = np.asarray(study_ids).astype(str)
+
+    # Step 1: rank-normalize all cells (matches normalize_cols)
+    normalized = _normalize_cols_metaneighbor(expr_genes_x_cells)
+
+    # Step 2: build (study|cluster) labels and voter centroids
+    cell_groups = np.array([f"{s}|{c}" for s, c in zip(study_ids, labels)])
+    voter_id, voter_categories = _design_matrix_metaneighbor(cell_groups)
+    # voters[:, j] = sum of normalized cell vectors in voter group j  (n_genes, n_groups)
+    voters = normalized @ voter_id
+
+    # Step 3: leave-one-study-out — concatenate per-study AUROC blocks
+    result_rows = []
+    result_row_names: list[str] = []
+    for test_study in sorted(set(study_ids.tolist())):
+        test_mask = study_ids == test_study
+        candidates = normalized[:, test_mask]  # (n_genes, n_test_cells)
+        test_groups = cell_groups[test_mask]
+        votes = candidates.T @ voters  # (n_test_cells, n_voter_groups)
+        test_label_matrix, test_categories = _design_matrix_metaneighbor(test_groups)
+        aurocs = _compute_aurocs_mannwhitney(votes, test_label_matrix)
+        # aurocs shape: (n_test_clusters, n_voter_groups)
+        result_rows.append(aurocs)
+        result_row_names.extend(test_categories)
+
+    full = np.vstack(result_rows)
+    df = pd.DataFrame(full, index=result_row_names, columns=voter_categories)
+    # Match Bakken's `result = result[, rownames(result)]` — reorder columns to
+    # the row order so the matrix is square and aligned.
+    df = df[result_row_names]
+    return df
+
 
 def compute_metaneighbor_auroc(
     expr_df: pd.DataFrame,
@@ -217,102 +426,58 @@ def compute_metaneighbor_auroc(
     labels_human: pd.Series,
     species: pd.Series,
 ) -> pd.DataFrame:
-    """Compute MetaNeighbor AUROC between mouse and human cluster labels.
+    """MetaNeighbor AUROC matrix between mouse and human cluster labels.
 
-    Algorithm (Python-native MetaNeighbor):
-    1. Rank-transform each cell's expression across genes (Spearman approximation).
-    2. Compute cell-cell Spearman correlations as inner products of rank vectors.
-    3. For each mouse cluster X and each human cluster Y, use correlation scores
-       from mouse cluster X cells to all human cells as the ranking signal,
-       and compute AUROC vs the binary label "is human cell in cluster Y".
-    4. Average AUROC across cells within each mouse cluster.
+    Wraps :func:`compute_best_hits_metaneighbor` to preserve the legacy
+    function signature used elsewhere in the pipeline. Internally:
+
+    1. Builds a single ``"<species>|<cluster>"`` label per cell.
+    2. Calls :func:`compute_best_hits_metaneighbor` to obtain the full LOSO
+       AUROC matrix.
+    3. Extracts the cross-species block (rows = ``mouse|*``, columns =
+       ``human|*``) and strips the ``"mouse|"`` / ``"human|"`` prefixes.
 
     Parameters
     ----------
     expr_df : pd.DataFrame
-        Cell x gene expression matrix covering all cells (mouse + human).
-        Index = cell barcodes, columns = gene names.
+        ``(n_cells, n_genes)`` expression. Index = cell barcodes.
     labels_mouse : pd.Series
-        Cluster labels for mouse cells. Index = mouse cell barcodes.
+        Cluster labels for mouse cells; index aligns with ``expr_df``.
     labels_human : pd.Series
-        Cluster labels for human cells. Index = human cell barcodes.
+        Cluster labels for human cells; index aligns with ``expr_df``.
     species : pd.Series
-        Species assignment (``"mouse"`` or ``"human"``) for each cell.
-        Index = all cell barcodes.
+        ``"mouse"`` or ``"human"`` per cell; index aligns with ``expr_df``.
 
     Returns
     -------
     pd.DataFrame
-        (n_mouse_clusters) x (n_human_clusters) AUROC matrix.
-        Index = mouse cluster labels, columns = human cluster labels.
-        AUROC > 0.5 indicates mouse cluster is more similar to the matching
-        human cluster than to other human cells.
+        ``(n_mouse_clusters, n_human_clusters)`` AUROC. Higher values mean
+        the mouse cluster more strongly resembles the human cluster than
+        other human cells in the same test study.
     """
-    # Use the species Series to explicitly identify mouse and human cells rather
-    # than relying on positional slicing.
     mouse_cells = species[species == "mouse"].index.intersection(labels_mouse.index).tolist()
     human_cells = species[species == "human"].index.intersection(labels_human.index).tolist()
     all_cells = mouse_cells + human_cells
 
-    # Rank-transform each cell's expression across genes (rank along axis=1,
-    # i.e., per row / per cell).  MetaNeighbor uses gene-rank profiles per cell
-    # as the basis for computing cell-cell similarity, not gene-rank profiles
-    # across cells.  Pearson correlation on per-cell gene-ranks equals the
-    # Spearman correlation between two cells' expression profiles.
-    expr_sub = expr_df.loc[all_cells].values.astype(float)  # (n_cells, n_genes)
-    ranked = np.apply_along_axis(rankdata, axis=1, arr=expr_sub)  # rank genes per cell
+    # expr_df is (n_cells, n_genes); transpose to (n_genes, n_cells) for the
+    # Bakken-style routines.
+    expr_sub = expr_df.loc[all_cells].values.astype(float).T
 
-    # Mean-center per cell so that inner product gives Pearson on ranks = Spearman
-    centered = ranked - ranked.mean(axis=1, keepdims=True)
-
-    # Unit-normalize per cell for cosine similarity
-    norms = np.linalg.norm(centered, axis=1, keepdims=True)
-    norms[norms == 0] = 1.0
-    unit_ranked = centered / norms
-
-    n_mouse = len(mouse_cells)
-    n_human = len(human_cells)
-
-    # Cell-cell correlation: only mouse→human block needed
-    # mouse_unit: (n_mouse, n_genes), human_unit: (n_human, n_genes)
-    mouse_unit = unit_ranked[:n_mouse, :]
-    human_unit = unit_ranked[n_mouse:, :]
-    corr_mouse_human = mouse_unit @ human_unit.T  # (n_mouse, n_human)
-
-    mouse_cluster_labels = np.array([labels_mouse[c] for c in mouse_cells])
-    human_cluster_labels = np.array([labels_human[c] for c in human_cells])
-
-    unique_mouse = sorted(set(mouse_cluster_labels))
-    unique_human = sorted(set(human_cluster_labels))
-
-    auroc_matrix = np.zeros((len(unique_mouse), len(unique_human)))
-
-    for mi, mc in enumerate(unique_mouse):
-        mc_mask = mouse_cluster_labels == mc  # boolean (n_mouse,)
-        mc_indices = np.where(mc_mask)[0]
-
-        for hi, hc in enumerate(unique_human):
-            hc_mask = (human_cluster_labels == hc).astype(int)  # binary label
-
-            # For each cell in mouse cluster mc, compute AUROC using correlation
-            # scores to human cells as ranking signal vs hc_mask as truth
-            cell_aurocs = []
-            for cell_idx in mc_indices:
-                scores = corr_mouse_human[cell_idx, :]  # (n_human,)
-                # Need at least one positive and one negative
-                if hc_mask.sum() == 0 or hc_mask.sum() == n_human:
-                    cell_aurocs.append(0.5)
-                    continue
-                try:
-                    auc = roc_auc_score(hc_mask, scores)
-                except ValueError:
-                    auc = 0.5
-                cell_aurocs.append(auc)
-
-            auroc_matrix[mi, hi] = float(np.mean(cell_aurocs))
-
-    return pd.DataFrame(
-        auroc_matrix,
-        index=unique_mouse,
-        columns=unique_human,
+    cluster_labels = np.array(
+        [str(labels_mouse[c]) for c in mouse_cells]
+        + [str(labels_human[c]) for c in human_cells]
     )
+    study_ids = np.array(["mouse"] * len(mouse_cells) + ["human"] * len(human_cells))
+
+    full_auroc = compute_best_hits_metaneighbor(expr_sub, cluster_labels, study_ids)
+
+    # Extract the (mouse rows × human columns) block and strip the prefixes.
+    mouse_rows = [r for r in full_auroc.index if r.startswith("mouse|")]
+    human_cols = [c for c in full_auroc.columns if c.startswith("human|")]
+    block = full_auroc.loc[mouse_rows, human_cols].copy()
+    block.index = [r.split("|", 1)[1] for r in mouse_rows]
+    block.columns = [c.split("|", 1)[1] for c in human_cols]
+    block = block.sort_index().sort_index(axis=1)
+    return block
+
+

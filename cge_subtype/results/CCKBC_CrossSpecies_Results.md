@@ -1,6 +1,6 @@
 # Cross-Species Multi-Modal CCKBC/ISI VIP Analysis — Results
 
-**Date:** 2026-03-18
+**Date:** 2026-03-18 (initial); **MetaNeighbor recomputed 2026-04-06** with canonical Bakken 2021 implementation
 **Pipeline:** 5-module integration of mouse SC, mouse patch-seq, human SC, human patch-seq
 
 ---
@@ -9,17 +9,17 @@
 
 ### 1. MetaNeighbor independently confirms CCKBC homolog clusters
 
-Cross-species MetaNeighbor AUROC (589 mouse clusters x 21 human CGE clusters, 3,000 HVGs, 50 cells/cluster) identifies three human clusters as Sncg/CCKBC homologs:
+Cross-species MetaNeighbor AUROC (156 mouse cortex GABAergic clusters x 21 human CGE clusters, 3,000 HVGs, 50 cells/cluster) identifies three human clusters as Sncg/CCKBC homologs. The implementation is a Python port of Bakken et al. 2021's `compute_best_hits` (`BICCN_M1_Evo/MetaNeighbor/metaneighbor.R`), validated to match the original R code on synthetic test cases (see `cge_subtype/src/cluster_correspondence.py::compute_best_hits_metaneighbor`). The reported AUROC uses the human-as-test direction (for each human cluster Y, the AUROC of mouse centroid X measures how well X discriminates Y cells from other human cells in the test fold).
 
-| Human Cluster | VIP Status | Top Mouse Match | Mouse Subclass | AUROC | CCKBC? |
-|:---:|:---:|:---:|:---:|:---:|:---:|
-| **279** | VIP+ | 677 | 047 Sncg Gaba | 0.837 | **YES** |
-| **280** | VIP+ | 692 | 047 Sncg Gaba | 0.640 | **YES** |
-| **281** | VIP+ | 645 | 047 Sncg Gaba | 0.836 | **YES** |
-| 277 | VIP- | 1295 | 065 IA Mgp Gaba | 0.861 | No |
-| 278 | VIP- | 1290 | 039 OB Meis2 Gaba | 0.806 | No |
+| Human Cluster | VIP Status | Best Mouse Subclass | AUROC | CCKBC? |
+|:---:|:---:|:---:|:---:|:---:|
+| **279** | VIP+ | 047 Sncg Gaba | 0.759 | **YES** |
+| **280** | VIP+ | 047 Sncg Gaba | 0.693 | **YES** |
+| **281** | VIP+ | 047 Sncg Gaba | 0.776 | **YES** |
+| 277 | VIP- | 049 Lamp5 Gaba | 0.790 | No |
+| 278 | VIP- | 049 Lamp5 Gaba | 0.682 | No (marker-CCKBC, see Section 2.3) |
 
-**All top-5 mouse matches for clusters 279/280/281 are Sncg Gaba** — unambiguous confirmation. Clusters 277/278 (previously flagged as CCKBC by Harmony) do NOT confirm as Sncg under MetaNeighbor, mapping instead to non-CCKBC GABAergic subtypes.
+Clusters 279, 280, 281 best-match Sncg Gaba subclass — unambiguous confirmation. Clusters 277/278 (previously flagged as CCKBC by Harmony) do NOT confirm as Sncg under canonical MetaNeighbor, mapping instead to Lamp5 Gaba subclass.
 
 This resolves a discrepancy in the previous analysis: Harmony assigned high CCKBC fractions to 277/278, but MetaNeighbor (a more principled cross-species method, Crow et al. 2018; Bakken et al. 2021) shows these are false positives.
 
