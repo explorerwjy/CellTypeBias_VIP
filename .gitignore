@@ -69,3 +69,6 @@ dev_notebooks/
 *.swp
 *.swo
 *~
+
+# Private Claude Code instructions (kept local, not pushed to GitHub)
+CLAUDE.md
