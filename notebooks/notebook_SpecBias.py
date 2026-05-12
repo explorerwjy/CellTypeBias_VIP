@@ -632,7 +632,7 @@ plot_correlation(values1, values2, "EDU GWAS", "SCZ GWAS", None, dpi=80)
 # %%
 def compute_trait_correlations(values1, nc_bias_df):
     """
-    Compute Spearman correlations between values1 and each column in nc_bias_df.
+    Compute Spearmans' R values between values1 and each column in nc_bias_df.
     Optionally, also compute correlations restricted to indices neur_idx.
     Returns a DataFrame sorted by Spearman_r descending.
     """

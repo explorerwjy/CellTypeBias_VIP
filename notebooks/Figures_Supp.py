@@ -457,7 +457,7 @@ fig.savefig(FIG_DIR + "FigS4_E.png", dpi=300, bbox_inches="tight", transparent=T
 plt.show()
 
 # %% [markdown]
-# ### Panel F — Cap Sensitivity: Spearman Correlation vs Cap=2x
+# ### Panel F — Cap Sensitivity: Spearmans' R vs Cap=2x
 
 # %%
 # Load gene weights for cap sensitivity analysis
@@ -482,7 +482,7 @@ for disorder, gw_dict in gw_dicts_cap.items():
         bias_df = AnnotateCTDat(bias_df, Anno)
         bias_all_cap[disorder][cap] = bias_df
 
-# Spearman correlation vs cap=2x
+# Spearmans' R vs cap=2x
 corr_results_cap = {}
 for disorder in gw_dicts_cap.keys():
     ref_bias = bias_all_cap[disorder][ref_cap]["EFFECT"]
@@ -507,7 +507,7 @@ ax.set_xticks(CAP_LEVELS)
 ax.set_xticklabels([f"{c}×" for c in CAP_LEVELS], fontsize=9)
 ax.set_xlabel("Specificity cap level (× mean)", fontsize=11)
 ax.axvline(x=ref_cap, color="gray", ls="--", lw=1, alpha=0.4, zorder=1)
-ax.set_ylabel("Spearman ρ vs. cap = 2×", fontsize=11)
+ax.set_ylabel("Spearmans' R vs. cap = 2×", fontsize=11)
 ax.set_ylim(min(corr_df_cap.values.min() - 0.03, 0.35), 1.01)
 ax.legend(fontsize=9, frameon=True, framealpha=0.9, loc="lower left")
 for spine in ["top", "right"]:
@@ -723,7 +723,7 @@ for ax, (disorder_name, color, panel_label) in zip(axes, disorder_order):
     ax.tick_params(axis='both', labelsize=14)
     for spine in ["top", "right"]:
         ax.spines[spine].set_visible(False)
-axes[0].set_ylabel("Spearman ρ with top-61 bias profile", fontsize=16)
+axes[0].set_ylabel("Spearmans' R with top-61 bias profile", fontsize=16)
 fig.tight_layout()
 fig.patch.set_alpha(0)
 fig.savefig(FIG_DIR + "FigS5_EFG.png", dpi=300, bbox_inches='tight', transparent=True, facecolor='none')
@@ -996,6 +996,7 @@ print(f"Saved: {FIG_DIR}FigureS9.pdf")
 # | D | Deep CT6b (ASD w/o ID vs SCZ) |
 # | E | ASD w/o ID vs ASD with ID bar plot |
 # | F | CGE: ASD with ID vs SCZ |
+# | F2 | MGE: ASD with ID vs SCZ |
 # | G | CGE: VNR+ vs VNR- |
 # | H | CGE: ASD w/o ID vs DD/ID |
 
@@ -1048,6 +1049,14 @@ with save_panel(FIG_DIR + "FigS10_E.png"):
 # %%
 with save_panel(FIG_DIR + "FigS10_F.png"):
     CompareSingleCT(LowIQ_ASD_Bias, SCZ_Bias, "CGE interneuron", ASD_wID_SCZ_Contrast,
+                    "ASD with ID Mutation Bias", "SCZ Mutation Bias", loc=(0.08, 0.21))
+
+# %% [markdown]
+# ### Panel F2 — MGE: ASD with ID vs SCZ
+
+# %%
+with save_panel(FIG_DIR + "FigS10_F2.png"):
+    CompareSingleCT(LowIQ_ASD_Bias, SCZ_Bias, "MGE interneuron", ASD_wID_SCZ_Contrast,
                     "ASD with ID Mutation Bias", "SCZ Mutation Bias", loc=(0.08, 0.21))
 
 # %% [markdown]

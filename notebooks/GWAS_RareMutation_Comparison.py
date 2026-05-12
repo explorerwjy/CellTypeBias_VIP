@@ -152,13 +152,13 @@ plt.show()
 # %% [markdown]
 # ## 3. Systematic Trait Correlations
 #
-# For each rare-mutation disorder, compute Spearman correlations with all 55 GWAS traits,
+# For each rare-mutation disorder, compute Spearmans' R values with all 55 GWAS traits,
 # both across all cell types and restricted to neuronal cell types only.
 
 # %%
 def compute_trait_correlations(values1, nc_bias_df, neur_idx=Neur_idx):
     """
-    Compute Spearman correlations between a rare-mutation bias vector
+    Compute Spearmans' R values between a rare-mutation bias vector
     and each GWAS trait column in nc_bias_df.
 
     Returns DataFrame with columns: Trait, r_all, p_all, r_neur, p_neur
@@ -227,7 +227,7 @@ sns.heatmap(
 )
 # Add vertical line to separate disorders from negative controls
 ax.axvline(x=len(disorder_names), color="black", linewidth=2)
-ax.set_title("Spearman r: Rare-Variant Bias × GWAS Trait Bias\n"
+ax.set_title("Spearmans' R: Rare-Variant Bias × GWAS Trait Bias\n"
              "(left: psychiatric disorders | right: negative controls)")
 ax.set_xlabel("Gene Set")
 ax.set_ylabel("GWAS Trait")
@@ -281,14 +281,14 @@ fig, axes = plt.subplots(1, 2, figsize=(10, 5), dpi=150)
 # Panel A: mean |r| with brain GWAS
 colors = ["#d62728" if g == "Disorder" else "#7f7f7f" for g in summary_df["Group"]]
 axes[0].barh(summary_df["Gene Set"], summary_df["mean_|r|_brain_GWAS"], color=colors)
-axes[0].set_xlabel("Mean |Spearman r|")
+axes[0].set_xlabel("Mean |Spearmans' R|")
 axes[0].set_title("Brain/Psychiatric GWAS Traits")
 axes[0].invert_yaxis()
 axes[0].patch.set_alpha(0)
 
 # Panel B: mean |r| with non-brain GWAS
 axes[1].barh(summary_df["Gene Set"], summary_df["mean_|r|_nonbrain_GWAS"], color=colors)
-axes[1].set_xlabel("Mean |Spearman r|")
+axes[1].set_xlabel("Mean |Spearmans' R|")
 axes[1].set_title("Non-Brain GWAS Traits")
 axes[1].invert_yaxis()
 axes[1].patch.set_alpha(0)
@@ -344,7 +344,7 @@ g = sns.clustermap(
     linewidths=0.3,
     yticklabels=True,
     xticklabels=True,
-    cbar_kws={"label": "Spearman r"}
+    cbar_kws={"label": "Spearmans' R"}
 )
 g.ax_heatmap.set_xlabel("GWAS Trait")
 g.ax_heatmap.set_ylabel("Gene Set (Disorder / Neg Control)")

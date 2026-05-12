@@ -150,7 +150,7 @@ print(f"Neuronal cell types: {neur_col_mask.sum()} / {len(ct_cols)}")
 
 def fast_bias_corr(asd_entrez, asd_weights, scz_entrez, scz_weights,
                    expr_np, expr_gene_to_row, neur_col_mask):
-    """Compute ASD-SCZ neuronal bias Spearman correlation using vectorized numpy."""
+    """Compute ASD-SCZ neuronal bias Spearmans' R using vectorized numpy."""
     # ASD bias vector
     asd_rows = np.array([expr_gene_to_row[g] for g in asd_entrez])
     asd_bias = np.average(expr_np[asd_rows], axis=0, weights=asd_weights)

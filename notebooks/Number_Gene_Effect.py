@@ -34,6 +34,17 @@ config = _cfg
 HGNC, ENSID2Entrez, GeneSymbol2Entrez, Entrez2Symbol = LoadGeneINFO()
 
 # %%
+# === Configuration flags ===
+FORCE_RERUN = False       # Set True to recompute even if cache exists
+SHOW_UNWEIGHTED = False   # Set True to show unweighted profiles
+
+import pickle
+_CACHE_DIR = PROJ_DIR / "results" / "figures" / "plot_data"
+_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+_SWEEP_CACHE = _CACHE_DIR / "sweep_cache.pkl"
+_EXP_CACHE = _CACHE_DIR / "expansion_slice_cache.pkl"
+
+# %%
 # Load expression matrix
 expression_matrix = config['analysis_types']['Centering']
 print(expression_matrix)
@@ -89,24 +100,30 @@ SCZ_Bias = AnnotateCTDat(SCZ_Bias, Anno)
 
 # %%
 # Calculate correlation as genes are removed, sorted by LofZ (descending)
-GeneIdx, Corr_SCZ, Pval_SCZ = [], [], []
-Corr_SCZ_unweighted = []
 GeneIdx = np.arange(10, 200)
-for i in GeneIdx:
-    tmp_SCZ_GW = dict(zip(GeneWeights.index.values[:i], GeneWeights["Weight"].values[:i]))
-    tmp_SCZ_Bias = HumanCT_AvgZ_Weighted(HumanCT_Z2_HCT, tmp_SCZ_GW)
-    tmp_SCZ_Bias = AnnotateCTDat(tmp_SCZ_Bias, Anno)
-    r, p = GetSingeCellBiasCorr(SCZ_Bias, tmp_SCZ_Bias, efflabel="EFFECT")
+if _SWEEP_CACHE.exists() and not FORCE_RERUN:
+    import pickle as _pkl
+    with open(_SWEEP_CACHE, "rb") as _f:
+        _sw = _pkl.load(_f)
+    Corr_SCZ, Pval_SCZ, Corr_SCZ_unweighted = _sw["SCZ"]
+    print("SCZ sweep: from cache")
+else:
+    Corr_SCZ, Pval_SCZ, Corr_SCZ_unweighted = [], [], []
+    for i in GeneIdx:
+        tmp_SCZ_GW = dict(zip(GeneWeights.index.values[:i], GeneWeights["Weight"].values[:i]))
+        tmp_SCZ_Bias = HumanCT_AvgZ_Weighted(HumanCT_Z2_HCT, tmp_SCZ_GW)
+        tmp_SCZ_Bias = AnnotateCTDat(tmp_SCZ_Bias, Anno)
+        r, p = GetSingeCellBiasCorr(SCZ_Bias, tmp_SCZ_Bias, efflabel="EFFECT")
         
-    Corr_SCZ.append(r)
-    Pval_SCZ.append(p)
+        Corr_SCZ.append(r)
+        Pval_SCZ.append(p)
     
-    # Unweighted version (each gene has weight 1)
-    tmp_SCZ_GW_unweighted = dict(zip(GeneWeights.index.values[:i], np.ones(i)))
-    tmp_SCZ_Bias_unweighted = HumanCT_AvgZ_Weighted(HumanCT_Z2_HCT, tmp_SCZ_GW_unweighted)
-    tmp_SCZ_Bias_unweighted = AnnotateCTDat(tmp_SCZ_Bias_unweighted, Anno)
-    r_unweighted, _ = GetSingeCellBiasCorr(SCZ_Bias, tmp_SCZ_Bias_unweighted, efflabel="EFFECT")
-    Corr_SCZ_unweighted.append(r_unweighted)
+        # Unweighted version (each gene has weight 1)
+        tmp_SCZ_GW_unweighted = dict(zip(GeneWeights.index.values[:i], np.ones(i)))
+        tmp_SCZ_Bias_unweighted = HumanCT_AvgZ_Weighted(HumanCT_Z2_HCT, tmp_SCZ_GW_unweighted)
+        tmp_SCZ_Bias_unweighted = AnnotateCTDat(tmp_SCZ_Bias_unweighted, Anno)
+        r_unweighted, _ = GetSingeCellBiasCorr(SCZ_Bias, tmp_SCZ_Bias_unweighted, efflabel="EFFECT")
+        Corr_SCZ_unweighted.append(r_unweighted)
 
 # %%
 import matplotlib.ticker as mticker
@@ -124,8 +141,12 @@ def plot_gene_set_correlation(
     dpi=120,
     color_corr='#1f77b4',
     color_pval='#d62728',
-    legend_loc='lower left',
+    legend_loc='center left',
+    legend_bbox_to_anchor=(1.02, 0.5),
+    legend_position=None,
     legend_fontsize=10,
+    legend_kwargs=None,
+    subplots_adjust_right=None,
     ylim_corr=(0, 1.01),
     nbins_x=8,
     title=None,
@@ -166,9 +187,22 @@ def plot_gene_set_correlation(
     color_pval : str
         Color for p-value line.
     legend_loc : str
-        Location for legend.
+        Matplotlib ``loc`` for the legend (used when ``legend_position`` is None).
+    legend_bbox_to_anchor : tuple or None
+        Axes-fraction anchor (e.g. ``(1.02, 0.5)`` outside the right spine). None =
+        legend inside the axes at ``legend_loc``.
+    legend_position : str, tuple, or None
+        If set, overrides ``legend_loc`` and ``legend_bbox_to_anchor``. ``None`` uses
+        those two. A ``str`` is a matplotlib ``loc`` (inside axes). Presets:
+        ``"outside_right"``, ``"outside_left"``. Or pass ``(loc, bbox_to_anchor)``;
+        use ``None`` as bbox for in-axes only.
     legend_fontsize : int
         Font size for legend.
+    legend_kwargs : dict or None
+        Extra arguments passed to ``ax.legend`` (e.g. ``ncol``).
+    subplots_adjust_right : float or None
+        ``plt.subplots_adjust(right=...)``. If None, uses a tighter margin when the
+        legend is outside the axes.
     ylim_corr : tuple
         Y-axis limits for correlation.
     nbins_x : int
@@ -181,6 +215,26 @@ def plot_gene_set_correlation(
         Whether to call plt.show().
     """
     import matplotlib.pyplot as plt
+
+    _legend_presets = {
+        "outside_right": ("center left", (1.02, 0.5)),
+        "outside_left": ("center right", (-0.02, 0.5)),
+    }
+
+    if legend_position is not None:
+        if isinstance(legend_position, str):
+            if legend_position in _legend_presets:
+                _leg_loc, _leg_bbox = _legend_presets[legend_position]
+            else:
+                _leg_loc, _leg_bbox = legend_position, None
+        elif isinstance(legend_position, tuple) and len(legend_position) == 2:
+            _leg_loc, _leg_bbox = legend_position
+        else:
+            raise TypeError(
+                "legend_position must be None, a str, or a (loc, bbox_to_anchor) tuple"
+            )
+    else:
+        _leg_loc, _leg_bbox = legend_loc, legend_bbox_to_anchor
 
     if ax1 is None or ax2 is None:
         fig, ax1 = plt.subplots(figsize=figsize, dpi=dpi)
@@ -216,10 +270,17 @@ def plot_gene_set_correlation(
     ax2.tick_params(axis='y', labelcolor=color_pval)
     ax2.yaxis.set_major_locator(mticker.MaxNLocator(integer=True))
 
-    # Add legend in the bottom left
     lines_1, labels_1 = ax1.get_legend_handles_labels()
     lines_2, labels_2 = ax2.get_legend_handles_labels()
-    ax1.legend(lines_1 + lines_2, labels_1 + labels_2, loc=legend_loc, fontsize=legend_fontsize, frameon=False)
+    _lk = dict(fontsize=legend_fontsize)
+    if _leg_bbox is not None:
+        _lk["bbox_to_anchor"] = _leg_bbox
+        _lk.update(frameon=True, framealpha=0.96, edgecolor="0.85")
+    else:
+        _lk["frameon"] = False
+    if legend_kwargs:
+        _lk.update(legend_kwargs)
+    ax1.legend(lines_1 + lines_2, labels_1 + labels_2, loc=_leg_loc, **_lk)
 
     # Publication style tweaks
     fig.tight_layout(pad=2)
@@ -227,7 +288,11 @@ def plot_gene_set_correlation(
         spine.set_linewidth(1.2)
     for spine in ax2.spines.values():
         spine.set_linewidth(1.2)
-    plt.subplots_adjust(top=0.95, right=0.88)
+    if subplots_adjust_right is not None:
+        _adj_r = subplots_adjust_right
+    else:
+        _adj_r = 0.72 if _leg_bbox is not None else 0.88
+    plt.subplots_adjust(top=0.95, right=_adj_r)
     if title is not None:
         ax1.set_title(title, fontsize=14, pad=10)
     if show:
@@ -243,7 +308,7 @@ _fig_scz, _, _ = plot_gene_set_correlation(
     corr_label="Bias Correlation",
     ylabel_corr = "Bias Correlation with Main SCZ Set",
     pval_label=r"$-\log_{10}$(max p-value of Included Genes)",
-    Corr_unweighted=Corr_SCZ_unweighted,
+    Corr_unweighted=Corr_SCZ_unweighted if SHOW_UNWEIGHTED else None,
     corr_unweighted_label="Bias Correlation (Unweighted)",
     show=False,
 )
@@ -273,42 +338,67 @@ LowIQMuts_ALL = Mut_n_IQ[Mut_n_IQ["IQ"]<=70]
 # %%
 Spark_Denovo_sub = Spark_Denovo[["EntrezID", "HGNC", "pDenovoWEST_Meta", "AutismMerged_LoF", "AutismMerged_Dmis_REVEL0.5"]]
 Spark_Denovo_sub = Spark_Denovo_sub.set_index("EntrezID")
-for i, row in Spark_Denovo_sub.iterrows():
-    LIQ_counts = LowIQMuts_ALL[LowIQMuts_ALL["Entrez"]==i].shape[0]
-    HIQ_counts = HighIQMuts_ALL[HighIQMuts_ALL["Entrez"]==i].shape[0]
-    Spark_Denovo_sub.loc[i, "LIQ_counts"] = LIQ_counts
-    Spark_Denovo_sub.loc[i, "HIQ_counts"] = HIQ_counts
-    if row["pDenovoWEST_Meta"] == 0:
+
+# Count IQ-specific mutations per gene: total + LoF/Dmis split for BGMR correction
+lgd_types = ["frameshift", "splice_acceptor", "splice_donor", "start_lost", "stop_gained", "stop_lost"]
+for i in Spark_Denovo_sub.index:
+    hiq_muts = HighIQMuts_ALL[HighIQMuts_ALL["Entrez"] == i]
+    liq_muts = LowIQMuts_ALL[LowIQMuts_ALL["Entrez"] == i]
+    Spark_Denovo_sub.loc[i, "HIQ_counts"] = len(hiq_muts)
+    Spark_Denovo_sub.loc[i, "LIQ_counts"] = len(liq_muts)
+    for prefix, muts in [("HIQ", hiq_muts), ("LIQ", liq_muts)]:
+        eff = muts["GeneEff"].str.split(";").str[0]
+        n_lgd = eff.isin(lgd_types).sum()
+        is_mis = eff == "missense"
+        revel = muts.loc[is_mis, "REVEL"].str.split(";").str[0]
+        n_dmis = revel.apply(lambda x: float(x) > 0.5 if x != "." else False).sum()
+        Spark_Denovo_sub.loc[i, f"{prefix}_LGD"] = n_lgd
+        Spark_Denovo_sub.loc[i, f"{prefix}_Dmis"] = n_dmis
+    if Spark_Denovo_sub.loc[i, "pDenovoWEST_Meta"] == 0:
         Spark_Denovo_sub.loc[i, "pDenovoWEST_Meta"] = 1e-6
 
+print(f"Spark_Denovo_sub: {Spark_Denovo_sub.shape}")
+print(f"HIQ genes with mutations: {(Spark_Denovo_sub['HIQ_counts'] > 0).sum()}")
+print(f"LIQ genes with mutations: {(Spark_Denovo_sub['LIQ_counts'] > 0).sum()}")
 
 # %%
-# BGMR-correct ASD IQ mutation counts to match pipeline gene weights
-# Pipeline uses wLGD=1, wMis=1, REVEL>0.5 filtering, BGMR subtraction
-# Here HIQ_counts/LIQ_counts are raw mutation counts (all variant types combined).
-# To match the pipeline, we need BGMR-corrected weights per gene.
-# Load the BGMR-corrected gene weight files directly (same files the pipeline uses).
-HIQ_GW_bgmr = pd.read_csv(f"{GeneWeightDIR}/HIQ.top61.nopLI.LGD_Dmis_SameWeight.bgmr.gw",
-                           index_col=0, header=None, names=["Weight"])
-LIQ_GW_bgmr = pd.read_csv(f"{GeneWeightDIR}/LIQ.top61.nopLI.LGD_Dmis_SameWeight.bgmr.gw",
-                           index_col=0, header=None, names=["Weight"])
+# Compute BGMR-corrected ASD gene weights for ALL ranked genes (not just top-61).
+from collections import OrderedDict
 
-# For the sweep we need weights for genes beyond 61 too.
-# Use raw counts for genes outside the top-61 (they weren't BGMR-corrected),
-# but ensure top-61 matches pipeline exactly.
-# Build extended weight tables: BGMR-corrected for genes in the bgmr file,
-# raw counts for the rest.
-for label_col, bgmr_gw in [("HIQ_weight_bgmr", HIQ_GW_bgmr), ("LIQ_weight_bgmr", LIQ_GW_bgmr)]:
-    Spark_Denovo_sub[label_col] = np.nan
-    for g in Spark_Denovo_sub.index:
-        if g in bgmr_gw.index:
-            Spark_Denovo_sub.loc[g, label_col] = bgmr_gw.loc[g, "Weight"]
+N_ASD_HIQ = 3610
+N_ASD_LIQ = 1792
 
-# For genes not in the bgmr file, fall back to raw counts
-Spark_Denovo_sub["HIQ_weight_bgmr"] = Spark_Denovo_sub["HIQ_weight_bgmr"].fillna(
-    Spark_Denovo_sub["HIQ_counts"])
-Spark_Denovo_sub["LIQ_weight_bgmr"] = Spark_Denovo_sub["LIQ_weight_bgmr"].fillna(
-    Spark_Denovo_sub["LIQ_counts"])
+
+def _asd_iq_bgmr_weights(spark_sub, iq_prefix, N_proband, n_top):
+    """Compute BGMR-corrected weights for ASD IQ subgroup."""
+    top = spark_sub.head(n_top)
+    top = top[top[f"{iq_prefix}_counts"] > 0]
+    gw = OrderedDict()
+    for g in top.index:
+        if g not in BGMR.index:
+            continue
+        nLGD = float(top.loc[g, f"{iq_prefix}_LGD"])
+        nDmis = float(top.loc[g, f"{iq_prefix}_Dmis"])
+        exp_LGD = BGMR.loc[g, "p_LGD"] * 2 * N_proband
+        exp_Dmis = BGMR.loc[g, "prevel_0.5"] * 2 * N_proband
+        weight = (nLGD - exp_LGD) + (nDmis - exp_Dmis)
+        gw[g] = max(weight, 0)
+    return gw
+
+
+N_SWEEP = len(Spark_Denovo_sub)
+hiq_all_gw = _asd_iq_bgmr_weights(Spark_Denovo_sub, "HIQ", N_ASD_HIQ, N_SWEEP)
+liq_all_gw = _asd_iq_bgmr_weights(Spark_Denovo_sub, "LIQ", N_ASD_LIQ, N_SWEEP)
+
+Spark_Denovo_sub["HIQ_weight_bgmr"] = 0.0
+Spark_Denovo_sub["LIQ_weight_bgmr"] = 0.0
+for g, w in hiq_all_gw.items():
+    Spark_Denovo_sub.loc[g, "HIQ_weight_bgmr"] = w
+for g, w in liq_all_gw.items():
+    Spark_Denovo_sub.loc[g, "LIQ_weight_bgmr"] = w
+
+print(f"HIQ BGMR weights: {len(hiq_all_gw)} genes with nonzero weight")
+print(f"LIQ BGMR weights: {len(liq_all_gw)} genes with nonzero weight")
 
 # %%
 # Compute ASD references inline from top-61 of the same gene weights used in the sweep
@@ -322,45 +412,57 @@ LIQ_Bias = AnnotateCTDat(LIQ_Bias, Anno)
 
 # %%
 # Calculate correlation as genes are added — HIQ (BGMR-corrected)
-GeneIdx_HIQ, Corr_HIQ, Pval_HIQ = [], [], []
-Corr_HIQ_unweighted = []
 GeneIdx = np.arange(10, 200)
-for i in GeneIdx:
-    tmp_HIQ_ASD_GW = dict(zip(Spark_Denovo_sub.index.values[:i], Spark_Denovo_sub["HIQ_weight_bgmr"].values[:i]))
-    tmp_HIQ_ASD_Bias = HumanCT_AvgZ_Weighted(HumanCT_Z2_HCT, tmp_HIQ_ASD_GW)
-    tmp_HIQ_ASD_Bias = AnnotateCTDat(tmp_HIQ_ASD_Bias, Anno)
-    r, p = GetSingeCellBiasCorr(HIQ_Bias, tmp_HIQ_ASD_Bias, efflabel="EFFECT")
+if _SWEEP_CACHE.exists() and not FORCE_RERUN:
+    import pickle as _pkl
+    with open(_SWEEP_CACHE, "rb") as _f:
+        _sw = _pkl.load(_f)
+    Corr_HIQ, Pval_HIQ, Corr_HIQ_unweighted = _sw["HIQ"]
+    print("HIQ sweep: from cache")
+else:
+    Corr_HIQ, Pval_HIQ, Corr_HIQ_unweighted = [], [], []
+    for i in GeneIdx:
+        tmp_HIQ_ASD_GW = dict(zip(Spark_Denovo_sub.index.values[:i], Spark_Denovo_sub["HIQ_weight_bgmr"].values[:i]))
+        tmp_HIQ_ASD_Bias = HumanCT_AvgZ_Weighted(HumanCT_Z2_HCT, tmp_HIQ_ASD_GW)
+        tmp_HIQ_ASD_Bias = AnnotateCTDat(tmp_HIQ_ASD_Bias, Anno)
+        r, p = GetSingeCellBiasCorr(HIQ_Bias, tmp_HIQ_ASD_Bias, efflabel="EFFECT")
 
-    Corr_HIQ.append(r)
-    Pval_HIQ.append(p)
+        Corr_HIQ.append(r)
+        Pval_HIQ.append(p)
 
-    # Unweighted version (each gene has weight 1)
-    tmp_HIQ_ASD_GW_unweighted = dict(zip(Spark_Denovo_sub.index.values[:i], np.ones(i)))
-    tmp_HIQ_ASD_Bias_unweighted = HumanCT_AvgZ_Weighted(HumanCT_Z2_HCT, tmp_HIQ_ASD_GW_unweighted)
-    tmp_HIQ_ASD_Bias_unweighted = AnnotateCTDat(tmp_HIQ_ASD_Bias_unweighted, Anno)
-    r_unweighted, _ = GetSingeCellBiasCorr(HIQ_Bias, tmp_HIQ_ASD_Bias_unweighted, efflabel="EFFECT")
-    Corr_HIQ_unweighted.append(r_unweighted)
+        # Unweighted version (each gene has weight 1)
+        tmp_HIQ_ASD_GW_unweighted = dict(zip(Spark_Denovo_sub.index.values[:i], np.ones(i)))
+        tmp_HIQ_ASD_Bias_unweighted = HumanCT_AvgZ_Weighted(HumanCT_Z2_HCT, tmp_HIQ_ASD_GW_unweighted)
+        tmp_HIQ_ASD_Bias_unweighted = AnnotateCTDat(tmp_HIQ_ASD_Bias_unweighted, Anno)
+        r_unweighted, _ = GetSingeCellBiasCorr(HIQ_Bias, tmp_HIQ_ASD_Bias_unweighted, efflabel="EFFECT")
+        Corr_HIQ_unweighted.append(r_unweighted)
 
 # %%
 # Calculate correlation as genes are added — LIQ (BGMR-corrected)
-GeneIdx_LIQ, Corr_LIQ, Pval_LIQ = [], [], []
-Corr_LIQ_unweighted = []
 GeneIdx = np.arange(10, 200)
-for i in GeneIdx:
-    tmp_LIQ_ASD_GW = dict(zip(Spark_Denovo_sub.index.values[:i], Spark_Denovo_sub["LIQ_weight_bgmr"].values[:i]))
-    tmp_LIQ_ASD_Bias = HumanCT_AvgZ_Weighted(HumanCT_Z2_HCT, tmp_LIQ_ASD_GW)
-    tmp_LIQ_ASD_Bias = AnnotateCTDat(tmp_LIQ_ASD_Bias, Anno)
-    r, p = GetSingeCellBiasCorr(LIQ_Bias, tmp_LIQ_ASD_Bias, efflabel="EFFECT")
+if _SWEEP_CACHE.exists() and not FORCE_RERUN:
+    import pickle as _pkl
+    with open(_SWEEP_CACHE, "rb") as _f:
+        _sw = _pkl.load(_f)
+    Corr_LIQ, Pval_LIQ, Corr_LIQ_unweighted = _sw["LIQ"]
+    print("LIQ sweep: from cache")
+else:
+    Corr_LIQ, Pval_LIQ, Corr_LIQ_unweighted = [], [], []
+    for i in GeneIdx:
+        tmp_LIQ_ASD_GW = dict(zip(Spark_Denovo_sub.index.values[:i], Spark_Denovo_sub["LIQ_weight_bgmr"].values[:i]))
+        tmp_LIQ_ASD_Bias = HumanCT_AvgZ_Weighted(HumanCT_Z2_HCT, tmp_LIQ_ASD_GW)
+        tmp_LIQ_ASD_Bias = AnnotateCTDat(tmp_LIQ_ASD_Bias, Anno)
+        r, p = GetSingeCellBiasCorr(LIQ_Bias, tmp_LIQ_ASD_Bias, efflabel="EFFECT")
 
-    Corr_LIQ.append(r)
-    Pval_LIQ.append(p)
+        Corr_LIQ.append(r)
+        Pval_LIQ.append(p)
 
-    # Unweighted version (each gene has weight 1)
-    tmp_LIQ_ASD_GW_unweighted = dict(zip(Spark_Denovo_sub.index.values[:i], np.ones(i)))
-    tmp_LIQ_ASD_Bias_unweighted = HumanCT_AvgZ_Weighted(HumanCT_Z2_HCT, tmp_LIQ_ASD_GW_unweighted)
-    tmp_LIQ_ASD_Bias_unweighted = AnnotateCTDat(tmp_LIQ_ASD_Bias_unweighted, Anno)
-    r_unweighted, _ = GetSingeCellBiasCorr(LIQ_Bias, tmp_LIQ_ASD_Bias_unweighted, efflabel="EFFECT")
-    Corr_LIQ_unweighted.append(r_unweighted)
+        # Unweighted version (each gene has weight 1)
+        tmp_LIQ_ASD_GW_unweighted = dict(zip(Spark_Denovo_sub.index.values[:i], np.ones(i)))
+        tmp_LIQ_ASD_Bias_unweighted = HumanCT_AvgZ_Weighted(HumanCT_Z2_HCT, tmp_LIQ_ASD_GW_unweighted)
+        tmp_LIQ_ASD_Bias_unweighted = AnnotateCTDat(tmp_LIQ_ASD_Bias_unweighted, Anno)
+        r_unweighted, _ = GetSingeCellBiasCorr(LIQ_Bias, tmp_LIQ_ASD_Bias_unweighted, efflabel="EFFECT")
+        Corr_LIQ_unweighted.append(r_unweighted)
 
 # %%
 _fig_hiq, _, _ = plot_gene_set_correlation(
@@ -370,7 +472,7 @@ _fig_hiq, _, _ = plot_gene_set_correlation(
     corr_label="Bias Correlation",
     ylabel_corr = "Bias Correlation with Main ASD Set",
     pval_label=r"$-\log_{10}$(max p-value of Included Genes)",
-    Corr_unweighted=Corr_HIQ_unweighted,
+    Corr_unweighted=Corr_HIQ_unweighted if SHOW_UNWEIGHTED else None,
     corr_unweighted_label="Bias Correlation (Unweighted)",
     show=False,
 )
@@ -384,7 +486,7 @@ _fig_liq, _, _ = plot_gene_set_correlation(
     corr_label="Bias Correlation",
     ylabel_corr = "Bias Correlation with Main ASD ID Set",
     pval_label=r"$-\log_{10}$(max p-value of Included Genes)",
-    Corr_unweighted=Corr_LIQ_unweighted,
+    Corr_unweighted=Corr_LIQ_unweighted if SHOW_UNWEIGHTED else None,
     corr_unweighted_label="Bias Correlation (Unweighted)",
     show=False,
 )
@@ -427,26 +529,32 @@ DDD_Bias = AnnotateCTDat(DDD_Bias, Anno)
 
 # %%
 # Calculate correlation as genes are added, sorted by significance (descending)
-Corr_DDD, Pval_DDD = [], []
-Corr_DDD_unweighted = []
 GeneIdx = np.arange(10, 200)
-for i in GeneIdx:
-    tmp = DDD_Genes_sub.head(i)
-    tmp_DDD_GW = _ddd_gene_weights(tmp, Nproband=N_DDD, BGMR=BGMR)
-    tmp_DDD_Bias = HumanCT_AvgZ_Weighted(HumanCT_Z2_HCT, tmp_DDD_GW)
-    tmp_DDD_Bias = AnnotateCTDat(tmp_DDD_Bias, Anno)
-    r, p = GetSingeCellBiasCorr(DDD_Bias, tmp_DDD_Bias, efflabel="EFFECT")
+if _SWEEP_CACHE.exists() and not FORCE_RERUN:
+    import pickle as _pkl
+    with open(_SWEEP_CACHE, "rb") as _f:
+        _sw = _pkl.load(_f)
+    Corr_DDD, Pval_DDD, Corr_DDD_unweighted = _sw["DDD"]
+    print("DDD sweep: from cache")
+else:
+    Corr_DDD, Pval_DDD, Corr_DDD_unweighted = [], [], []
+    for i in GeneIdx:
+        tmp = DDD_Genes_sub.head(i)
+        tmp_DDD_GW = _ddd_gene_weights(tmp, Nproband=N_DDD, BGMR=BGMR)
+        tmp_DDD_Bias = HumanCT_AvgZ_Weighted(HumanCT_Z2_HCT, tmp_DDD_GW)
+        tmp_DDD_Bias = AnnotateCTDat(tmp_DDD_Bias, Anno)
+        r, p = GetSingeCellBiasCorr(DDD_Bias, tmp_DDD_Bias, efflabel="EFFECT")
 
-    Corr_DDD.append(r)
-    Pval_DDD.append(p)
+        Corr_DDD.append(r)
+        Pval_DDD.append(p)
 
-    # Unweighted version: valid genes get weight=1, invalid get weight=0
-    valid_ids = tmp[tmp["EntrezID"].isin(BGMR.index)]["EntrezID"].values
-    tmp_DDD_GW_unweighted = dict(zip(valid_ids, np.ones(len(valid_ids))))
-    tmp_DDD_Bias_unweighted = HumanCT_AvgZ_Weighted(HumanCT_Z2_HCT, tmp_DDD_GW_unweighted)
-    tmp_DDD_Bias_unweighted = AnnotateCTDat(tmp_DDD_Bias_unweighted, Anno)
-    r_unweighted, _ = GetSingeCellBiasCorr(DDD_Bias, tmp_DDD_Bias_unweighted, efflabel="EFFECT")
-    Corr_DDD_unweighted.append(r_unweighted)
+        # Unweighted version: valid genes get weight=1, invalid get weight=0
+        valid_ids = tmp[tmp["EntrezID"].isin(BGMR.index)]["EntrezID"].values
+        tmp_DDD_GW_unweighted = dict(zip(valid_ids, np.ones(len(valid_ids))))
+        tmp_DDD_Bias_unweighted = HumanCT_AvgZ_Weighted(HumanCT_Z2_HCT, tmp_DDD_GW_unweighted)
+        tmp_DDD_Bias_unweighted = AnnotateCTDat(tmp_DDD_Bias_unweighted, Anno)
+        r_unweighted, _ = GetSingeCellBiasCorr(DDD_Bias, tmp_DDD_Bias_unweighted, efflabel="EFFECT")
+        Corr_DDD_unweighted.append(r_unweighted)
 
 # %%
 _fig_ddd, _, _ = plot_gene_set_correlation(
@@ -456,7 +564,7 @@ _fig_ddd, _, _ = plot_gene_set_correlation(
     corr_label="Bias Correlation",
     ylabel_corr = "Bias Correlation with Main DDD Set",
     pval_label=r"$-\log_{10}$(max p-value of Included Genes)",
-    Corr_unweighted=Corr_DDD_unweighted,
+    Corr_unweighted=Corr_DDD_unweighted if SHOW_UNWEIGHTED else None,
     corr_unweighted_label="Bias Correlation (Unweighted)",
     show=False,
 )
@@ -588,9 +696,9 @@ fig, ax1 = plt.subplots(figsize=(7, 4.5), dpi=120)
 color_corr = "#1f77b4"
 color_pval = "#d62728"
 
-ax1.plot(start_ranks + 1, window_corrs, color=color_corr, marker="o", markersize=5, lw=2, label="Spearman ρ with top-61")
+ax1.plot(start_ranks + 1, window_corrs, color=color_corr, marker="o", markersize=5, lw=2, label="Spearmans' R with top-61")
 ax1.set_xlabel("Starting gene rank", fontsize=12)
-ax1.set_ylabel("Spearman ρ (window bias vs top-61 bias)", color=color_corr, fontsize=11)
+ax1.set_ylabel("Spearmans' R (window bias vs top-61 bias)", color=color_corr, fontsize=11)
 ax1.tick_params(axis="y", labelcolor=color_corr)
 ax1.set_ylim(-0.1, 1.05)
 ax1.axhline(0, color="gray", lw=0.5, alpha=0.5)
@@ -630,7 +738,7 @@ else:
 # - **Real**: append the next ranked disease genes (62–N)
 # - **Random**: append random genes to the fixed top-61 core (100 reps, 95% CI)
 #
-# Metric: Spearman ρ between expanded bias profile and top-61 reference.
+# Metric: Spearmans' R between expanded bias profile and top-61 reference.
 
 # %%
 from joblib import Parallel, delayed
@@ -640,14 +748,19 @@ from joblib import Parallel, delayed
 # with BGMR-corrected weights for top-61 and raw counts beyond.
 # We build identical DataFrames here for consistency.
 
-# ASD with ID: from Spark_Denovo_sub, same ranking as Panel C sweep
-LIQ_GW_full = pd.DataFrame({
-    "Weight": Spark_Denovo_sub["LIQ_weight_bgmr"].values
-}, index=Spark_Denovo_sub.index)
-LIQ_GW_full["Weight"] = LIQ_GW_full["Weight"].clip(lower=0)
+# ASD (all): BGMR-corrected weights for ALL ranked genes using full cohort
+N_ASD_ALL = 42607
+ASD_GW_full = pd.DataFrame({"Weight": 0.0}, index=Spark_Denovo_sub.index)
+for g in Spark_Denovo_sub.index:
+    if g not in BGMR.index:
+        continue
+    nLGD = float(Spark_Denovo_sub.loc[g, "AutismMerged_LoF"])
+    nDmis = float(Spark_Denovo_sub.loc[g, "AutismMerged_Dmis_REVEL0.5"])
+    exp_LGD = BGMR.loc[g, "p_LGD"] * 2 * N_ASD_ALL
+    exp_Dmis = BGMR.loc[g, "prevel_0.5"] * 2 * N_ASD_ALL
+    ASD_GW_full.loc[g, "Weight"] = max((nLGD - exp_LGD) + (nDmis - exp_Dmis), 0)
 
-# DDD: from DDD_Genes_sub, same ranking as Panel D sweep
-# Compute BGMR-corrected weights for ALL genes (not just top-61)
+# DDD: BGMR-corrected weights for ALL genes
 _ddd_all_gw = _ddd_gene_weights(DDD_Genes_sub, Nproband=N_DDD, BGMR=BGMR)
 DDD_GW_full = pd.DataFrame([
     {"EntrezID": row["EntrezID"], "Weight": _ddd_all_gw.get(row["EntrezID"], 0)}
@@ -656,110 +769,116 @@ DDD_GW_full = pd.DataFrame([
 ]).set_index("EntrezID")
 DDD_GW_full["Weight"] = DDD_GW_full["Weight"].clip(lower=0)
 
-print(f"SCZ: {len(GeneWeights)} genes, ASD(ID): {len(LIQ_GW_full)} genes, DDD: {len(DDD_GW_full)} genes")
-print("(Same gene ranking and weights as sweep Panels A-D)")
+n_asd_nz = (ASD_GW_full["Weight"] > 0).sum()
+print(f"SCZ: {len(GeneWeights)} genes, ASD: {n_asd_nz} nonzero, DDD: {len(DDD_GW_full)} genes")
 
 # %%
-n_add_values = np.arange(0, 150, 10)  # 0, 10, ..., 140 → total 61–201
+n_add_values = np.array([0, 1, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140])
 n_reps = 100
 
 disorder_configs = [
-    ("SCZ",         GeneWeights,  "#ff7f0e"),
-    ("ASD with ID", LIQ_GW_full,  "#1f77b4"),
-    ("DDD",         DDD_GW_full,  "#2ca02c"),
+    ("SCZ",  GeneWeights,  "#ff7f0e"),
+    ("ASD",  ASD_GW_full,  "#1f77b4"),
+    ("DDD",  DDD_GW_full,  "#2ca02c"),
 ]
 
-all_results = {}
+if _EXP_CACHE.exists() and not FORCE_RERUN:
+    with open(_EXP_CACHE, "rb") as _f:
+        _exp = pickle.load(_f)
+    all_results = _exp["all_results"]
+    print("R3.2c expansion: from cache")
+else:
+    all_results = {}
 
-for disorder_name, gw_df, color in disorder_configs:
-    print(f"\n{'='*50}")
-    print(f"Processing {disorder_name} ({len(gw_df)} genes available)")
+    for disorder_name, gw_df, color in disorder_configs:
+        print(f"\n{'='*50}")
+        print(f"Processing {disorder_name} ({len(gw_df)} genes available)")
 
-    # Reference: top-61 bias profile for this disorder
-    n_ref = min(61, len(gw_df))
-    ref_gw = dict(zip(gw_df.index[:n_ref], gw_df["Weight"].values[:n_ref]))
-    ref_bias = HumanCT_AvgZ_Weighted(HumanCT_Z2_HCT, ref_gw)
-    ref_bias = AnnotateCTDat(ref_bias, Anno)
-    ref_effect = ref_bias["EFFECT"].values
-    common_idx = ref_bias.index
+        # Reference: top-61 bias profile for this disorder
+        n_ref = min(61, len(gw_df))
+        ref_gw = dict(zip(gw_df.index[:n_ref], gw_df["Weight"].values[:n_ref]))
+        ref_bias = HumanCT_AvgZ_Weighted(HumanCT_Z2_HCT, ref_gw)
+        ref_bias = AnnotateCTDat(ref_bias, Anno)
+        ref_effect = ref_bias["EFFECT"].values
+        common_idx = ref_bias.index
 
-    # Gene pool for random: exclude top-200 of this disorder
-    n_exclude = min(200, len(gw_df))
-    exclude_set = set(gw_df.index[:n_exclude].astype(int))
-    gene_pool = np.array([g for g in HumanCT_Z2_HCT.index.values if g not in exclude_set])
+        # Gene pool for random: exclude top-200 of this disorder
+        n_exclude = min(200, len(gw_df))
+        exclude_set = set(gw_df.index[:n_exclude].astype(int))
+        gene_pool = np.array([g for g in HumanCT_Z2_HCT.index.values if g not in exclude_set])
 
-    # Full weight vector — only use genes with nonzero weight for expansion.
-    # Zero-weight genes (no mutations) contribute nothing to bias but inflate n_add,
-    # causing random noise (which averages to ~0 on mean-centered data) to appear
-    # to "preserve" correlation better than real signal.
-    all_weights = gw_df["Weight"].values
+        # Full weight vector — only use genes with nonzero weight for expansion.
+        # Zero-weight genes (no mutations) contribute nothing to bias but inflate n_add,
+        # causing random noise (which averages to ~0 on mean-centered data) to appear
+        # to "preserve" correlation better than real signal.
+        all_weights = gw_df["Weight"].values
 
-    # Build list of (index, weight) for genes beyond top-61 with nonzero weight
-    added_pool = [(gw_df.index[i], all_weights[i])
-                  for i in range(n_ref, len(gw_df)) if all_weights[i] > 0]
-    added_indices = [x[0] for x in added_pool]
-    added_weights = np.array([x[1] for x in added_pool])
-    print(f"  Genes beyond top-{n_ref} with nonzero weight: {len(added_pool)}")
+        # Build list of (index, weight) for genes beyond top-61 with nonzero weight
+        added_pool = [(gw_df.index[i], all_weights[i])
+                      for i in range(n_ref, len(gw_df)) if all_weights[i] > 0]
+        added_indices = [x[0] for x in added_pool]
+        added_weights = np.array([x[1] for x in added_pool])
+        print(f"  Genes beyond top-{n_ref} with nonzero weight: {len(added_pool)}")
 
-    # ---- Real ranked genes (only nonzero-weight) ----
-    real_corrs = []
-    for n_add in n_add_values:
-        n_use = min(n_add, len(added_pool))
-        gw = dict(zip(gw_df.index[:n_ref], all_weights[:n_ref]))
-        gw.update(dict(zip(added_indices[:n_use], added_weights[:n_use])))
-        bias = HumanCT_AvgZ_Weighted(HumanCT_Z2_HCT, gw)
-        bias = AnnotateCTDat(bias, Anno)
-        r, _ = spearmanr(ref_effect, bias.loc[common_idx, "EFFECT"].values)
-        real_corrs.append(r)
+        # ---- Real ranked genes (only nonzero-weight) ----
+        real_corrs = []
+        for n_add in n_add_values:
+            n_use = min(n_add, len(added_pool))
+            gw = dict(zip(gw_df.index[:n_ref], all_weights[:n_ref]))
+            gw.update(dict(zip(added_indices[:n_use], added_weights[:n_use])))
+            bias = HumanCT_AvgZ_Weighted(HumanCT_Z2_HCT, gw)
+            bias = AnnotateCTDat(bias, Anno)
+            r, _ = spearmanr(ref_effect, bias.loc[common_idx, "EFFECT"].values)
+            real_corrs.append(r)
 
-    # ---- Random gene additions (matched nonzero weights) ----
-    # Random genes get the same weights as the real nonzero-weight genes,
-    # so the only difference is gene identity.
-    def _one_random_trial(n_use, seed, top61_idx, top61_wt, gene_pool, rank_weights):
-        rng = np.random.default_rng(seed)
-        rand_genes = rng.choice(gene_pool, size=n_use, replace=False)
-        gw = dict(zip(top61_idx, top61_wt))
-        gw.update(dict(zip(rand_genes, rank_weights[:n_use])))
-        bias = HumanCT_AvgZ_Weighted(HumanCT_Z2_HCT, gw)
-        bias = AnnotateCTDat(bias, Anno)
-        r, _ = spearmanr(ref_effect, bias.loc[common_idx, "EFFECT"].values)
-        return r
+        # ---- Random gene additions (matched nonzero weights) ----
+        # Random genes get the same weights as the real nonzero-weight genes,
+        # so the only difference is gene identity.
+        def _one_random_trial(n_use, seed, top61_idx, top61_wt, gene_pool, rank_weights):
+            rng = np.random.default_rng(seed)
+            rand_genes = rng.choice(gene_pool, size=n_use, replace=False)
+            gw = dict(zip(top61_idx, top61_wt))
+            gw.update(dict(zip(rand_genes, rank_weights[:n_use])))
+            bias = HumanCT_AvgZ_Weighted(HumanCT_Z2_HCT, gw)
+            bias = AnnotateCTDat(bias, Anno)
+            r, _ = spearmanr(ref_effect, bias.loc[common_idx, "EFFECT"].values)
+            return r
 
-    top61_idx = gw_df.index[:n_ref]
-    top61_wt = gw_df["Weight"].values[:n_ref]
+        top61_idx = gw_df.index[:n_ref]
+        top61_wt = gw_df["Weight"].values[:n_ref]
 
-    rand_mean = [1.0]
-    rand_lo = [1.0]
-    rand_hi = [1.0]
+        rand_mean = [1.0]
+        rand_lo = [1.0]
+        rand_hi = [1.0]
 
-    for n_add in n_add_values[1:]:
-        n_use = min(n_add, len(added_pool))
-        if n_use == 0:
-            rand_mean.append(1.0)
-            rand_lo.append(1.0)
-            rand_hi.append(1.0)
-            continue
-        rs = Parallel(n_jobs=10)(
-            delayed(_one_random_trial)(
-                n_use, seed=hash((disorder_name, n_add, rep)) % (2**31),
-                top61_idx=top61_idx, top61_wt=top61_wt,
-                gene_pool=gene_pool, rank_weights=added_weights,
+        for n_add in n_add_values[1:]:
+            n_use = min(n_add, len(added_pool))
+            if n_use == 0:
+                rand_mean.append(1.0)
+                rand_lo.append(1.0)
+                rand_hi.append(1.0)
+                continue
+            rs = Parallel(n_jobs=10)(
+                delayed(_one_random_trial)(
+                    n_use, seed=hash((disorder_name, n_add, rep)) % (2**31),
+                    top61_idx=top61_idx, top61_wt=top61_wt,
+                    gene_pool=gene_pool, rank_weights=added_weights,
+                )
+                for rep in range(n_reps)
             )
-            for rep in range(n_reps)
-        )
-        rs = np.array(rs)
-        rand_mean.append(rs.mean())
-        rand_lo.append(np.percentile(rs, 2.5))
-        rand_hi.append(np.percentile(rs, 97.5))
+            rs = np.array(rs)
+            rand_mean.append(rs.mean())
+            rand_lo.append(np.percentile(rs, 2.5))
+            rand_hi.append(np.percentile(rs, 97.5))
 
-    all_results[disorder_name] = {
-        "real": np.array(real_corrs),
-        "rand_mean": np.array(rand_mean),
-        "rand_lo": np.array(rand_lo),
-        "rand_hi": np.array(rand_hi),
-        "color": color,
-    }
-    print(f"  Done. Real ρ at N=201: {real_corrs[-1]:.3f}, Random mean: {rand_mean[-1]:.3f}")
+        all_results[disorder_name] = {
+            "real": np.array(real_corrs),
+            "rand_mean": np.array(rand_mean),
+            "rand_lo": np.array(rand_lo),
+            "rand_hi": np.array(rand_hi),
+            "color": color,
+        }
+        print(f"  Done. Real ρ at N=201: {real_corrs[-1]:.3f}, Random mean: {rand_mean[-1]:.3f}")
 
 # %%
 total_genes = 61 + n_add_values
@@ -787,7 +906,7 @@ for ax, (disorder_name, gw_df, color) in zip(axes, disorder_configs):
     for spine in ["top", "right"]:
         ax.spines[spine].set_visible(False)
 
-axes[0].set_ylabel("Spearman ρ with top-61 bias profile", fontsize=12)
+axes[0].set_ylabel("Spearmans' R with top-61 bias profile", fontsize=12)
 
 fig.suptitle("R3.2c — Expanding gene sets: real ranked genes vs random additions",
              fontsize=14, fontweight="bold", y=1.02)
@@ -815,85 +934,95 @@ plt.show()
 
 # %%
 # Compute slice-only correlations for all disorders
-slice_results = {}
+if _EXP_CACHE.exists() and not FORCE_RERUN and "slice_results" in pickle.load(open(_EXP_CACHE,"rb")):
+    with open(_EXP_CACHE, "rb") as _f:
+        slice_results = pickle.load(_f)["slice_results"]
+    print("Slice analysis: from cache")
+else:
+    slice_results = {}
 
-for disorder_name, gw_df, color in disorder_configs:
-    print(f"\n{'='*50}")
-    print(f"Slice analysis: {disorder_name}")
+    for disorder_name, gw_df, color in disorder_configs:
+        print(f"\n{'='*50}")
+        print(f"Slice analysis: {disorder_name}")
 
-    n_ref = min(61, len(gw_df))
-    ref_gw = dict(zip(gw_df.index[:n_ref], gw_df["Weight"].values[:n_ref]))
-    ref_bias = HumanCT_AvgZ_Weighted(HumanCT_Z2_HCT, ref_gw)
-    ref_bias = AnnotateCTDat(ref_bias, Anno)
-    ref_effect = ref_bias["EFFECT"].values
-    common_idx = ref_bias.index
+        n_ref = min(61, len(gw_df))
+        ref_gw = dict(zip(gw_df.index[:n_ref], gw_df["Weight"].values[:n_ref]))
+        ref_bias = HumanCT_AvgZ_Weighted(HumanCT_Z2_HCT, ref_gw)
+        ref_bias = AnnotateCTDat(ref_bias, Anno)
+        ref_effect = ref_bias["EFFECT"].values
+        common_idx = ref_bias.index
 
-    all_weights = gw_df["Weight"].values
-    added_pool = [(gw_df.index[i], all_weights[i])
-                  for i in range(n_ref, len(gw_df)) if all_weights[i] > 0]
-    added_indices = [x[0] for x in added_pool]
-    added_weights = np.array([x[1] for x in added_pool])
+        all_weights = gw_df["Weight"].values
+        added_pool = [(gw_df.index[i], all_weights[i])
+                      for i in range(n_ref, len(gw_df)) if all_weights[i] > 0]
+        added_indices = [x[0] for x in added_pool]
+        added_weights = np.array([x[1] for x in added_pool])
 
-    n_exclude = min(200, len(gw_df))
-    exclude_set = set(gw_df.index[:n_exclude].astype(int))
-    gene_pool = np.array([g for g in HumanCT_Z2_HCT.index.values if g not in exclude_set])
+        n_exclude = min(200, len(gw_df))
+        exclude_set = set(gw_df.index[:n_exclude].astype(int))
+        gene_pool = np.array([g for g in HumanCT_Z2_HCT.index.values if g not in exclude_set])
 
-    # ---- Real slice only (no top-61 core) ----
-    real_slice_corrs = [np.nan]  # n_add=0 → no genes → undefined
-    for n_add in n_add_values[1:]:
-        n_use = min(n_add, len(added_pool))
-        if n_use == 0:
-            real_slice_corrs.append(np.nan)
-            continue
-        gw = dict(zip(added_indices[:n_use], added_weights[:n_use]))
-        bias = HumanCT_AvgZ_Weighted(HumanCT_Z2_HCT, gw)
-        bias = AnnotateCTDat(bias, Anno)
-        r, _ = spearmanr(ref_effect, bias.loc[common_idx, "EFFECT"].values)
-        real_slice_corrs.append(r)
+        # ---- Real slice only (no top-61 core) ----
+        max_real_add = len(added_pool)
+        real_slice_corrs = [np.nan]  # n_add=0 → no genes → undefined
+        for n_add in n_add_values[1:]:
+            if n_add > max_real_add:
+                real_slice_corrs.append(np.nan)  # pool exhausted
+                continue
+            n_use = min(n_add, max_real_add)
+            if n_use == 0:
+                real_slice_corrs.append(np.nan)
+                continue
+            gw = dict(zip(added_indices[:n_use], added_weights[:n_use]))
+            bias = HumanCT_AvgZ_Weighted(HumanCT_Z2_HCT, gw)
+            bias = AnnotateCTDat(bias, Anno)
+            r, _ = spearmanr(ref_effect, bias.loc[common_idx, "EFFECT"].values)
+            real_slice_corrs.append(r)
+        print(f"  {disorder_name}: {max_real_add} nonzero-weight genes beyond top-61")
 
-    # ---- Random slice only (no top-61 core) ----
-    def _one_random_slice_trial(n_use, seed, gene_pool, rank_weights, ref_effect, common_idx):
-        rng = np.random.default_rng(seed)
-        rand_genes = rng.choice(gene_pool, size=n_use, replace=False)
-        gw = dict(zip(rand_genes, rank_weights[:n_use]))
-        bias = HumanCT_AvgZ_Weighted(HumanCT_Z2_HCT, gw)
-        bias = AnnotateCTDat(bias, Anno)
-        r, _ = spearmanr(ref_effect, bias.loc[common_idx, "EFFECT"].values)
-        return r
+        # ---- Random slice only (no top-61 core) ----
+        def _one_random_slice_trial(n_use, seed, gene_pool, rank_weights, ref_effect, common_idx):
+            rng = np.random.default_rng(seed)
+            rand_genes = rng.choice(gene_pool, size=n_use, replace=False)
+            gw = dict(zip(rand_genes, rank_weights[:n_use]))
+            bias = HumanCT_AvgZ_Weighted(HumanCT_Z2_HCT, gw)
+            bias = AnnotateCTDat(bias, Anno)
+            r, _ = spearmanr(ref_effect, bias.loc[common_idx, "EFFECT"].values)
+            return r
 
-    rand_slice_mean = [np.nan]
-    rand_slice_lo = [np.nan]
-    rand_slice_hi = [np.nan]
+        rand_slice_mean = [np.nan]
+        rand_slice_lo = [np.nan]
+        rand_slice_hi = [np.nan]
 
-    for n_add in n_add_values[1:]:
-        n_use = min(n_add, len(added_pool))
-        if n_use == 0:
-            rand_slice_mean.append(np.nan)
-            rand_slice_lo.append(np.nan)
-            rand_slice_hi.append(np.nan)
-            continue
-        rs = Parallel(n_jobs=10)(
-            delayed(_one_random_slice_trial)(
-                n_use, seed=hash((disorder_name, "slice", n_add, rep)) % (2**31),
-                gene_pool=gene_pool, rank_weights=added_weights,
-                ref_effect=ref_effect, common_idx=common_idx,
+        for n_add in n_add_values[1:]:
+            n_use = min(n_add, len(added_pool))
+            if n_use == 0:
+                rand_slice_mean.append(np.nan)
+                rand_slice_lo.append(np.nan)
+                rand_slice_hi.append(np.nan)
+                continue
+            rs = Parallel(n_jobs=10)(
+                delayed(_one_random_slice_trial)(
+                    n_use, seed=hash((disorder_name, "slice", n_add, rep)) % (2**31),
+                    gene_pool=gene_pool, rank_weights=added_weights,
+                    ref_effect=ref_effect, common_idx=common_idx,
+                )
+                for rep in range(n_reps)
             )
-            for rep in range(n_reps)
-        )
-        rs = np.array(rs)
-        rand_slice_mean.append(rs.mean())
-        rand_slice_lo.append(np.percentile(rs, 2.5))
-        rand_slice_hi.append(np.percentile(rs, 97.5))
+            rs = np.array(rs)
+            rand_slice_mean.append(rs.mean())
+            rand_slice_lo.append(np.percentile(rs, 2.5))
+            rand_slice_hi.append(np.percentile(rs, 97.5))
 
-    slice_results[disorder_name] = {
-        "real": np.array(real_slice_corrs, dtype=float),
-        "rand_mean": np.array(rand_slice_mean, dtype=float),
-        "rand_lo": np.array(rand_slice_lo, dtype=float),
-        "rand_hi": np.array(rand_slice_hi, dtype=float),
-        "color": color,
-    }
-    print(f"  Real slice at N=140: rho={real_slice_corrs[-1]:.3f}, "
-          f"Random mean: {rand_slice_mean[-1]:.3f}")
+        slice_results[disorder_name] = {
+            "real": np.array(real_slice_corrs, dtype=float),
+            "rand_mean": np.array(rand_slice_mean, dtype=float),
+            "rand_lo": np.array(rand_slice_lo, dtype=float),
+            "rand_hi": np.array(rand_slice_hi, dtype=float),
+            "color": color,
+        }
+        print(f"  Real slice at N=140: rho={real_slice_corrs[-1]:.3f}, "
+              f"Random mean: {rand_slice_mean[-1]:.3f}")
 
 # %%
 # Plot slice-only panels
@@ -922,7 +1051,7 @@ for ax, (disorder_name, gw_df, color) in zip(axes, disorder_configs):
     for spine in ["top", "right"]:
         ax.spines[spine].set_visible(False)
 
-axes[0].set_ylabel("Spearman ρ with top-61 bias (slice only, no core)", fontsize=12)
+axes[0].set_ylabel("Spearmans' R with top-61 bias (slice only, no core)", fontsize=12)
 
 fig.suptitle("Incremental gene correlation with main set (slice only, no top-61 core)",
              fontsize=14, fontweight="bold", y=1.02)
@@ -934,6 +1063,27 @@ fig.savefig(_figdir + "FigSX_gene_expansion_slice.png",
             dpi=300, bbox_inches='tight', transparent=True, facecolor='none')
 print(f"Saved: {_figdir}FigSX_gene_expansion_slice.pdf/png")
 plt.show()
+
+# %%
+# Save sweep cache
+if not (_SWEEP_CACHE.exists() and not FORCE_RERUN):
+    _sw_data = {
+        'SCZ': (Corr_SCZ, Pval_SCZ, Corr_SCZ_unweighted),
+        'HIQ': (Corr_HIQ, Pval_HIQ, Corr_HIQ_unweighted),
+        'LIQ': (Corr_LIQ, Pval_LIQ, Corr_LIQ_unweighted),
+        'DDD': (Corr_DDD, Pval_DDD, Corr_DDD_unweighted),
+    }
+    with open(_SWEEP_CACHE, "wb") as f:
+        pickle.dump(_sw_data, f)
+    print(f"Saved sweep cache: {_SWEEP_CACHE}")
+
+# %%
+# Save expansion/slice cache
+if not (_EXP_CACHE.exists() and not FORCE_RERUN):
+    _exp_data = {"all_results": all_results, "slice_results": slice_results}
+    with open(_EXP_CACHE, "wb") as f:
+        pickle.dump(_exp_data, f)
+    print(f"Saved expansion/slice cache: {_EXP_CACHE}")
 
 # Save plot data for Figures_Supp inline plotting
 import pickle
@@ -1090,7 +1240,7 @@ fig, ax = plt.subplots(figsize=(7, 4), dpi=120)
 ax.hist(rand_rs, bins=20, color="#2ca02c", alpha=0.6, edgecolor="white", label="Random draws (n=100)")
 ax.axvline(real_r, color="red", lw=2.5, ls="--", label=f"Real top-{61+n_real_added} (rho={real_r:.3f})")
 ax.axvline(rand_rs.mean(), color="gray", lw=1.5, ls=":", label=f"Random mean (rho={rand_rs.mean():.3f})")
-ax.set_xlabel("Spearman rho with top-61 DDD reference", fontsize=12)
+ax.set_xlabel("Spearmans' R with top-61 DDD reference", fontsize=12)
 ax.set_ylabel("Count", fontsize=12)
 ax.set_title(f"DDD: Real top-{61+n_real_added} vs 61 + {n_real_added} random genes\n"
              f"p(random >= real) = {p_empirical:.2f}", fontsize=12, fontweight="bold")
@@ -1174,7 +1324,7 @@ ax.axvline(real_slice_r, color="red", lw=2.5, ls="--",
            label=f"Real genes 62-200 (rho={real_slice_r:.3f})")
 ax.axvline(rand_slice_rs.mean(), color="gray", lw=1.5, ls=":",
            label=f"Random mean (rho={rand_slice_rs.mean():.3f})")
-ax.set_xlabel("Spearman rho with top-61 DDD bias (slice ONLY, no core)", fontsize=12)
+ax.set_xlabel("Spearmans' R with top-61 DDD bias (slice ONLY, no core)", fontsize=12)
 ax.set_ylabel("Count", fontsize=12)
 ax.set_title(f"DDD: Isolated slice 62-200 vs {n_rand} random genes\n"
              f"p(random >= real) = {p_slice:.2f}", fontsize=12, fontweight="bold")

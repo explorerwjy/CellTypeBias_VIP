@@ -403,12 +403,12 @@ print(f"Saved top-enrichment tables to {OUTPUT_DIR}")
 # | Method                         | VNR Rank | EDU Rank | Notes                              |
 # |--------------------------------|----------|----------|------------------------------------|
 # | OLS beta (PBS)                 | #7       | #4       | Linear assumption                  |
-# | Spearman rho                   | #12      | **#2**   | Best for EDU                       |
+# | Spearmans' R                   | #12      | **#2**   | Best for EDU                       |
 # | Top 5% enrichment (MWU)       | **#4**   | #8       | Best for VNR, top interneuron      |
 #
 # **Conclusion:** CGE interneurons are the **top-ranked interneuron supercluster**
 # for VNR in the top-5% enrichment analysis (rank #4 overall), and rank #2 for EDU
-# using Spearman correlation. No single metric places CGE first for both phenotypes,
+# using Spearmans' R. No single metric places CGE first for both phenotypes,
 # but CGE consistently outranks MGE and other interneuron superclusters across methods.
 # The top-5% enrichment is the primary reported metric because it focuses on the most
 # cell-type-defining genes and avoids assuming a linear specificity-BETA relationship.

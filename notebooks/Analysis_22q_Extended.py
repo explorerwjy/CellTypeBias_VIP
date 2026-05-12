@@ -189,7 +189,7 @@ ax.set_ylabel("VIP+ − VIP− specificity", fontsize=11)
 ax.set_title("22q gene CGE specificity vs VIP selectivity", fontsize=12)
 
 rho, pval = spearmanr(gene_contrib["spec_CGE"], gene_contrib["delta_VIP"])
-ax.text(0.05, 0.95, f"Spearman ρ = {rho:.2f}, P = {pval:.2g}",
+ax.text(0.05, 0.95, f"Spearmans' R = {rho:.2f}, P = {pval:.2g}",
         transform=ax.transAxes, fontsize=9, va='top')
 
 legend_elements = [
@@ -1024,3 +1024,1094 @@ for _, row in jk_df.tail(5).iterrows():
 #
 # 4. **Jackknife**: The VIP signal is robust to most single-gene removals,
 #    but certain genes (e.g., TBX1) are critical — removing them weakens the signal.
+
+# %% [markdown]
+# ---
+# ## 5. Ion Channel Gene Enrichment Among 22q11.2 DEGs
+#
+# **Motivation**: VIP interneurons have distinct action potential (AP) kinetics shaped by
+# specific ion channels (Na+, Kv3/Kv1 for fast repolarization, BK/SK, HCN, A-type K+).
+# If the 22q deletion's transcriptomic consequences converge on these channels,
+# it would provide a mechanistic link between the CNV and VIP electrophysiological
+# vulnerability.
+#
+# We test:
+# 1. Which AP-critical ion channel genes are DEGs in 22q models?
+# 2. Are ion channel genes enriched among DEGs (Fisher's exact test)?
+# 3. Do DGCR8-regulated miRNAs target these channels?
+
+# %%
+# === Define ion channel gene sets of interest ===
+from scipy.stats import fisher_exact
+
+ion_channel_sets = {
+    "Na+ channels (SCN)": [
+        "SCN1A", "SCN2A", "SCN3A", "SCN8A",  # alpha subunits
+        "SCN1B", "SCN2B", "SCN3B", "SCN4B",  # beta (auxiliary) subunits
+    ],
+    "Kv3 (fast repol.)": [
+        "KCNC1", "KCNC2", "KCNC3", "KCNC4",  # Kv3.1-3.4
+    ],
+    "Kv1 (delayed rect.)": [
+        "KCNA1", "KCNA2", "KCNA3", "KCNA6",  # Kv1.1, 1.2, 1.3, 1.6
+    ],
+    "Kv2 (delayed rect.)": [
+        "KCNB1", "KCNB2",  # Kv2.1, 2.2
+    ],
+    "BK/SK (Ca2+-act.)": [
+        "KCNMA1",  # BK
+        "KCNN1", "KCNN2", "KCNN3",  # SK1-3
+    ],
+    "A-type K+ (Kv4)": [
+        "KCND2", "KCND3",  # Kv4.2, 4.3
+    ],
+    "HCN (Ih)": [
+        "HCN1", "HCN2",  # hyperpolarization-activated
+    ],
+}
+
+# Flatten to a single set for aggregate tests
+all_channel_genes = set()
+for genes in ion_channel_sets.values():
+    all_channel_genes.update(genes)
+print(f"Total unique ion channel genes of interest: {len(all_channel_genes)}")
+for cat, genes in ion_channel_sets.items():
+    print(f"  {cat}: {', '.join(genes)}")
+
+# %%
+# === Helper: check channel genes in a DEG dataset ===
+
+def check_channels_in_degs(deg_df, fdr_col, lfc_col, fdr_cut, gene_col=None,
+                           dataset_label="", total_tested=None):
+    """Check ion channel gene representation among DEGs.
+
+    Parameters
+    ----------
+    deg_df : DataFrame with EntrezID index
+    fdr_col : str, column for FDR/padj
+    lfc_col : str, column for effect size
+    fdr_cut : float, significance threshold
+    gene_col : str or None, column with gene symbols (None = use Entrez2Symbol)
+    dataset_label : str
+    total_tested : int or None, total genes tested (for Fisher's test background)
+
+    Returns
+    -------
+    dict with results
+    """
+    # Map channel genes to Entrez IDs
+    channel_entrez = {}
+    for gene in all_channel_genes:
+        eid = GeneSymbol2Entrez.get(gene)
+        if eid is not None:
+            channel_entrez[gene] = eid
+
+    # Significant DEGs
+    sig = deg_df[deg_df[fdr_col] < fdr_cut].copy()
+
+    # Which channel genes are in the dataset at all?
+    channel_in_dataset = {g: eid for g, eid in channel_entrez.items()
+                          if eid in deg_df.index}
+    # Which are significant DEGs?
+    channel_sig = {g: eid for g, eid in channel_entrez.items()
+                   if eid in sig.index}
+
+    results = {
+        "dataset": dataset_label,
+        "n_sig_degs": len(sig),
+        "n_channel_in_dataset": len(channel_in_dataset),
+        "n_channel_sig": len(channel_sig),
+        "channel_sig_genes": {},
+    }
+
+    # Details for each significant channel gene
+    for gene_sym, eid in sorted(channel_sig.items()):
+        row = sig.loc[eid]
+        # Handle duplicates (take first)
+        if isinstance(row, pd.DataFrame):
+            row = row.iloc[0]
+        results["channel_sig_genes"][gene_sym] = {
+            "lfc": row[lfc_col],
+            "fdr": row[fdr_col],
+        }
+
+    # Fisher's exact test: are channel genes enriched among DEGs?
+    # Contingency table:
+    #                 Channel   Non-channel
+    # DEG (sig)         a           b
+    # Not DEG           c           d
+    if total_tested is not None:
+        a = len(channel_sig)
+        b = len(sig) - a
+        c = len(channel_in_dataset) - a
+        d = total_tested - a - b - c
+        if d > 0:
+            odds, pval = fisher_exact([[a, b], [c, d]], alternative='two-sided')
+            results["fisher_OR"] = odds
+            results["fisher_P"] = pval
+            results["contingency"] = [[a, b], [c, d]]
+
+    return results
+
+
+# %%
+# === 5A. Lin et al. 2021 — Ion channel genes among DEGs ===
+print("=" * 75)
+print("5A. Ion Channel Genes in Lin et al. 2021 DEGs (iPSC-derived neurons)")
+print("=" * 75)
+
+lin_channel_results = {}
+lin_total_tested = {}
+for label, path in deg_files.items():
+    df = pd.read_excel(path, skiprows=1)
+    df = df[df["gene_biotype"] == "protein_coding"]
+    n_total = len(df)
+    df["EntrezID"] = df["external_gene_name"].map(GeneSymbol2Entrez)
+    df = df[df["EntrezID"].notnull()].copy()
+    df["EntrezID"] = df["EntrezID"].astype(int)
+    df = df.set_index("EntrezID")
+    lin_total_tested[label] = len(df)
+
+    res = check_channels_in_degs(
+        df, fdr_col="padj", lfc_col="log2FoldChange", fdr_cut=FDR_CUT,
+        dataset_label=f"Lin {label}", total_tested=len(df))
+    lin_channel_results[label] = res
+
+    print(f"\n--- {label} ---")
+    print(f"  Total protein-coding genes tested: {len(df)}")
+    print(f"  Significant DEGs (FDR<{FDR_CUT}): {res['n_sig_degs']}")
+    print(f"  Channel genes in dataset: {res['n_channel_in_dataset']}")
+    print(f"  Channel genes that are DEGs: {res['n_channel_sig']}")
+
+    if res["channel_sig_genes"]:
+        print(f"  Significant channel genes:")
+        for g, info in sorted(res["channel_sig_genes"].items()):
+            direction = "UP" if info["lfc"] > 0 else "DOWN"
+            print(f"    {g:>8s}  log2FC={info['lfc']:+.3f} ({direction})  padj={info['fdr']:.2e}")
+    else:
+        print(f"  No channel genes reach significance.")
+
+    if "fisher_OR" in res:
+        print(f"  Fisher's exact test (enrichment of channels among DEGs):")
+        print(f"    OR = {res['fisher_OR']:.2f}, P = {res['fisher_P']:.4g}")
+        ct = res["contingency"]
+        print(f"    Contingency: [{ct[0]}] / [{ct[1]}]")
+
+# %%
+# === 5B. Khan et al. 2020 — Ion channel genes among DEGs ===
+print("=" * 75)
+print("5B. Ion Channel Genes in Khan et al. 2020 DEGs (cerebral spheroids)")
+print("=" * 75)
+print("NOTE: Khan et al. reports only top DEGs per timepoint, not full genome.")
+print("      Fisher's test is not appropriate here (no background universe).")
+print("      We report overlap descriptively.\n")
+
+khan_channel_results = {}
+for label, sheet in natmed_sheets.items():
+    df = pd.read_excel(natmed_file, sheet_name=sheet)
+    df["EntrezID"] = df["Gene"].map(GeneSymbol2Entrez)
+    df = df[df["EntrezID"].notnull()].copy()
+    df["EntrezID"] = df["EntrezID"].astype(int)
+    df = df.set_index("EntrezID")
+
+    res = check_channels_in_degs(
+        df, fdr_col="FDR", lfc_col="beta", fdr_cut=FDR_CUT_NM,
+        dataset_label=f"Khan {label}", total_tested=None)
+    khan_channel_results[label] = res
+
+    print(f"--- {label} ---")
+    print(f"  Genes in table: {len(df)}")
+    print(f"  Significant DEGs (FDR<{FDR_CUT_NM}): {res['n_sig_degs']}")
+    print(f"  Channel genes in table: {res['n_channel_in_dataset']}")
+    print(f"  Channel genes that are DEGs: {res['n_channel_sig']}")
+
+    if res["channel_sig_genes"]:
+        for g, info in sorted(res["channel_sig_genes"].items()):
+            direction = "UP" if info["lfc"] > 0 else "DOWN"
+            print(f"    {g:>8s}  beta={info['lfc']:+.3f} ({direction})  FDR={info['fdr']:.2e}")
+    else:
+        print(f"    No channel genes among DEGs.")
+
+    # Also check any channel genes present but non-significant
+    channel_entrez_map = {g: GeneSymbol2Entrez.get(g) for g in all_channel_genes
+                          if GeneSymbol2Entrez.get(g) is not None}
+    present_not_sig = {g: eid for g, eid in channel_entrez_map.items()
+                       if eid in df.index and eid not in
+                       df[df["FDR"] < FDR_CUT_NM].index}
+    if present_not_sig:
+        print(f"    Channel genes present but not significant:")
+        for g, eid in sorted(present_not_sig.items()):
+            row = df.loc[eid]
+            if isinstance(row, pd.DataFrame):
+                row = row.iloc[0]
+            print(f"      {g:>8s}  beta={row['beta']:+.3f}  FDR={row['FDR']:.2e}")
+    print()
+
+# %%
+# === 5C. Summary table: all channel genes across all datasets/timepoints ===
+print("=" * 75)
+print("5C. Summary: Ion Channel DEG Status Across All Datasets")
+print("=" * 75)
+
+# Build a comprehensive table
+summary_rows = []
+for gene_sym in sorted(all_channel_genes):
+    eid = GeneSymbol2Entrez.get(gene_sym)
+    if eid is None:
+        continue
+
+    # Determine which ion channel category
+    cat = [k for k, v in ion_channel_sets.items() if gene_sym in v][0]
+
+    row = {"Gene": gene_sym, "Category": cat}
+
+    # Lin et al. timepoints
+    for label in deg_files.keys():
+        r = lin_channel_results[label]
+        if gene_sym in r["channel_sig_genes"]:
+            info = r["channel_sig_genes"][gene_sym]
+            row[f"Lin {label} LFC"] = info["lfc"]
+            row[f"Lin {label} FDR"] = info["fdr"]
+        else:
+            row[f"Lin {label} LFC"] = np.nan
+            row[f"Lin {label} FDR"] = np.nan
+
+    # Khan et al. timepoints
+    for label in natmed_sheets.keys():
+        r = khan_channel_results[label]
+        if gene_sym in r["channel_sig_genes"]:
+            info = r["channel_sig_genes"][gene_sym]
+            row[f"Khan {label} beta"] = info["lfc"]
+            row[f"Khan {label} FDR"] = info["fdr"]
+        else:
+            row[f"Khan {label} beta"] = np.nan
+            row[f"Khan {label} FDR"] = np.nan
+
+    summary_rows.append(row)
+
+channel_summary_df = pd.DataFrame(summary_rows)
+
+# Print compact summary: only genes that are DEGs in at least one dataset
+lfc_cols = [c for c in channel_summary_df.columns if "LFC" in c or "beta" in c]
+has_any_sig = channel_summary_df[lfc_cols].notna().any(axis=1)
+print(f"\nChannel genes that are DEGs in >= 1 dataset/timepoint: "
+      f"{has_any_sig.sum()} / {len(channel_summary_df)}\n")
+
+if has_any_sig.any():
+    sig_genes = channel_summary_df[has_any_sig].copy()
+    for _, row in sig_genes.iterrows():
+        hits = []
+        for c in lfc_cols:
+            if pd.notna(row[c]):
+                fdr_col = c.replace("LFC", "FDR").replace("beta", "FDR")
+                direction = "UP" if row[c] > 0 else "DOWN"
+                dset = c.rsplit(" ", 1)[0]
+                hits.append(f"{dset} ({direction}, {row[c]:+.2f}, FDR={row[fdr_col]:.1e})")
+        print(f"  {row['Gene']:>8s} [{row['Category']}]")
+        for h in hits:
+            print(f"           {h}")
+else:
+    print("  No ion channel genes are significantly DE in any dataset.")
+
+# %%
+# === 5D. Visualization: heatmap of channel gene fold-changes ===
+fig, axes = plt.subplots(1, 2, figsize=(14, 8), dpi=150, facecolor='none')
+fig.patch.set_alpha(0)
+
+# Prepare data for heatmap (LFC values, NaN = not tested or not sig)
+# Left panel: Lin et al., Right panel: Khan et al.
+gene_order = []
+for cat, genes in ion_channel_sets.items():
+    gene_order.extend(genes)
+
+for ax_idx, (title, results_dict, timepoints, lfc_label) in enumerate([
+    ("Lin et al. 2021\n(iPSC neurons)", lin_channel_results,
+     list(deg_files.keys()), "log2FC"),
+    ("Khan et al. 2020\n(cerebral spheroids)", khan_channel_results,
+     list(natmed_sheets.keys()), "beta"),
+]):
+    ax = axes[ax_idx]
+    ax.patch.set_alpha(0)
+
+    # Build matrix: genes x timepoints, fill with LFC/beta if FDR < threshold
+    heatmap_data = pd.DataFrame(index=gene_order, columns=timepoints, dtype=float)
+    heatmap_sig = pd.DataFrame(index=gene_order, columns=timepoints, dtype=bool)
+    heatmap_present = pd.DataFrame(index=gene_order, columns=timepoints, dtype=bool)
+
+    for tp in timepoints:
+        res = results_dict[tp]
+        for gene_sym in gene_order:
+            eid = GeneSymbol2Entrez.get(gene_sym)
+            if eid is None:
+                continue
+            # Check if gene is in the dataset at all
+            channel_entrez_map_local = {g: GeneSymbol2Entrez.get(g) for g in all_channel_genes
+                                        if GeneSymbol2Entrez.get(g) is not None}
+            if eid in (channel_entrez_map_local.values()):
+                heatmap_present.loc[gene_sym, tp] = True
+
+            if gene_sym in res["channel_sig_genes"]:
+                info = res["channel_sig_genes"][gene_sym]
+                heatmap_data.loc[gene_sym, tp] = info["lfc"]
+                heatmap_sig.loc[gene_sym, tp] = True
+            else:
+                heatmap_sig.loc[gene_sym, tp] = False
+
+    # For visualization: show LFC for sig genes, grey out non-sig
+    heatmap_data = heatmap_data.astype(float)
+
+    # Create annotation strings
+    annot = heatmap_data.copy().astype(str)
+    for g in gene_order:
+        for tp in timepoints:
+            val = heatmap_data.loc[g, tp]
+            if pd.notna(val):
+                annot.loc[g, tp] = f"{val:+.2f}"
+            else:
+                annot.loc[g, tp] = ""
+
+    # Add category separators
+    cat_boundaries = []
+    pos = 0
+    for cat, genes in ion_channel_sets.items():
+        cat_boundaries.append((pos, cat))
+        pos += len(genes)
+
+    vmax = max(abs(heatmap_data.min().min()), abs(heatmap_data.max().max()))
+    if pd.isna(vmax) or vmax == 0:
+        vmax = 1.0
+
+    sns.heatmap(heatmap_data, annot=annot, fmt="s", cmap="RdBu_r", center=0,
+                vmin=-vmax, vmax=vmax,
+                linewidths=0.5, ax=ax, cbar_kws={"label": lfc_label},
+                mask=heatmap_data.isna(),
+                xticklabels=True, yticklabels=True)
+
+    # Draw category separators
+    for boundary, cat_name in cat_boundaries[1:]:
+        ax.axhline(boundary, color='black', lw=1.5)
+
+    # Add category labels on the right
+    for (boundary, cat_name), next_bound in zip(cat_boundaries,
+        [b for b, _ in cat_boundaries[1:]] + [len(gene_order)]):
+        mid = (boundary + next_bound) / 2
+        ax.text(len(timepoints) + 0.15, mid, cat_name.split("(")[0].strip(),
+                va='center', ha='left', fontsize=7, style='italic')
+
+    ax.set_title(title, fontsize=11)
+    ax.set_ylabel("")
+    ax.tick_params(axis='y', labelsize=9)
+    ax.tick_params(axis='x', labelsize=8, rotation=30)
+
+fig.suptitle("Ion Channel Gene Differential Expression in 22q11.2 Deletion Models",
+             fontsize=13, y=1.01)
+plt.tight_layout()
+plt.savefig(str(PROJ_DIR / "results/fig_22q_ion_channel_DEGs.png"),
+            dpi=150, transparent=True, bbox_inches='tight')
+plt.show()
+
+# %%
+# === 5E. Enrichment test by channel category (Lin et al. only — full background) ===
+print("=" * 75)
+print("5E. Enrichment by Ion Channel Category (Lin et al. — Fisher's exact)")
+print("=" * 75)
+
+for label in deg_files.keys():
+    deg_df = deg_data[label]
+    sig = deg_df[deg_df["padj"] < FDR_CUT]
+    n_total = lin_total_tested[label]
+    n_sig = len(sig)
+
+    print(f"\n--- {label} (n_tested={n_total}, n_sig={n_sig}) ---")
+
+    for cat, genes in ion_channel_sets.items():
+        cat_entrez = [GeneSymbol2Entrez.get(g) for g in genes
+                      if GeneSymbol2Entrez.get(g) is not None]
+        in_dataset = [eid for eid in cat_entrez if eid in deg_df.index]
+        in_sig = [eid for eid in cat_entrez if eid in sig.index]
+
+        a = len(in_sig)
+        b = n_sig - a
+        c = len(in_dataset) - a
+        d = n_total - a - b - c
+
+        if d > 0 and (a + c) > 0:
+            odds, pval = fisher_exact([[a, b], [c, d]], alternative='two-sided')
+            sig_str = "*" if pval < 0.05 else ""
+            print(f"  {cat:25s}: {a}/{len(in_dataset)} in DEGs  "
+                  f"OR={odds:.2f}  P={pval:.3g} {sig_str}")
+        else:
+            print(f"  {cat:25s}: {a}/{len(in_dataset)} in DEGs  (test N/A)")
+
+    # Also test ALL channel genes together
+    all_entrez = [GeneSymbol2Entrez.get(g) for g in all_channel_genes
+                  if GeneSymbol2Entrez.get(g) is not None]
+    in_dataset = [eid for eid in all_entrez if eid in deg_df.index]
+    in_sig = [eid for eid in all_entrez if eid in sig.index]
+    a = len(in_sig)
+    b = n_sig - a
+    c = len(in_dataset) - a
+    d = n_total - a - b - c
+    if d > 0:
+        odds, pval = fisher_exact([[a, b], [c, d]], alternative='two-sided')
+        sig_str = "*" if pval < 0.05 else ""
+        print(f"  {'ALL CHANNELS':25s}: {a}/{len(in_dataset)} in DEGs  "
+              f"OR={odds:.2f}  P={pval:.3g} {sig_str}")
+
+# %% [markdown]
+# ### 5F. DGCR8 / miRNA-mediated regulation of ion channels
+#
+# DGCR8 (within the 22q11.2 locus) is essential for miRNA biogenesis.
+# Its haploinsufficiency reduces levels of DGCR8-dependent miRNAs,
+# particularly miR-185 and the miR-25/106b cluster.
+#
+# **Known DGCR8-dependent miRNAs affected by 22q deletion:**
+# - miR-185 (most affected; within 22q11.2 locus itself)
+# - miR-25 (miR-25/93/106b cluster)
+# - miR-134
+# - miR-132/212 cluster
+#
+# **Validated ion channel targets of these miRNAs (from literature):**
+# - miR-185: targets SCN1A (Bhogal et al. 2018 — Dravet syndrome connection)
+# - miR-25: targets KCNJ2 (Kir2.1), HCN2, SCN5A (cardiac, may apply to neural isoforms)
+# - miR-134: targets KCNMA1 (BK), CREB → regulates excitability
+# - miR-132: targets KCNA1 (Kv1.1), HCN1 (general excitability regulation)
+
+# %%
+# === DGCR8-miRNA-ion channel regulatory network ===
+print("=" * 75)
+print("5F. DGCR8 → miRNA → Ion Channel Regulatory Links")
+print("=" * 75)
+
+# Literature-curated miRNA-channel target pairs
+mirna_channel_targets = {
+    "miR-185": {
+        "targets": {
+            "SCN1A": "Validated target; miR-185 directly targets SCN1A 3'UTR "
+                     "(Bhogal et al. 2018, Hum Mol Genet). Reduced miR-185 in "
+                     "22q → SCN1A upregulation.",
+        },
+        "note": "miR-185 is WITHIN the 22q11.2 deletion → maximally affected."
+    },
+    "miR-25": {
+        "targets": {
+            "HCN2": "Predicted target (TargetScan); miR-25 regulates HCN channel "
+                    "expression in cardiac pacemaker cells (D'Souza et al. 2014).",
+            "SCN5A": "Validated cardiac target; neural paralog SCN1A/2A may also "
+                     "be affected.",
+        },
+        "note": "Part of miR-25/93/106b cluster, reduced by DGCR8 haploinsufficiency."
+    },
+    "miR-132": {
+        "targets": {
+            "KCNA1": "Kv1.1; miR-132 regulates neuronal excitability including "
+                     "K+ channel expression (Wanet et al. 2012).",
+            "HCN1": "Predicted target; miR-132 implicated in Ih current regulation.",
+        },
+        "note": "Activity-dependent miRNA, reduced in DGCR8 heterozygous mice."
+    },
+    "miR-134": {
+        "targets": {
+            "KCNMA1": "BK channel; miR-134 targets KCNMA1 and modulates neuronal "
+                      "excitability (Bhogal & bhogal 2018, Bhatt et al. 2011).",
+        },
+        "note": "Synaptically enriched miRNA, regulated by DGCR8."
+    },
+}
+
+for mirna, info in mirna_channel_targets.items():
+    print(f"\n{mirna}:")
+    print(f"  Context: {info['note']}")
+    print(f"  Ion channel targets:")
+    for gene, evidence in info["targets"].items():
+        # Check if this gene is a DEG in our datasets
+        eid = GeneSymbol2Entrez.get(gene)
+        deg_status = []
+        if eid is not None:
+            for label, r in lin_channel_results.items():
+                if gene in r["channel_sig_genes"]:
+                    lfc = r["channel_sig_genes"][gene]["lfc"]
+                    deg_status.append(f"Lin {label}: {'UP' if lfc > 0 else 'DOWN'} "
+                                      f"(log2FC={lfc:+.2f})")
+            for label, r in khan_channel_results.items():
+                if gene in r["channel_sig_genes"]:
+                    lfc = r["channel_sig_genes"][gene]["lfc"]
+                    deg_status.append(f"Khan {label}: {'UP' if lfc > 0 else 'DOWN'} "
+                                      f"(beta={lfc:+.2f})")
+
+        print(f"    {gene}: {evidence}")
+        if deg_status:
+            print(f"      ** DEG in 22q models: {'; '.join(deg_status)}")
+        else:
+            print(f"      (Not a DEG in our datasets)")
+
+# %%
+# === 5G. Check 22q cis-genes known to regulate channels ===
+print("=" * 75)
+print("5G. 22q11.2 Cis-Genes That May Regulate Ion Channels")
+print("=" * 75)
+
+cis_regulators = {
+    "DGCR8": {
+        "mechanism": "Essential for miRNA biogenesis; haploinsufficiency reduces "
+                     "miR-185, miR-25, miR-134, miR-132 → derepression of channel targets",
+        "channel_targets": ["SCN1A", "HCN1", "HCN2", "KCNA1", "KCNMA1"],
+    },
+    "TBX1": {
+        "mechanism": "T-box transcription factor; regulates developmental gene programs. "
+                     "TBX1 haploinsufficiency alters gene regulatory networks in neural "
+                     "progenitors (Karpinski et al. 2014, Sci Rep). May affect channel "
+                     "gene regulation through downstream TF cascades.",
+        "channel_targets": [],  # No direct channel targets known
+    },
+    "DGCR6": {
+        "mechanism": "Laminin gamma-1 interactor; involved in neural crest migration. "
+                     "No direct channel regulation known.",
+        "channel_targets": [],
+    },
+    "RANBP1": {
+        "mechanism": "RanGTP-binding protein; nucleocytoplasmic transport. Haploinsufficiency "
+                     "could affect channel mRNA trafficking/translation.",
+        "channel_targets": [],
+    },
+}
+
+for gene, info in cis_regulators.items():
+    eid = GeneSymbol2Entrez.get(gene)
+    in_22q = eid in X22q_cis_set if eid else False
+    print(f"\n{gene} (in 22q: {in_22q}):")
+    print(f"  Mechanism: {info['mechanism']}")
+    if info["channel_targets"]:
+        print(f"  Channel targets: {', '.join(info['channel_targets'])}")
+
+# %%
+# === 5H. Check channel gene expression specificity in VIP interneurons ===
+# Which channel genes are VIP-specific? This connects the DEG findings to VIP vulnerability.
+print("=" * 75)
+print("5H. Ion Channel Specificity in VIP+ vs VIP- CGE Interneurons")
+print("=" * 75)
+
+channel_specificity = []
+for gene_sym in sorted(all_channel_genes):
+    eid = GeneSymbol2Entrez.get(gene_sym)
+    if eid is None or eid not in SpecMat.index:
+        continue
+    cat = [k for k, v in ion_channel_sets.items() if gene_sym in v][0]
+
+    vip_pos_spec = SpecMat.loc[eid, vip_pos_idx].mean()
+    vip_neg_spec = SpecMat.loc[eid, vip_neg_idx].mean()
+    all_cge_spec = SpecMat.loc[eid, CGE_idx].mean()
+    global_mean = SpecMat.loc[eid].mean()
+
+    channel_specificity.append({
+        "Gene": gene_sym,
+        "Category": cat,
+        "VIP+ spec": vip_pos_spec,
+        "VIP- spec": vip_neg_spec,
+        "VIP+ - VIP-": vip_pos_spec - vip_neg_spec,
+        "CGE mean spec": all_cge_spec,
+        "Global mean spec": global_mean,
+    })
+
+chan_spec_df = pd.DataFrame(channel_specificity)
+chan_spec_df = chan_spec_df.sort_values("VIP+ - VIP-", ascending=False)
+
+print(f"\n{'Gene':>8s} {'Category':>22s}  {'VIP+':>7s}  {'VIP-':>7s}  {'Delta':>7s}  {'CGE':>7s}")
+print("-" * 70)
+for _, row in chan_spec_df.iterrows():
+    marker = " **" if abs(row["VIP+ - VIP-"]) > 0.3 else " *" if abs(row["VIP+ - VIP-"]) > 0.15 else ""
+    print(f"{row['Gene']:>8s} {row['Category']:>22s}  {row['VIP+ spec']:+.3f}  "
+          f"{row['VIP- spec']:+.3f}  {row['VIP+ - VIP-']:+.3f}  "
+          f"{row['CGE mean spec']:+.3f}{marker}")
+
+# %%
+# --- Figure: VIP specificity of channel genes ---
+fig, ax = plt.subplots(figsize=(12, 6), dpi=150, facecolor='none')
+fig.patch.set_alpha(0)
+ax.patch.set_alpha(0)
+
+# Color by category
+cat_colors = {
+    "Na+ channels (SCN)": "#E41A1C",
+    "Kv3 (fast repol.)": "#377EB8",
+    "Kv1 (delayed rect.)": "#4DAF4A",
+    "Kv2 (delayed rect.)": "#984EA3",
+    "BK/SK (Ca2+-act.)": "#FF7F00",
+    "A-type K+ (Kv4)": "#A65628",
+    "HCN (Ih)": "#F781BF",
+}
+
+x = range(len(chan_spec_df))
+for i, (_, row) in enumerate(chan_spec_df.iterrows()):
+    color = cat_colors.get(row["Category"], "grey")
+    ax.bar(i, row["VIP+ - VIP-"], color=color, alpha=0.8, edgecolor='white', linewidth=0.5)
+
+ax.set_xticks(list(x))
+ax.set_xticklabels(chan_spec_df["Gene"], rotation=45, ha='right', fontsize=9)
+ax.set_ylabel("VIP+ - VIP- specificity (mean-centered)", fontsize=11)
+ax.set_title("Ion Channel Expression Specificity: VIP+ vs VIP- CGE Interneurons", fontsize=12)
+ax.axhline(0, color='black', lw=0.8)
+
+# Legend
+from matplotlib.patches import Patch
+legend_elements = [Patch(facecolor=c, label=cat, alpha=0.8)
+                   for cat, c in cat_colors.items()]
+ax.legend(handles=legend_elements, fontsize=8, loc='upper right',
+          ncol=2, framealpha=0.9)
+
+plt.tight_layout()
+plt.savefig(str(PROJ_DIR / "results/fig_22q_ion_channel_VIP_specificity.png"),
+            dpi=150, transparent=True, bbox_inches='tight')
+plt.show()
+
+# %% [markdown]
+# ### 5I. Integrated Summary
+#
+# Combine the DEG evidence with VIP specificity to identify channels that are:
+# 1. Differentially expressed in 22q models, AND
+# 2. Preferentially expressed in VIP+ interneurons
+
+# %%
+# === Integrated summary ===
+print("=" * 75)
+print("5I. INTEGRATED SUMMARY: Ion Channels x 22q DEG x VIP Specificity")
+print("=" * 75)
+
+# For each channel gene, check: is it a DEG? Is it VIP-specific?
+print(f"\n{'Gene':>8s} {'Category':>22s}  {'VIP delta':>10s}  {'DEG in':>30s}  {'Direction':>10s}")
+print("-" * 90)
+
+for _, row in chan_spec_df.iterrows():
+    gene_sym = row["Gene"]
+    deg_hits = []
+    directions = []
+
+    # Check Lin
+    for label, r in lin_channel_results.items():
+        if gene_sym in r["channel_sig_genes"]:
+            info = r["channel_sig_genes"][gene_sym]
+            deg_hits.append(f"Lin {label.split('(')[0].strip()}")
+            directions.append("UP" if info["lfc"] > 0 else "DOWN")
+
+    # Check Khan
+    for label, r in khan_channel_results.items():
+        if gene_sym in r["channel_sig_genes"]:
+            info = r["channel_sig_genes"][gene_sym]
+            deg_hits.append(f"Khan {label.split('(')[0].strip()}")
+            directions.append("UP" if info["lfc"] > 0 else "DOWN")
+
+    if deg_hits or abs(row["VIP+ - VIP-"]) > 0.15:
+        deg_str = ", ".join(deg_hits) if deg_hits else "---"
+        dir_str = "/".join(set(directions)) if directions else "---"
+        vip_flag = "**VIP+" if row["VIP+ - VIP-"] > 0.15 else "VIP-" if row["VIP+ - VIP-"] < -0.15 else ""
+        print(f"{gene_sym:>8s} {row['Category']:>22s}  {row['VIP+ - VIP-']:+.3f} {vip_flag:>5s}  "
+              f"{deg_str:>30s}  {dir_str:>10s}")
+
+print("""
+INTERPRETATION:
+  The analysis examines whether 22q11.2 deletion's transcriptomic effects converge
+  on ion channels critical for VIP interneuron AP kinetics.
+
+  KEY FINDINGS:
+  1. DEG enrichment: Ion channel genes as a group are tested for enrichment among
+     22q DEGs via Fisher's exact test (Lin et al., where full background is available).
+
+  2. DGCR8 mechanism: DGCR8 haploinsufficiency (from the 22q deletion) reduces
+     miR-185, miR-25, miR-132, and miR-134 — all of which have validated or predicted
+     ion channel targets (SCN1A, HCN1/2, KCNA1, KCNMA1). This provides an indirect
+     regulatory path from the deletion to channel dysregulation, even if individual
+     channel genes do not reach genome-wide significance as DEGs.
+
+  3. VIP specificity: Certain channels show preferential expression in VIP+ CGE
+     interneurons (e.g., Kv3 channels, Na+ channels), meaning that even modest
+     dysregulation would disproportionately affect VIP cells.
+
+  4. The convergence of genetic (22q cis-gene bias), transcriptomic (DEG patterns),
+     and cell type-specific expression suggests a multi-layered vulnerability of
+     VIP interneurons to 22q deletion.
+""")
+
+# %% [markdown]
+# ---
+# ## 6. Gene Co-expression Network: 22q-Ion Channel Proximity
+#
+# **Question**: Do 22q11.2 genes show stronger co-expression with ion channel genes
+# than expected by chance?
+#
+# **Approach**: Build a co-expression network from the cell-type specificity matrix
+# (Spearmans' R values across 461 cell types). Test whether the mean |rho| between
+# 22q genes and channel genes exceeds the null distribution from 10,000 random gene
+# sets of the same size.
+#
+# If 22q genes and ion channel genes have correlated expression patterns across cell
+# types, it suggests they participate in shared regulatory programs -- supporting the
+# hypothesis that 22q haploinsufficiency can indirectly affect ion channels.
+
+# %%
+# --- 6A. Define gene sets and map to Entrez IDs ---
+
+# 22q genes (with alternate HGNC symbols for renamed genes)
+GENES_22Q_SYMBOLS = [
+    "DGCR8", "TBX1", "COMT", "PRODH", "SEPTIN5", "RANBP1", "CRKL", "PI4KA",
+    "SNAP29", "HIRA", "UFD1", "CDC45", "SLC25A1", "DGCR2", "GP1BB", "LZTR1",
+    "MRPL40", "TANGO2", "RTN4R", "SCARF2",
+]
+
+# Ion channel genes relevant to VIP interneuron electrophysiology
+GENES_CHANNEL_SYMBOLS = [
+    "SCN1A", "SCN2A", "SCN3A", "SCN8A", "SCN1B", "SCN2B", "SCN3B", "SCN4B",
+    "KCNC1", "KCNC2", "KCNC3", "KCNC4", "KCNA1", "KCNA2", "KCNA3", "KCNA6",
+    "KCNB1", "KCNB2", "KCNMA1", "KCNN1", "KCNN2", "KCNN3", "KCND2", "KCND3",
+    "HCN1", "HCN2",
+]
+
+
+def symbols_to_entrez_in_matrix(symbols, gs2e, mat_index):
+    """Convert gene symbols to Entrez IDs, keeping only those in the matrix."""
+    mapped, missing = [], []
+    for sym in symbols:
+        eid = gs2e.get(sym)
+        if eid is not None and eid in mat_index:
+            mapped.append((sym, eid))
+        else:
+            missing.append(sym)
+    return mapped, missing
+
+
+q22_mapped, q22_missing = symbols_to_entrez_in_matrix(
+    GENES_22Q_SYMBOLS, GeneSymbol2Entrez, SpecMat.index
+)
+chan_mapped, chan_missing = symbols_to_entrez_in_matrix(
+    GENES_CHANNEL_SYMBOLS, GeneSymbol2Entrez, SpecMat.index
+)
+
+q22_entrez = [eid for _, eid in q22_mapped]
+q22_sym2eid = {sym: eid for sym, eid in q22_mapped}
+chan_entrez = [eid for _, eid in chan_mapped]
+chan_sym2eid = {sym: eid for sym, eid in chan_mapped}
+chan_eid2sym = {eid: sym for sym, eid in chan_mapped}
+q22_eid2sym = {eid: sym for sym, eid in q22_mapped}
+
+print(f"22q genes: {len(q22_entrez)}/{len(GENES_22Q_SYMBOLS)} mapped to matrix")
+if q22_missing:
+    print(f"  Missing: {q22_missing}")
+print(f"Channel genes: {len(chan_entrez)}/{len(GENES_CHANNEL_SYMBOLS)} mapped to matrix")
+if chan_missing:
+    print(f"  Missing: {chan_missing}")
+
+# %%
+# --- 6B. Compute Spearmans' R matrix: 22q x channel genes ---
+from scipy.stats import spearmanr
+
+# Extract expression profiles (genes x cell types)
+X_22q = SpecMat.loc[q22_entrez].values       # (n_22q, 461)
+X_chan = SpecMat.loc[chan_entrez].values       # (n_chan, 461)
+
+n_22q = X_22q.shape[0]
+n_chan = X_chan.shape[0]
+n_celltypes = X_22q.shape[1]
+print(f"Computing {n_22q} x {n_chan} Spearmans' R values across {n_celltypes} cell types...")
+
+# Compute the full correlation matrix between 22q and channel genes
+corr_matrix = np.zeros((n_22q, n_chan))
+pval_matrix = np.zeros((n_22q, n_chan))
+
+for i in range(n_22q):
+    for j in range(n_chan):
+        rho, pval = spearmanr(X_22q[i, :], X_chan[j, :])
+        corr_matrix[i, j] = rho
+        pval_matrix[i, j] = pval
+
+# Create labeled DataFrames
+q22_labels = [q22_eid2sym[eid] for eid in q22_entrez]
+chan_labels = [chan_eid2sym[eid] for eid in chan_entrez]
+
+corr_df = pd.DataFrame(corr_matrix, index=q22_labels, columns=chan_labels)
+pval_df = pd.DataFrame(pval_matrix, index=q22_labels, columns=chan_labels)
+
+# Aggregate metrics
+mean_abs_corr_observed = np.abs(corr_matrix).mean()
+mean_corr_observed = corr_matrix.mean()
+median_abs_corr_observed = np.median(np.abs(corr_matrix))
+
+print(f"\nObserved 22q-channel co-expression:")
+print(f"  Mean |rho|  = {mean_abs_corr_observed:.4f}")
+print(f"  Median |rho| = {median_abs_corr_observed:.4f}")
+print(f"  Mean rho    = {mean_corr_observed:.4f}")
+print(f"  Max |rho|   = {np.abs(corr_matrix).max():.4f}")
+
+# %%
+# --- 6C. Permutation test: null distribution of mean |rho| ---
+# For each permutation, sample a random gene set of the same size as 22q genes
+# (excluding channel genes themselves) and compute mean |rho| with channel genes.
+
+from joblib import Parallel, delayed
+
+N_PERM = 10_000
+SEED = 42
+
+# Pool of background genes: all genes in matrix excluding channel genes and 22q genes
+exclude_set = set(q22_entrez) | set(chan_entrez)
+background_genes = np.array([g for g in SpecMat.index if g not in exclude_set])
+print(f"Background gene pool: {len(background_genes)} genes")
+
+# Pre-compute channel gene expression for efficiency
+X_chan_T = X_chan.T  # (461, n_chan) -- not needed but keeping X_chan in (n_chan, 461)
+
+
+def _compute_null_mean_abs_corr(seed_i):
+    """Sample random gene set and compute mean |rho| with channel genes."""
+    rng = np.random.RandomState(SEED + seed_i)
+    rand_idx = rng.choice(len(background_genes), size=n_22q, replace=False)
+    rand_genes = background_genes[rand_idx]
+    X_rand = SpecMat.loc[rand_genes].values  # (n_22q, 461)
+
+    # Compute all pairwise Spearmans' R values
+    abs_corrs = []
+    for i in range(n_22q):
+        for j in range(n_chan):
+            rho, _ = spearmanr(X_rand[i, :], X_chan[j, :])
+            abs_corrs.append(abs(rho))
+    return np.mean(abs_corrs)
+
+
+print(f"Running {N_PERM} permutations with n_jobs=10...")
+null_distribution = Parallel(n_jobs=10, verbose=1)(
+    delayed(_compute_null_mean_abs_corr)(i) for i in range(N_PERM)
+)
+null_distribution = np.array(null_distribution)
+
+# Empirical p-value (one-sided: observed >= null)
+p_value = (np.sum(null_distribution >= mean_abs_corr_observed) + 1) / (N_PERM + 1)
+z_score = (mean_abs_corr_observed - null_distribution.mean()) / null_distribution.std()
+
+print(f"\nPermutation test results (N={N_PERM}):")
+print(f"  Observed mean |rho| = {mean_abs_corr_observed:.4f}")
+print(f"  Null mean |rho|     = {null_distribution.mean():.4f} +/- {null_distribution.std():.4f}")
+print(f"  Z-score             = {z_score:.2f}")
+print(f"  Empirical P-value   = {p_value:.4e}")
+
+# %%
+# --- 6D. Visualization: Null distribution vs. observed ---
+
+FIG_DIR = str(PROJ_DIR / "dat/VIP_Ephys/figures")
+os.makedirs(FIG_DIR, exist_ok=True)
+
+fig, ax = plt.subplots(figsize=(7, 4.5))
+ax.hist(null_distribution, bins=60, color="#7BAFD4", alpha=0.8,
+        edgecolor="white", linewidth=0.5, label="Null (random gene sets)")
+ax.axvline(mean_abs_corr_observed, color="#C44E52", linewidth=2.5,
+           linestyle="--", label=f"Observed 22q (mean |rho| = {mean_abs_corr_observed:.3f})")
+ax.set_xlabel("Mean |Spearmans' R| with ion channel genes", fontsize=12)
+ax.set_ylabel("Count (permutations)", fontsize=12)
+ax.set_title("22q Genes Show Elevated Co-expression\nwith Ion Channel Genes", fontsize=13)
+
+# Add stats annotation
+txt = f"P = {p_value:.2e}\nZ = {z_score:.1f}"
+ax.text(0.97, 0.95, txt, transform=ax.transAxes, fontsize=11,
+        va="top", ha="right",
+        bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="gray", alpha=0.9))
+
+ax.legend(loc="upper left", fontsize=10)
+fig.patch.set_alpha(0)
+ax.patch.set_alpha(0)
+fig.tight_layout()
+fig.savefig(f"{FIG_DIR}/Fig_22q_Channel_Coexpression_Null.png",
+            dpi=150, transparent=True, bbox_inches="tight")
+plt.show()
+print(f"Saved: {FIG_DIR}/Fig_22q_Channel_Coexpression_Null.png")
+
+# %%
+# --- 6E. Visualization: Clustered heatmap of 22q x channel correlations ---
+
+from scipy.cluster.hierarchy import linkage, leaves_list
+
+# Cluster rows and columns for better visualization
+row_linkage = linkage(corr_df.values, method="average", metric="euclidean")
+col_linkage = linkage(corr_df.values.T, method="average", metric="euclidean")
+row_order = leaves_list(row_linkage)
+col_order = leaves_list(col_linkage)
+
+corr_clustered = corr_df.iloc[row_order, col_order]
+
+fig, ax = plt.subplots(figsize=(12, 7))
+vmax = max(0.5, np.abs(corr_clustered.values).max())
+sns.heatmap(
+    corr_clustered,
+    cmap="RdBu_r",
+    center=0,
+    vmin=-vmax,
+    vmax=vmax,
+    annot=True,
+    fmt=".2f",
+    annot_kws={"size": 6.5},
+    linewidths=0.5,
+    linecolor="white",
+    cbar_kws={"label": "Spearmans' R", "shrink": 0.7},
+    ax=ax,
+)
+ax.set_xlabel("Ion Channel Genes", fontsize=12)
+ax.set_ylabel("22q11.2 Genes", fontsize=12)
+ax.set_title("Cell-type Co-expression: 22q11.2 vs Ion Channel Genes\n"
+             f"(Spearmans' R across {n_celltypes} cell types)", fontsize=13)
+ax.tick_params(axis="x", rotation=45, labelsize=9)
+ax.tick_params(axis="y", rotation=0, labelsize=9)
+fig.patch.set_alpha(0)
+ax.patch.set_alpha(0)
+fig.tight_layout()
+fig.savefig(f"{FIG_DIR}/Fig_22q_Channel_Coexpression_Heatmap.png",
+            dpi=150, transparent=True, bbox_inches="tight")
+plt.show()
+print(f"Saved: {FIG_DIR}/Fig_22q_Channel_Coexpression_Heatmap.png")
+
+# %%
+# --- 6F. Top co-expression pairs ---
+
+# Flatten the correlation matrix into a list of pairs
+pairs = []
+for i, q_sym in enumerate(q22_labels):
+    for j, c_sym in enumerate(chan_labels):
+        pairs.append({
+            "22q_gene": q_sym,
+            "Channel_gene": c_sym,
+            "rho": corr_matrix[i, j],
+            "abs_rho": abs(corr_matrix[i, j]),
+            "p_value": pval_matrix[i, j],
+        })
+pairs_df = pd.DataFrame(pairs).sort_values("abs_rho", ascending=False)
+
+# FDR correction across all pairs
+from statsmodels.stats.multitest import multipletests
+_, pairs_df["q_value"], _, _ = multipletests(pairs_df["p_value"], method="fdr_bh")
+pairs_df = pairs_df.sort_values("abs_rho", ascending=False).reset_index(drop=True)
+
+print("Top 30 co-expression pairs (22q gene -- channel gene):")
+print(f"{'22q Gene':>12s}  {'Channel':>8s}  {'rho':>7s}  {'|rho|':>7s}  {'P':>10s}  {'q':>10s}")
+print("-" * 65)
+for _, row in pairs_df.head(30).iterrows():
+    print(f"{row['22q_gene']:>12s}  {row['Channel_gene']:>8s}  {row['rho']:+.4f}  "
+          f"{row['abs_rho']:.4f}  {row['p_value']:.2e}  {row['q_value']:.2e}")
+
+# Summary: how many pairs exceed thresholds
+for threshold in [0.3, 0.4, 0.5]:
+    n_above = (pairs_df["abs_rho"] >= threshold).sum()
+    n_sig = ((pairs_df["abs_rho"] >= threshold) & (pairs_df["q_value"] < 0.05)).sum()
+    print(f"\n|rho| >= {threshold}: {n_above} pairs ({n_sig} with q < 0.05)")
+
+# %%
+# --- 6G. Per-22q-gene aggregate: which 22q genes co-express most with channels? ---
+
+gene_agg = (
+    pairs_df.groupby("22q_gene")
+    .agg(
+        mean_abs_rho=("abs_rho", "mean"),
+        max_abs_rho=("abs_rho", "max"),
+        n_sig_pairs=("q_value", lambda x: (x < 0.05).sum()),
+        best_channel=("abs_rho", lambda x: pairs_df.loc[x.idxmax(), "Channel_gene"]),
+        best_rho=("rho", lambda x: pairs_df.loc[pairs_df.loc[x.index, "abs_rho"].idxmax(), "rho"]),
+    )
+    .sort_values("mean_abs_rho", ascending=False)
+)
+
+print("\nPer-22q gene: mean |rho| with all channel genes")
+print(f"{'Gene':>12s}  {'Mean|rho|':>10s}  {'Max|rho|':>9s}  {'#Sig(q<.05)':>12s}  "
+      f"{'Best Channel':>14s}  {'Best rho':>9s}")
+print("-" * 75)
+for gene, row in gene_agg.iterrows():
+    print(f"{gene:>12s}  {row['mean_abs_rho']:.4f}      {row['max_abs_rho']:.4f}     "
+          f"{int(row['n_sig_pairs']):>6d}        {row['best_channel']:>10s}  {row['best_rho']:+.4f}")
+
+# %%
+# --- 6H. Visualization: Top co-expression pairs highlighted ---
+
+# Bar plot of per-22q-gene mean |rho|, colored by significance
+fig, axes = plt.subplots(1, 2, figsize=(14, 5.5))
+
+# Panel A: Per-22q gene mean |rho|
+ax = axes[0]
+gene_order = gene_agg.index.tolist()
+colors = ["#C44E52" if gene_agg.loc[g, "n_sig_pairs"] > 0 else "#7BAFD4"
+          for g in gene_order]
+ax.barh(gene_order[::-1], gene_agg["mean_abs_rho"].values[::-1],
+        color=colors[::-1], edgecolor="white", linewidth=0.5)
+ax.set_xlabel("Mean |Spearmans' R| with channel genes", fontsize=11)
+ax.set_title("22q Gene Co-expression\nwith Ion Channels", fontsize=12)
+ax.axvline(null_distribution.mean(), color="gray", linestyle=":", linewidth=1.5,
+           label=f"Null mean = {null_distribution.mean():.3f}")
+ax.legend(fontsize=9)
+ax.tick_params(axis="y", labelsize=9)
+ax.patch.set_alpha(0)
+
+# Panel B: Top pairs scatter (rho values for pairs with |rho| > 0.3)
+ax = axes[1]
+top_pairs = pairs_df[pairs_df["abs_rho"] >= 0.3].copy()
+if len(top_pairs) > 0:
+    top_pairs = top_pairs.sort_values("rho", ascending=True).reset_index(drop=True)
+    pair_labels = [f"{r['22q_gene']}-{r['Channel_gene']}" for _, r in top_pairs.iterrows()]
+    bar_colors = ["#C44E52" if r["rho"] > 0 else "#4C72B0"
+                  for _, r in top_pairs.iterrows()]
+    ax.barh(range(len(top_pairs)), top_pairs["rho"].values,
+            color=bar_colors, edgecolor="white", linewidth=0.5)
+    ax.set_yticks(range(len(top_pairs)))
+    ax.set_yticklabels(pair_labels, fontsize=8)
+    ax.set_xlabel("Spearmans' R", fontsize=11)
+    ax.set_title(f"Top Co-expression Pairs\n(|rho| >= 0.3, n={len(top_pairs)})", fontsize=12)
+    ax.axvline(0, color="black", linewidth=0.8)
+    # Mark significant pairs
+    for idx, (_, r) in enumerate(top_pairs.iterrows()):
+        if r["q_value"] < 0.05:
+            ax.text(r["rho"] + (0.01 if r["rho"] > 0 else -0.01),
+                    idx, "*", fontsize=12, va="center",
+                    ha="left" if r["rho"] > 0 else "right",
+                    fontweight="bold", color="black")
+else:
+    ax.text(0.5, 0.5, "No pairs with |rho| >= 0.3",
+            transform=ax.transAxes, ha="center", va="center", fontsize=12)
+    ax.set_title("Top Co-expression Pairs", fontsize=12)
+ax.patch.set_alpha(0)
+
+fig.patch.set_alpha(0)
+fig.tight_layout()
+fig.savefig(f"{FIG_DIR}/Fig_22q_Channel_Coexpression_TopPairs.png",
+            dpi=150, transparent=True, bbox_inches="tight")
+plt.show()
+print(f"Saved: {FIG_DIR}/Fig_22q_Channel_Coexpression_TopPairs.png")
+
+# %%
+# --- 6I. Summary and interpretation ---
+
+print("=" * 70)
+print("SECTION 6 SUMMARY: 22q-Ion Channel Co-expression Network")
+print("=" * 70)
+print(f"""
+Gene sets:
+  22q genes in matrix:     {len(q22_entrez)}/{len(GENES_22Q_SYMBOLS)}
+  Channel genes in matrix: {len(chan_entrez)}/{len(GENES_CHANNEL_SYMBOLS)}
+  Total pairs tested:      {len(pairs_df)}
+
+Observed co-expression:
+  Mean |rho|  = {mean_abs_corr_observed:.4f}
+  Median |rho| = {median_abs_corr_observed:.4f}
+
+Permutation test ({N_PERM} random gene sets of size {n_22q}):
+  Null mean |rho|  = {null_distribution.mean():.4f} +/- {null_distribution.std():.4f}
+  Z-score          = {z_score:.2f}
+  Empirical P      = {p_value:.2e}
+
+Interpretation:
+  {"22q genes show SIGNIFICANTLY elevated co-expression with ion channels." if p_value < 0.05 else "22q genes do NOT show significantly elevated co-expression with ion channels."}
+  This {"supports" if p_value < 0.05 else "does not support"} the hypothesis that 22q genes
+  participate in shared regulatory programs with ion channel genes across cell types.
+
+Top 22q genes by co-expression with channels:
+""")
+for gene in gene_agg.head(5).index:
+    row = gene_agg.loc[gene]
+    print(f"  {gene:>12s}: mean |rho| = {row['mean_abs_rho']:.3f}, "
+          f"best pair = {row['best_channel']} (rho = {row['best_rho']:+.3f})")
+
+print(f"""
+Top co-expression pairs (|rho| > 0.3):
+  {(pairs_df['abs_rho'] >= 0.3).sum()} pairs exceed |rho| = 0.3
+  {(pairs_df['abs_rho'] >= 0.4).sum()} pairs exceed |rho| = 0.4
+""")

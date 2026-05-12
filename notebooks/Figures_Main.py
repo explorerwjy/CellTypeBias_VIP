@@ -200,6 +200,16 @@ with save_panel(FIG_DIR + "Fig2_A.png"):
                      name1="ASD w/o ID Mutation Bias", name2="SCZ Mutation Bias",
                      title="", neur_only=True)
 
+# %%
+LIQ_ASD_SCZ, _ = CompareCT(LowIQ_ASD_Bias, SCZ_Bias, "ASD w/o ID", "SCZ",
+                            effectlabel="EFFECT", SuperClusters=ALL_CTs)
+
+#with save_panel(FIG_DIR + "FigSX.png"):
+PlotBiasContrast(LIQ_ASD_SCZ,
+                    label1="EFFECT_ASD w/o ID", label2="EFFECT_SCZ",
+                    name1="ASD w/o ID Mutation Bias", name2="SCZ Mutation Bias",
+                    title="", neur_only=True)
+
 # %% [markdown]
 # ### Panel B — LOEUF Gene Removal Correlation
 #
@@ -304,7 +314,7 @@ test_df = cluster_biasdiff_tests
 
 superclusters = ["CGE interneuron", "MGE interneuron", "LAMP5-LHX6 and Chandelier"]
 disorder_pairs = [
-    ("SCZ", "ASD with ID"),
+    ("ASD with ID", "SCZ"),
     ("SCZ", "ASD w/o ID"),
     ("ASD with ID", "ASD w/o ID"),
     ("DD/ID", "ASD w/o ID"),
@@ -316,6 +326,33 @@ def disorderpair_label(d1, d2):
 
 disorderpair_order = [disorderpair_label(d1, d2) for d1, d2 in disorder_pairs]
 supercluster_order = superclusters
+
+def align_disorderpair_direction(df, disorder_pairs, value_cols=()):
+    """Return rows in requested pair directions, flipping signed values as needed."""
+    aligned_rows = []
+    available_pairs = set(df["DisorderPair"])
+    for d1, d2 in disorder_pairs:
+        label = disorderpair_label(d1, d2)
+        reverse_label = disorderpair_label(d2, d1)
+        if label in available_pairs:
+            pair_rows = df[df["DisorderPair"] == label].copy()
+        elif reverse_label in available_pairs:
+            pair_rows = df[df["DisorderPair"] == reverse_label].copy()
+            pair_rows["DisorderPair"] = label
+            for col in value_cols:
+                if col in pair_rows:
+                    pair_rows[col] = -pair_rows[col]
+        else:
+            raise ValueError(f"Missing disorder pair '{label}' and reverse pair '{reverse_label}'")
+        aligned_rows.append(pair_rows)
+    return pd.concat(aligned_rows, ignore_index=True)
+
+plot_df = align_disorderpair_direction(plot_df, disorder_pairs, value_cols=["BiasDiff"])
+test_df = align_disorderpair_direction(
+    test_df,
+    disorder_pairs,
+    value_cols=["CGE_median", "MGE_median", "LAMP5_median"],
+)
 
 fig, ax = plt.subplots(figsize=(8, 6), dpi=300, facecolor='none')
 fig.patch.set_alpha(0.0)
@@ -358,7 +395,9 @@ ax.set_ylabel("Bias Difference Group1 - Group2", fontsize=15)
 ax.set_xlabel("")
 ax.axhline(0, color='gray', linestyle='--', linewidth=1)
 ax.set_xticks(xticks)
-ax.set_xticklabels(disorderpair_order, rotation=30, fontsize=15)
+ax.set_xticklabels(disorderpair_order, rotation=30, ha='right', rotation_mode='anchor', fontsize=15)
+ax.tick_params(axis='x', which='major', bottom=True, length=4, width=1,
+               direction='out', color='black', pad=8)
 
 ax.spines['left'].set_linewidth(1)
 ax.spines['bottom'].set_linewidth(1)

@@ -493,7 +493,7 @@ print("=== 22q Mouse-Gene Bias ===")
 res_22q_mouse = plot_subtype_bias(CCKBC, ISI2, ISI3, Other, VIP_Neg, label="X22q_mouse_Bias")
 
 # %%
-# Spearman correlation: VIP expression vs 22q bias (uses all 21 clusters)
+# Spearmans' R: VIP expression vs 22q bias (uses all 21 clusters)
 rho, pval = stats.spearmanr(Biases_CGE["VIP_ExpL"], Biases_CGE["X22q_Bias"])
 
 fig, ax = plt.subplots(figsize=(5, 4))
@@ -509,7 +509,7 @@ for subtype, color in colors.items():
 
 ax.set_xlabel("VIP Expression (log2 UMI+1)", fontsize=10)
 ax.set_ylabel("22q Bias", fontsize=10)
-ax.set_title(f"VIP Expression vs 22q Bias\nSpearman rho={rho:.3f}, p={pval:.3e}", fontsize=10)
+ax.set_title(f"VIP Expression vs 22q Bias\nSpearmans' R={rho:.3f}, p={pval:.3e}", fontsize=10)
 ax.legend(fontsize=8)
 ax.spines["top"].set_visible(False)
 ax.spines["right"].set_visible(False)
@@ -791,8 +791,8 @@ plt.show()
 # than ISI/VIP subtypes? -- is tested by:
 # 1. Kruskal-Wallis across all 5 groups
 # 2. One-sided Mann-Whitney U: ISI2+ISI3 > CCKBC
-# 3. Spearman correlation: VIP expression vs 22q bias (all 21 clusters)
+# 3. Spearmans' R: VIP expression vs 22q bias (all 21 clusters)
 #
 # **Caveats**: N=21 clusters total with groups of 2-8 clusters limits statistical
-# power. The Spearman correlation uses all data points and may be more informative
+# power. The Spearmans' R uses all data points and may be more informative
 # than group comparisons. Only 5 patch-seq cells map to ephys-CCKBC clusters.
