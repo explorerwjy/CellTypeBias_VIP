@@ -38,7 +38,7 @@ with open("/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/config/config.yaml") 
     _cfg = yaml.safe_load(f)
 PROJ_DIR = Path(_cfg["ProjDIR"])
 sys.path.insert(0, str(PROJ_DIR / "src"))
-from CellType_PSY import SuperClusterBias_BoxPlot
+from CellType_PSY import SuperClusterBias_BoxPlot, plot_mutation_bias_comparison_V2, Anno
 
 # %% [markdown]
 # ## Configuration
@@ -174,3 +174,146 @@ for name in trait_names:
             print(f"  CGE IN significant (q ≤ 0.1): {cge_sig}/{len(cge_p)}")
 
 print("\n" + "=" * 60)
+
+# %% [markdown]
+# ## Figure 3 (Reviewer Response): CGE Interneuron — VNR vs Non-Brain Negative Controls
+#
+# Fig 3A-style strip plot showing per-cell-type CGE-interneuron mutation bias for
+# VNR−, VNR+, and the four non-brain negative-control traits shown in the QQ-plot
+# panel (HDL, Alanine, RBC, IBD).
+#
+# **Pairwise tests:** Mann–Whitney U comparing VNR− to each other cohort across the
+# 31 CGE-interneuron cell types, BH-FDR corrected within the 5 pairs.
+
+# %%
+import scipy.stats as _sstats
+from statsmodels.stats.multitest import multipletests as _multipletests
+
+BIAS_ADDP_DIR = PROJ_DIR / "results" / "main_results" / "random" / "Centering"
+
+cge_datasets = {
+    "VNR-":     pd.read_csv(BIAS_ADDP_DIR / "UKBB_VNR_Neg_bias_addP.csv", index_col=0),
+    "VNR+":     pd.read_csv(BIAS_ADDP_DIR / "UKBB_VNR_Pos_bias_addP.csv", index_col=0),
+    "HDL":      pd.read_csv(BIAS_ADDP_DIR / "NegCtrl_HDL_bias_addP.csv", index_col=0),
+    "Alanine":  pd.read_csv(BIAS_ADDP_DIR / "NegCtrl_Alanine_bias_addP.csv", index_col=0),
+    "RBC":      pd.read_csv(BIAS_ADDP_DIR / "NegCtrl_RBC_bias_addP.csv", index_col=0),
+    "IBD":      pd.read_csv(BIAS_ADDP_DIR / "NegCtrl_IBD_bias_addP.csv", index_col=0),
+}
+
+CT = "CGE interneuron"
+test_pairs = [("VNR-", "VNR+"), ("VNR-", "HDL"), ("VNR-", "Alanine"),
+              ("VNR-", "RBC"), ("VNR-", "IBD")]
+
+# Compute on-the-fly Mann-Whitney + BH-FDR over the 5 specified pairs
+_CT_idx = Anno[Anno["Supercluster"] == CT].index.values
+_pvals_raw = []
+for a, b in test_pairs:
+    _, p = _sstats.mannwhitneyu(cge_datasets[a].loc[_CT_idx, "EFFECT"],
+                                cge_datasets[b].loc[_CT_idx, "EFFECT"])
+    _pvals_raw.append(p)
+_pvals_fdr = _multipletests(_pvals_raw, method="fdr_bh")[1]
+
+cge_PvalDF = pd.DataFrame([
+    {"Pair": f"{a} - {b}", "SuperCluster": CT, "MWU_FDR": p}
+    for (a, b), p in zip(test_pairs, _pvals_fdr)
+])
+
+print("Pairwise BH-FDR p-values (n=5 tests):")
+for (a, b), p_raw, p_fdr in zip(test_pairs, _pvals_raw, _pvals_fdr):
+    print(f"  {a} vs {b}: raw p={p_raw:.3e}, BH-FDR={p_fdr:.3e}")
+
+# %%
+# Inline Fig 3A-style plot (custom bracket spacing for 5-pair comparison)
+def _format_pval(p):
+    if p < 1e-3:
+        return f"p={p:.1e}"
+    return f"p={p:.3f}"
+
+# Build per-cell-type values and sort cohorts by mean
+data = {name: df.loc[_CT_idx, "EFFECT"] for name, df in cge_datasets.items()}
+sorted_keys = sorted(data.keys(), key=lambda k: data[k].mean())
+sorted_data = {k: data[k] for k in sorted_keys}
+
+plt.style.use("seaborn-v0_8-whitegrid")
+plt.rcParams["font.family"] = "Arial"
+plt.rcParams["font.size"] = 13
+
+# Taller figure to accommodate 5 stacked brackets
+fig, ax = plt.subplots(figsize=(6.5, 7.5), dpi=300, facecolor="none")
+fig.patch.set_alpha(0.0)
+ax.patch.set_alpha(0.0)
+
+positions = range(1, len(sorted_data) + 1)
+colors = plt.cm.Set2(np.linspace(0, 1, len(sorted_data)))
+
+for i, (pos, (label, values)) in enumerate(zip(positions, sorted_data.items())):
+    x = np.random.normal(pos, 0.04, size=len(values))
+    ax.scatter(x, values, color=colors[i], edgecolor="black", s=22, alpha=1.0, label=label)
+
+bp = ax.boxplot(
+    [v.values for v in sorted_data.values()],
+    positions=list(positions), showfliers=False, patch_artist=True, widths=0.4,
+    boxprops=dict(facecolor="white", alpha=0, edgecolor="black", linewidth=1),
+    medianprops=dict(color="grey", linewidth=1),
+    whiskerprops=dict(color="grey", linewidth=1),
+    capprops=dict(color="grey", linewidth=1),
+)
+for box in bp["boxes"]:
+    box.set(facecolor="white", alpha=0.6, edgecolor="black", linewidth=1)
+
+# Bracket placement — generous spacing for 5 stacked brackets
+global_y_max = max(v.max() for v in sorted_data.values())
+global_y_min = min(v.min() for v in sorted_data.values())
+y_range = global_y_max - global_y_min
+y_offset = y_range * 0.06       # bracket arm height
+min_sep   = y_range * 0.11      # vertical gap between consecutive brackets
+
+annotation_heights = []
+fdr_lookup = dict(zip([(a, b) for a, b in test_pairs], _pvals_fdr))
+
+# Sort pairs by x-distance (shortest first → bottom, longest → top) to reduce visual crossing
+pair_with_dist = []
+labels = list(sorted_data.keys())
+for a, b in test_pairs:
+    x1 = labels.index(a) + 1
+    x2 = labels.index(b) + 1
+    pair_with_dist.append(((a, b), x1, x2, abs(x2 - x1)))
+pair_with_dist.sort(key=lambda t: t[3])
+
+for (a, b), x1, x2, _ in pair_with_dist:
+    p_fdr = fdr_lookup[(a, b)]
+    x_center = (x1 + x2) / 2
+    y_base = max(data[a].max(), data[b].max())
+    if annotation_heights:
+        y = max(max(annotation_heights) + min_sep, y_base + y_offset)
+    else:
+        y = y_base + y_offset
+    annotation_heights.append(y + y_offset)
+    ax.plot([x1, x1, x2, x2], [y, y + y_offset / 2, y + y_offset / 2, y],
+            lw=0.9, c="k", ls="--", alpha=0.75)
+    ax.text(x_center, y + y_offset / 2 + 0.01 * y_range, _format_pval(p_fdr),
+            ha="center", va="bottom", fontsize=10)
+
+# Y-limits — leave headroom above the topmost bracket
+ax.set_ylim(top=max(annotation_heights) + y_offset * 2)
+
+ax.set_xticks(list(positions))
+ax.set_xticklabels(list(sorted_data.keys()), rotation=45, ha="right",
+                   rotation_mode="anchor", fontsize=13)
+ax.set_ylabel("Mutation Bias", fontsize=14)
+ax.set_title(f"{CT}", fontsize=14, pad=10)
+for s in ("top", "right"):
+    ax.spines[s].set_visible(False)
+for s in ("left", "bottom"):
+    ax.spines[s].set_color("black")
+    ax.spines[s].set_linewidth(1)
+ax.grid(linestyle="--", alpha=0.3)
+plt.tight_layout()
+
+# Save BEFORE show (avoid inline backend clearing the figure)
+fig.savefig(FIGURES_DIR / "FigR_CGE_VNR_vs_NegCtrls.pdf",
+            dpi=300, bbox_inches="tight", transparent=True)
+fig.savefig(FIGURES_DIR / "FigR_CGE_VNR_vs_NegCtrls.png",
+            dpi=300, bbox_inches="tight", transparent=True)
+print(f"Saved: {FIGURES_DIR / 'FigR_CGE_VNR_vs_NegCtrls.pdf'}")
+plt.show()

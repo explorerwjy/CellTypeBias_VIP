@@ -9,9 +9,9 @@
 #       format_version: '1.3'
 #       jupytext_version: 1.19.1
 #   kernelspec:
-#     display_name: gencic
+#     display_name: Python (gencic)
 #     language: python
-#     name: python3
+#     name: gencic
 # ---
 
 # %% [markdown]
@@ -58,12 +58,14 @@ mpl.rcParams['font.size'] = 14
 # All available methods and their result directories
 ALL_METHODS = OrderedDict([
     ("Random", "main_results/random"),
-    ("Best-of-N", "main_results/matched_WB_mean_phastCons_n_CDS_bases_Best1000"),
+    ("Best-of-500",  "main_results/matched_500_WB_mean_phastCons_n_CDS_bases_Best500"),
+    ("Best-of-1000", "main_results/matched_WB_mean_phastCons_n_CDS_bases_Best1000"),
+    ("Best-of-2000", "main_results/matched_2000_WB_mean_phastCons_n_CDS_bases_Best2000"),
 ])
 
 # --- TOGGLE HERE: which methods to show ---
-# Default: Random + Best-of-N for the main supplementary figure
-SHOW_METHODS = ["Random", "Best-of-N"]
+# Default: Random + Best-of-1000 for the main supplementary figure (n_candidates=1000 is production)
+SHOW_METHODS = ["Random", "Best-of-1000"]
 # Uncomment below to show all methods:
 # SHOW_METHODS = list(ALL_METHODS.keys())
 
@@ -94,7 +96,9 @@ METHOD_STYLE = {
     "Random":       {"color": "#aaaaaa", "marker": "o", "zorder": 2},
     "Gene-by-gene": {"color": "#e67e22", "marker": "s", "zorder": 3},
     "Rejection":    {"color": "#f1c40f", "marker": "D", "zorder": 3},
-    "Best-of-N":    {"color": "#2563eb", "marker": "o", "zorder": 4},
+    "Best-of-500":  {"color": "#93c5fd", "marker": "o", "zorder": 4},   # light blue
+    "Best-of-1000": {"color": "#2563eb", "marker": "o", "zorder": 5},   # mid blue (production)
+    "Best-of-2000": {"color": "#1e3a8a", "marker": "o", "zorder": 4},   # dark blue
     "PropWeight":   {"color": "#16a34a", "marker": "^", "zorder": 3},
     "SIS":          {"color": "#9b59b6", "marker": "v", "zorder": 3},
 }
@@ -129,7 +133,9 @@ print(f"Loaded {n_loaded} p-value vectors "
 
 # %%
 def qq_plot(pvals_dict, gene_sets, method_style, figsize=None, title=None,
-            neg_ctrl_labels=None, ncols=None, neuron_dict=None):
+            neg_ctrl_labels=None, ncols=None, neuron_dict=None,
+            legend_fontsize=16, label_fontsize=20, title_fontsize=17,
+            tick_fontsize=13):
     """
     Multi-panel QQ plot of observed vs expected -log10(p).
 
@@ -149,6 +155,14 @@ def qq_plot(pvals_dict, gene_sets, method_style, figsize=None, title=None,
         {method_name: {gene_set_label: bool array}} — True = neuronal.
         When provided, neuronal cells are plotted as circles and
         non-neuronal cells as diamonds.
+    legend_fontsize : int
+        Font size for the shared legend placed outside the subplot grid.
+    label_fontsize : int
+        Font size for the shared figure-level x and y labels.
+    title_fontsize : int
+        Font size for each panel title.
+    tick_fontsize : int
+        Font size for each panel's tick labels.
     """
     n_panels = len(gene_sets)
     if neg_ctrl_labels is None:
@@ -220,20 +234,16 @@ def qq_plot(pvals_dict, gene_sets, method_style, figsize=None, title=None,
         ax.set_ylim(0, upper)
         ax.set_aspect("equal")
 
-        ax.set_xlabel("Expected $-\\log_{10}(p)$")
-        if col == 0:
-            ax.set_ylabel("Observed $-\\log_{10}(p)$")
+        ax.tick_params(axis="both", labelsize=tick_fontsize)
 
         # Style negative controls differently
         if gs_label in neg_ctrl_labels:
             ax.set_title(gs_label, fontweight="bold", fontstyle="italic",
-                         color="#666666", pad=8)
+                         color="#666666", fontsize=title_fontsize, pad=8)
             ax.set_facecolor("#f5f5f5")
         else:
-            ax.set_title(gs_label, fontweight="bold", pad=8)
-
-        if idx == n_panels - 1:
-            ax.legend(fontsize=10, framealpha=0.8, loc="lower right")
+            ax.set_title(gs_label, fontweight="bold",
+                         fontsize=title_fontsize, pad=8)
 
     # Hide unused axes
     for idx in range(n_panels, nrows * ncols):
@@ -241,9 +251,31 @@ def qq_plot(pvals_dict, gene_sets, method_style, figsize=None, title=None,
         axes[row, col].set_visible(False)
 
     if title:
-        fig.suptitle(title, fontsize=16, fontweight="bold", y=1.02)
+        fig.suptitle(title, fontsize=title_fontsize + 2,
+                     fontweight="bold", y=1.02)
 
-    fig.subplots_adjust(hspace=0.35, wspace=0.30)
+    fig.supxlabel("Expected $-\\log_{10}(p)$",
+                  fontsize=label_fontsize, fontweight="bold", y=0.02)
+    fig.supylabel("Observed $-\\log_{10}(p)$",
+                  fontsize=label_fontsize, fontweight="bold", x=0.02)
+
+    legend_handles, legend_labels = axes[0, 0].get_legend_handles_labels()
+    fig.legend(
+        legend_handles,
+        legend_labels,
+        loc="center left",
+        bbox_to_anchor=(0.86, 0.5),
+        fontsize=legend_fontsize,
+        markerscale=1.5,
+        frameon=True,
+        framealpha=0.9,
+        facecolor="white",
+        edgecolor="#d0d0d0",
+        labelcolor="black",
+    )
+
+    fig.subplots_adjust(hspace=0.32, wspace=0.22,
+                        left=0.08, right=0.82, bottom=0.09)
     return fig
 
 
@@ -300,8 +332,7 @@ for method in ALL_METHODS:
 
 fig_all = qq_plot(pvals_all, ALL_GENE_SETS, METHOD_STYLE,
                   neg_ctrl_labels=set(NEG_CTRL_SETS.keys()),
-                  ncols=4, neuron_dict=is_neuron_all,
-                  title="Cell-Type Bias QQ Plots — All Null Methods")
+                  ncols=4, neuron_dict=is_neuron_all)
 
 fig_all.savefig(FIG_DIR / "FigS_QQ_plot_all_methods.pdf", dpi=300,
                 transparent=True, bbox_inches="tight")
@@ -309,6 +340,33 @@ fig_all.savefig(FIG_DIR / "FigS_QQ_plot_all_methods.png", dpi=300,
                 transparent=True, bbox_inches="tight")
 plt.show()
 print(f"Saved to {FIG_DIR / 'FigS_QQ_plot_all_methods.pdf'}")
+
+# %% [markdown]
+# ## Sensitivity to `n_candidates` (Reviewer Response)
+#
+# Compare Random / Best-of-500 / Best-of-1000 / Best-of-2000 side-by-side
+# across all phenotypes. If the QQ curves are essentially overlapping for the
+# three Best-of-N variants, the matched-null calibration is robust to the
+# choice of `n_candidates` and not sensitive to the production setting of 1000.
+
+# %%
+SENSITIVITY_METHODS = ["Random", "Best-of-500", "Best-of-1000", "Best-of-2000"]
+pvals_sens = {m: pvals_all[m] for m in SENSITIVITY_METHODS if m in pvals_all}
+is_neuron_sens = {m: is_neuron_all[m] for m in SENSITIVITY_METHODS if m in is_neuron_all}
+
+fig_sens = qq_plot(
+    pvals_sens, ALL_GENE_SETS, METHOD_STYLE,
+    neg_ctrl_labels=set(NEG_CTRL_SETS.keys()),
+    ncols=4, neuron_dict=is_neuron_sens,
+    title="QQ Plot — Sensitivity to n_candidates (Best-of-N matched null)",
+)
+
+fig_sens.savefig(FIG_DIR / "FigS_QQ_sensitivity_n_candidates.pdf", dpi=300,
+                 transparent=True, bbox_inches="tight")
+fig_sens.savefig(FIG_DIR / "FigS_QQ_sensitivity_n_candidates.png", dpi=300,
+                 transparent=True, bbox_inches="tight")
+plt.show()
+print(f"Saved to {FIG_DIR / 'FigS_QQ_sensitivity_n_candidates.pdf'}")
 
 # %% [markdown]
 # ## Genomic Inflation Factor ($\lambda$)

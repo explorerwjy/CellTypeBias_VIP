@@ -593,7 +593,7 @@ def PlotBiasContrast(DF, label1, label2, name1, name2, title="", neur_only=False
         try:
             r_all, p_all = stats.spearmanr(X_all, Y_all)
         except Exception as e:
-            print(f"Warning: Could not compute Spearman correlation for all data: {e}")
+            print(f"Warning: Could not compute Spearmans' R for all data: {e}")
             r_all, p_all = np.nan, np.nan
 
     xmin = np.min(X_all) if len(X_all) > 0 else 0
@@ -620,7 +620,7 @@ def PlotBiasContrast(DF, label1, label2, name1, name2, title="", neur_only=False
         try:
             r_neur, p_neur = stats.spearmanr(X, Y)
         except Exception as e:
-            print(f"Warning: Could not compute Spearman correlation for neurons: {e}")
+            print(f"Warning: Could not compute Spearmans' R for neurons: {e}")
             r_neur, p_neur = np.nan, np.nan
 
     if len(X) > 0 and len(Y) > 0:
@@ -635,7 +635,7 @@ def PlotBiasContrast(DF, label1, label2, name1, name2, title="", neur_only=False
             except Exception as e:
                 print(f"Warning: Could not fit line for neurons: {e}")
         # Show r and p-value (not the poly1d object), format p-value as 10^{x}
-        ax.text(0.05, 0.95, f"$spearman R = {r_neur:.2f}$\n{format_pval_scientific(p_neur)}", transform=ax.transAxes, fontsize=15, ha='left', va='top')
+        ax.text(0.05, 0.95, f"$Spearmans' R = {r_neur:.2f}$\n{format_pval_scientific(p_neur)}", transform=ax.transAxes, fontsize=15, ha='left', va='top')
     else:
         ax.text(0.05, 0.95, "No neuron data", transform=ax.transAxes, fontsize=15, ha='left', va='top')
 
@@ -682,10 +682,10 @@ def PlotBiasContrast(DF, label1, label2, name1, name2, title="", neur_only=False
 
     # Print correlation statistics, format p-values as 10^{x}
     if neur_only:
-        print(f"Neuron Types:\nSpearmanR = {r_neur if not np.isnan(r_neur) else 'NA'}\nP = {format_pval_scientific(p_neur) if not np.isnan(p_neur) else 'NA'}")
+        print(f"Neuron Types:\nSpearmans' R = {r_neur if not np.isnan(r_neur) else 'NA'}\nP = {format_pval_scientific(p_neur) if not np.isnan(p_neur) else 'NA'}")
     else:
-        print(f"All Cell Types:\nSpearmanR = {r_all if not np.isnan(r_all) else 'NA'}\nP = {format_pval_scientific(p_all) if not np.isnan(p_all) else 'NA'}\n\n"
-              f"Neuron Types:\nSpearmanR = {r_neur if not np.isnan(r_neur) else 'NA'}\nP = {format_pval_scientific(p_neur) if not np.isnan(p_neur) else 'NA'}")
+        print(f"All Cell Types:\nSpearmans' R = {r_all if not np.isnan(r_all) else 'NA'}\nP = {format_pval_scientific(p_all) if not np.isnan(p_all) else 'NA'}\n\n"
+              f"Neuron Types:\nSpearmans' R = {r_neur if not np.isnan(r_neur) else 'NA'}\nP = {format_pval_scientific(p_neur) if not np.isnan(p_neur) else 'NA'}")
 
     # Style the plot
     ax.set_xlabel(name1, fontsize=18)
@@ -739,8 +739,8 @@ def compare_biases(bias1, bias2, name1="1", name2="2", efflabel="EFFECT", neuron
         # Get bias values, checking for empty results
         CT_Bias1 = CT_data[f"{efflabel}_{name1}"].values
         CT_Bias2 = CT_data[f"{efflabel}_{name2}"].values
-        stm_1 = np.std(CT_Bias1) / np.sqrt(len(CT_Bias1))
-        stm_2 = np.std(CT_Bias2) / np.sqrt(len(CT_Bias2))
+        stm_1 = stats.sem(CT_Bias1)
+        stm_2 = stats.sem(CT_Bias2)
         
         if len(CT_Bias1) == 0 or len(CT_Bias2) == 0:
             print(f"Warning: No data found for {CT}")
@@ -1213,7 +1213,8 @@ def plot_mutation_bias_comparison_V2(CT, datasets, anno_df, PvalDF, TestPairs = 
 
     # Customize plot (match previous function)
     ax.set_xticks(range(1,len(sorted_data)+1))
-    ax.set_xticklabels(sorted_data.keys(), rotation=45, ha='center', weight='normal', fontsize=15)
+    ax.set_xticklabels(sorted_data.keys(), rotation=45, ha='right', rotation_mode='anchor', weight='normal', fontsize=15)
+    ax.tick_params(axis='x', which='major', bottom=True, length=4, width=1, direction='out')
     ax.set_ylabel('Mutation Bias', labelpad=5, weight='normal', fontsize=15)
     ax.set_title(f'{CT}', pad=10, weight='normal', fontsize=15)
 
@@ -1491,7 +1492,7 @@ def PlotBiasContrast_v2(MergeDF, name1, name2, dataset="Human", title=""):
         
         ax.set_title(title, fontsize=14, fontweight='bold', pad=15)
         
-        # Spearman correlation
+        # Spearmans' R
         r_Neur, p_Neur = spearmanr(X_NEUR, Y_NEUR)
         r_nonNeur, p_nonNeur = spearmanr(X_NonNEUR, Y_NonNEUR)
         
@@ -1531,7 +1532,7 @@ def PlotBiasContrast_v2(MergeDF, name1, name2, dataset="Human", title=""):
         
         ax.set_title(title, fontsize=14, fontweight='bold', pad=15)
         
-        # Spearman correlation
+        # Spearmans' R
         r_Neur, p_Neur = spearmanr(X_NEUR, Y_NEUR)
         r_nonNeur, p_nonNeur = spearmanr(X_NonNEUR, Y_NonNEUR)
         
@@ -1601,7 +1602,7 @@ def Plot_Bias_vs_IQ(STR, Mut_n_IQ_conf, BiasMat):
     plt.plot(xseq, a + b * xseq, color="#d7191c", lw=2.5, linestyle='--', zorder=5)
     _SuperCluster = Anno.loc[STR, "Supercluster"]
     # Add title with improved formatting
-    plt.title(f'{_SuperCluster} - {STR} \nSpearman ρ = {pho:.2f}, p = {p:.2e}', fontsize=14, fontweight='bold')
+    plt.title(f"{_SuperCluster} - {STR} \nSpearmans' R = {pho:.2f}, p = {p:.2e}", fontsize=14, fontweight='bold')
 
     # Labeling axes
     plt.xlabel("Cell Type Bias", fontsize=12, fontweight='bold')
@@ -1668,11 +1669,11 @@ def Plot_Bias_vs_IQ_MoustCT(STR, Mut_n_IQ_conf, HCT_Z2_MAT_HCT, ax=None):
     bias_diff = high_iq_bias - low_iq_bias
 
     # Add title with improved formatting and average bias information
-    # ax.set_title(f'{STR}\nSpearman ρ = {pho:.2f}, p = {p:.2e}\n'
+    # ax.set_title(f'{STR}\nSpearmans' R = {pho:.2f}, p = {p:.2e}\n'
     #              f'Avg Bias (IQ>70): {high_iq_bias:.2f}, (IQ≤70): {low_iq_bias:.2f}, Diff: {bias_diff:.2f}', 
     #              fontsize=12, fontweight='bold')
 
-    ax.set_title(f'{STR}\nSpearman ρ = {pho:.2f}, p = {p:.2e} PBS = {b:.2f}', 
+    ax.set_title(f"{STR}\nSpearmans' R = {pho:.2f}, p = {p:.2e} PBS = {b:.2f}", 
                  fontsize=12, fontweight='bold')
   # Add line at IQ 70
     #ax.axhline(y=70, color='green', linestyle=':', linewidth=2)
@@ -1715,7 +1716,7 @@ def Plot_Bias_vs_IQ_MoustCT_forPaper(STR, Mut_n_IQ_conf, HCT_Z2_MAT_HCT, fixed_i
     bias_diff = high_iq_bias - low_iq_bias
 
 
-    #ax.set_title(f'{STR}\nSpearman ρ = {pho:.2f}, p = {p:.2e} \nPBS = {beta:.2f} PBS_p_value = {p_value:.2e}', 
+    #ax.set_title(f'{STR}\nSpearmans' R = {pho:.2f}, p = {p:.2e} \nPBS = {beta:.2f} PBS_p_value = {p_value:.2e}', 
     #            fontsize=12, fontweight='bold')
     
     #ax.set_title(f'{STR}\nPBS = {beta:.2f} p_value = {p_value:.1e}', 
@@ -1796,7 +1797,7 @@ def plot_cluster_correlation(cluster, SCZMutDF, specificity_scores, eff_label = 
     # Calculate correlations
     spearman_corr, spearman_p = stats.spearmanr(Zscore_list[valid_mask], Bias_list[valid_mask])
     pearson_corr, pearson_p = stats.pearsonr(Zscore_list[valid_mask], Bias_list[valid_mask])
-    #print(f"Spearman correlation: {spearman_corr}")
+    #print(f"Spearmans' R: {spearman_corr}")
     #print(f"Pearson correlation: {pearson_corr}")
 
     # Clean data
@@ -1872,7 +1873,7 @@ def calculate_cluster_correlations(specificity_scores, Spark_Meta_test, Anno, ef
 
 def plot_supercluster_correlations(corr_df, title=""):
     """
-    Create a box plot showing distribution of Spearman correlations by SuperCluster.
+    Create a box plot showing distribution of Spearmans' R values by SuperCluster.
     
     Args:
         corr_df: DataFrame containing 'SuperCluster' and 'Spearman_Correlation' columns
@@ -2285,7 +2286,7 @@ def SuperClusterBias_BoxPlot_CorrIQ(DF1, flip_axis=True, plot_metric="beta", fig
     if plot_metric == "beta":
         ax.set_xlabel("PBS", fontsize=20, fontweight='normal')
     elif plot_metric == "SpearmanR":
-        ax.set_xlabel("Spearman Correlation", fontsize=20, fontweight='normal')
+        ax.set_xlabel("Spearmans' R", fontsize=20, fontweight='normal')
         #ax.set_ylabel("Superclusters", fontsize=20, fontweight='normal')
     elif plot_metric == "p_beta_perm_Log" or plot_metric == "-log10(p)":
         #ax.set_xlabel("PBS -log10(P)", fontsize=20, fontweight='normal')
