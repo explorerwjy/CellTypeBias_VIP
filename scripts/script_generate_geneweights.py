@@ -220,34 +220,20 @@ def worker_best_of_n_percentile(sim_idx, n_genes, candidate_pool_ids, candidate_
         np.random.seed(base_seed + sim_idx)
 
     def calculate_distance_percentile(sampled_indices):
-        """Calculate distance in percentile space.
+        """Calculate Euclidean distance in percentile space.
 
-        Strategy:
-        1. Only match means (ignore std) for flexibility
-        2. Weight CDS_length 3x more than other variables
+        All variables are on [0, 100] percentile scale, so equal weighting
+        is appropriate. Distance is computed on mean percentile values only
+        (ignoring std) for flexibility.
         """
-        distances = []
+        sum_sq = 0.0
         for var in matching_vars:
-            # Get sampled values for this variable
             sampled_vals = candidate_values_pct[var][sampled_indices]
             sampled_mean = sampled_vals.mean()
-
             target_mean = target_stats_pct[var]['mean']
+            sum_sq += (sampled_mean - target_mean) ** 2
 
-            # Distance in percentile space (MEAN ONLY - ignore std)
-            # Absolute difference in percentile points
-            mean_diff = abs(sampled_mean - target_mean)
-
-            # Variable-specific weighting
-            # CDS_length is weighted 3x more to prioritize matching gene length
-            if var in ('CDS_length', 'n_CDS_bases'):
-                weight = 3.0  # Prioritize CDS matching
-            else:
-                weight = 1.0  # WB and LOEUF get standard weight
-
-            distances.append(mean_diff * weight)
-
-        return np.mean(distances)
+        return np.sqrt(sum_sq)
 
     best_genes = None
     best_distance = float('inf')

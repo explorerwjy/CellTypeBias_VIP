@@ -192,7 +192,7 @@ for ax, (disorder_name, gw_df, color) in zip(axes, configs):
     for spine in ["top", "right"]:
         ax.spines[spine].set_visible(False)
 
-axes[0].set_ylabel("Spearman ρ with top-61 bias profile", fontsize=12)
+axes[0].set_ylabel("Spearmans' R with top-61 bias profile", fontsize=12)
 
 fig.suptitle("R3.2c — SCZ (pipeline) vs DDD (inline skip-zeros vs pipeline file)",
              fontsize=13, fontweight="bold", y=1.02)

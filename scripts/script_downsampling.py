@@ -268,8 +268,11 @@ def run_single_iteration_scz(
             case_ptv_sub, case_mis3_sub, ctrl_ptv, ctrl_mis3, N_case_sub, N_ctrl
         )
 
-        # 3. Gene weight (mutation count mode, equal weights)
-        weight = case_ptv_sub * 1.0 + case_mis3_sub * 1.0
+        # 3. Gene weight (case-control excess, matching production pipeline)
+        # weight = (case - ctrl * N_case/N_ctrl) for each category
+        # This is the same ModifyMutCount logic from Bias_Mutation_Weights notebook
+        ratio = N_case_sub / N_ctrl
+        weight = (case_ptv_sub - ctrl_ptv * ratio) + (case_mis3_sub - ctrl_mis3 * ratio)
 
         results.append(
             {
