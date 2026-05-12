@@ -8,6 +8,10 @@
 #       format_name: percent
 #       format_version: '1.3'
 #       jupytext_version: 1.19.1
+#   kernelspec:
+#     display_name: gencic
+#     language: python
+#     name: python3
 # ---
 
 # %% [markdown]
@@ -324,6 +328,11 @@ def plot_stability_with_overlap(corr_df, overlap_data, output_path=None, dpi=300
 
     bias_color = "#E74C3C"      # Red for bias correlation
     overlap_color = "#3498DB"   # Blue for gene overlap
+    label_fontsize = 18
+    title_fontsize = 21
+    tick_fontsize = 14
+    legend_fontsize = 15
+    top_label_fontsize = 15
 
     for ax, disorder in zip(axes, DISORDERS):
         ax.patch.set_alpha(0)
@@ -331,8 +340,9 @@ def plot_stability_with_overlap(corr_df, overlap_data, output_path=None, dpi=300
         # Get correlation data
         df = corr_df[corr_df["disorder"] == disorder]
         if len(df) == 0:
-            ax.text(0.5, 0.5, f"No data for {disorder}", ha="center", va="center")
-            ax.set_title(disorder, fontsize=14, fontweight="bold")
+            ax.text(0.5, 0.5, f"No data for {disorder}", ha="center", va="center",
+                    fontsize=label_fontsize)
+            ax.set_title(disorder, fontsize=title_fontsize, fontweight="bold")
             continue
 
         # Compute correlation summary statistics
@@ -373,12 +383,13 @@ def plot_stability_with_overlap(corr_df, overlap_data, output_path=None, dpi=300
         ax.axhline(y=0.9, color="gray", linestyle="--", alpha=0.7)
 
         # Formatting for left axis
-        ax.set_xlabel("Sample Fraction (%)", fontsize=12)
-        ax.set_ylabel("Correlation with Full Bias (r)", fontsize=12, color=bias_color)
-        ax.set_title(disorder, fontsize=14, fontweight="bold")
+        ax.set_xlabel("Sample Fraction (%)", fontsize=label_fontsize)
+        ax.set_ylabel("Correlation with Full Bias (r)", fontsize=label_fontsize, color=bias_color)
+        ax.set_title(disorder, fontsize=title_fontsize, fontweight="bold")
         ax.set_xlim(5, 105)
         ax.set_ylim(0, 1.05)
-        ax.tick_params(axis="y", labelcolor=bias_color)
+        ax.tick_params(axis="x", labelsize=tick_fontsize)
+        ax.tick_params(axis="y", labelsize=tick_fontsize, labelcolor=bias_color)
         ax.grid(True, alpha=0.3)
 
         # Add gene overlap on right y-axis
@@ -404,15 +415,16 @@ def plot_stability_with_overlap(corr_df, overlap_data, output_path=None, dpi=300
                 markersize=6,
                 label="Gene overlap",
             )
-            ax2.set_ylabel("Gene Overlap with Full Set", fontsize=12, color=overlap_color)
-            ax2.tick_params(axis="y", labelcolor=overlap_color)
+            ax2.set_ylabel("Gene Overlap with Full Set", fontsize=label_fontsize, color=overlap_color)
+            ax2.tick_params(axis="y", labelsize=tick_fontsize, labelcolor=overlap_color)
             ax2.set_ylim(0, 1.05)
 
             # Combined legend
             ax.legend([line1, line2], ["Bias correlation (r)", "Gene overlap"],
-                     loc="lower right", fontsize=10)
+                     loc="lower right", fontsize=legend_fontsize)
         else:
-            ax2.set_ylabel("Gene Overlap (no data)", fontsize=12, color="gray")
+            ax2.set_ylabel("Gene Overlap (no data)", fontsize=label_fontsize, color="gray")
+            ax2.tick_params(axis="y", labelsize=tick_fontsize, labelcolor="gray")
 
         # Add secondary x-axis with approximate N
         ax3 = ax.twiny()
@@ -421,9 +433,10 @@ def plot_stability_with_overlap(corr_df, overlap_data, output_path=None, dpi=300
         ax3.set_xticks(tick_fracs)
         ax3.set_xticklabels(
             [f"{int(f / 100 * SAMPLE_SIZES[disorder]):,}" for f in tick_fracs],
-            fontsize=9,
+            fontsize=tick_fontsize,
         )
-        ax3.set_xlabel("Approximate N", fontsize=10)
+        ax3.set_xlabel("Approximate N", fontsize=top_label_fontsize)
+        ax3.tick_params(axis="x", labelsize=tick_fontsize)
 
     fig.patch.set_alpha(0)
     plt.tight_layout()
@@ -529,14 +542,19 @@ def plot_supercluster_tracking(zscore_df, output_path=None, dpi=300):
     fig, axes = plt.subplots(1, 3, figsize=(15, 5), facecolor="none")
 
     sc_colors = plt.cm.Set2(np.linspace(0, 1, 8))
+    label_fontsize = 18
+    title_fontsize = 21
+    tick_fontsize = 14
+    legend_fontsize = 14
 
     for ax, disorder in zip(axes, DISORDERS):
         ax.patch.set_alpha(0)
 
         df = zscore_df[zscore_df["disorder"] == disorder]
         if len(df) == 0:
-            ax.text(0.5, 0.5, f"No data for {disorder}", ha="center", va="center")
-            ax.set_title(disorder, fontsize=14, fontweight="bold")
+            ax.text(0.5, 0.5, f"No data for {disorder}", ha="center", va="center",
+                    fontsize=label_fontsize)
+            ax.set_title(disorder, fontsize=title_fontsize, fontweight="bold")
             continue
 
         superclusters = df["supercluster"].unique()
@@ -563,12 +581,14 @@ def plot_supercluster_tracking(zscore_df, output_path=None, dpi=300):
             )
 
         ax.axhline(y=0, color="gray", linestyle="--", alpha=0.5)
-        ax.set_xlabel("Sample Fraction (%)", fontsize=12)
-        ax.set_ylabel("Mean mutation bias", fontsize=12)
-        ax.set_title(f"{disorder} - Cell Type Tracking", fontsize=14, fontweight="bold")
+        ax.set_xlabel("Sample Fraction (%)", fontsize=label_fontsize)
+        ax.set_ylabel("Mean mutation bias", fontsize=label_fontsize)
+        ax.set_title(f"{disorder} - Cell Type Tracking",
+                     fontsize=title_fontsize, fontweight="bold")
         ax.set_xlim(5, 105)
+        ax.tick_params(axis="both", labelsize=tick_fontsize)
         ax.grid(True, alpha=0.3)
-        ax.legend(loc="best", fontsize=9)
+        ax.legend(loc="best", fontsize=legend_fontsize)
 
     fig.patch.set_alpha(0)
     plt.tight_layout()

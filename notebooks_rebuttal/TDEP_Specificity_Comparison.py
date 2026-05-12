@@ -284,7 +284,7 @@ HGNC, _, _, Entrez2Symbol = LoadGeneINFO()
 # For each disorder and each specificity matrix (capped vs uncapped):
 # 1. Compute full bias with all genes
 # 2. For each gene, remove it and recompute bias
-# 3. Compute Spearman rho between full and LOO bias rankings
+# 3. Compute Spearmans' R between full and LOO bias rankings
 
 # %%
 # Use SCZ and ASD w/o ID for LOO (same gene weights as above)
@@ -330,7 +330,7 @@ for disorder, gw_dict in loo_gw_dicts.items():
 # ## LOO Summary Statistics
 
 # %%
-print("LOO Stability Summary (Spearman rho vs full gene set)")
+print("LOO Stability Summary (Spearmans' R vs full gene set)")
 print("=" * 70)
 for disorder in loo_gw_dicts:
     for spec_label in ["Capped (2x)", "Uncapped"]:
@@ -448,7 +448,7 @@ for i, (pos_i, rhos, color) in enumerate(zip(positions, all_rhos, all_colors)):
 ax_b.axhline(1.0, color="gray", linestyle="--", linewidth=0.8, alpha=0.6)
 ax_b.set_xticks(positions)
 ax_b.set_xticklabels(xtick_labels, fontsize=9)
-ax_b.set_ylabel("Spearman $\\rho$ (LOO vs full)", fontsize=11)
+ax_b.set_ylabel("Spearmans' R (LOO vs full)", fontsize=11)
 
 all_rhos_flat = np.concatenate(all_rhos)
 ymin = min(all_rhos_flat.min() - 0.015, 0.90)
@@ -589,7 +589,7 @@ for disorder in loo_gw_dicts:
 #    cell types, especially for ASD w/o ID.
 #
 # 2. **LOO stability**: Capping at 2x ensures that no single gene can dominate
-#    the bias ranking. The minimum LOO Spearman rho is consistently high
+#    the bias ranking. The minimum LOO Spearmans' R is consistently high
 #    (>0.95) with capping, while uncapped specificity shows lower stability
 #    (min rho ~0.91) due to genes like *CACNA1G* (21x in Purkinje) and
 #    *TBR1* (11.7x in L6 IT) that can single-handedly shift rankings.

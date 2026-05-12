@@ -140,7 +140,7 @@ print(f"Specificity (centered) matrix: {expr_spec_c.shape}")
 # === Compute correlations: marker expression vs 22q bias ===
 
 def compute_correlations(expr_df, bias_df, label=""):
-    """Compute Spearman correlation between each marker gene and 22q bias."""
+    """Compute Spearmans' R between each marker gene and 22q bias."""
     common = expr_df.index.intersection(bias_df.index)
     bias_vals = bias_df.loc[common, 'EFFECT'].values
 
@@ -185,7 +185,7 @@ summary['P_value (Spec)'] = summary.index.map(pvals_spec)
 
 # Sort by specificity correlation (primary)
 summary = summary.sort_values('Specificity', ascending=False)
-print("\n=== Summary: Spearman rho with 22q bias across 21 CGE clusters ===")
+print("\n=== Summary: Spearmans' R with 22q bias across 21 CGE clusters ===")
 print(summary.to_string())
 
 # %%
@@ -210,7 +210,7 @@ for ax, (label, corr_df) in zip(axes, [
     ax.barh(range(len(corr_df)), corr_df['Spearman_rho'], color=colors)
     ax.set_yticks(range(len(corr_df)))
     ax.set_yticklabels(corr_df['Gene'])
-    ax.set_xlabel('Spearman ρ with 22q bias')
+    ax.set_xlabel("Spearmans' R with 22q bias")
     ax.set_title(label)
     ax.axvline(x=0, color='black', linewidth=0.5)
 
@@ -260,7 +260,7 @@ for ax, (label, expr_df) in zip(axes, [
         slope, intercept = np.polyfit(x[mask], y[mask], 1)
         x_line = np.linspace(np.min(x[mask]), np.max(x[mask]), 100)
         ax.plot(x_line, slope * x_line + intercept, 'k--', alpha=0.5)
-        ax.set_title(f'{label}\nSpearman ρ = {rho:.3f}, P = {pval:.2e}')
+        ax.set_title(f"{label}\nSpearmans' R = {rho:.3f}, P = {pval:.2e}")
 
     ax.set_xlabel(f'VIP expression ({label})')
     ax.set_ylabel('22q11.2 mutation bias')
@@ -315,7 +315,7 @@ print("\n" + "="*70)
 print("MANUSCRIPT SUMMARY")
 print("="*70)
 print(f"\nAcross 21 CGE interneuron clusters from the Siletti et al. atlas:")
-print(f"\nSpearman correlations between marker gene SPECIFICITY and 22q11.2 mutation bias:")
+print(f"\nSpearmans' R values between marker gene SPECIFICITY and 22q11.2 mutation bias:")
 print("-" * 50)
 for _, row in corr_spec.sort_values('Spearman_rho', ascending=False).iterrows():
     sig = '*' if row['P_value'] < 0.05 else ''

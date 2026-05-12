@@ -19,8 +19,8 @@
 # - SCZ full: 53 genes (main pipeline, Mis2-excluded)
 # - SCZ ∩ NDD top 61: **1 gene overlap (GRIN2A)** → 52 genes remain
 # - SCZ ∩ NDD top 285 (bgmr): **8 genes overlap** → 45 genes remain
-# - Spearman correlation (full vs rm NDD61): rho = 0.967
-# - Spearman correlation (full vs rm NDD285): rho = 0.923
+# - Spearmans' R (full vs rm NDD61): rho = 0.967
+# - Spearmans' R (full vs rm NDD285): rho = 0.923
 
 # %%
 # %load_ext autoreload
@@ -76,11 +76,11 @@ print(f"SCZ rm NDD61: {scz_rm61_bias.shape[0]} cell types")
 scz_rm285_bias = pd.read_csv(BIAS_DIR / "HCT.SCZ61.ExNDD285.csv", index_col=0)
 print(f"SCZ rm NDD285: {scz_rm285_bias.shape[0]} cell types")
 
-# Spearman correlations
+# Spearmans' R values
 rho61, p61 = spearmanr(scz_full_bias["EFFECT"], scz_rm61_bias.loc[scz_full_bias.index, "EFFECT"])
 rho285, p285 = spearmanr(scz_full_bias["EFFECT"], scz_rm285_bias.loc[scz_full_bias.index, "EFFECT"])
-print(f"\nSpearman correlation (full vs rm NDD61):  rho={rho61:.4f}, p={p61:.2e}")
-print(f"Spearman correlation (full vs rm NDD285): rho={rho285:.4f}, p={p285:.2e}")
+print(f"\nSpearmans' R (full vs rm NDD61):  rho={rho61:.4f}, p={p61:.2e}")
+print(f"Spearmans' R (full vs rm NDD285): rho={rho285:.4f}, p={p285:.2e}")
 
 # %% [markdown]
 # ## Figure 1: Supercluster Bias — SCZ Full vs SCZ rm NDD61 vs SCZ rm NDD285
@@ -141,7 +141,7 @@ ax1.plot(lims, lims, "k--", alpha=0.4, lw=1)
 
 ax1.set_xlabel("SCZ Full (53 genes) — Mutation Bias", fontsize=12)
 ax1.set_ylabel("SCZ rm NDD285 (45 genes) — Mutation Bias", fontsize=12)
-ax1.set_title(f"Spearman rho = {rho285:.3f}", fontsize=13)
+ax1.set_title(f"Spearmans' R = {rho285:.3f}", fontsize=13)
 
 legend_elements = [
     Line2D([0], [0], marker="o", color="w", markerfacecolor="#E74C3C", markersize=8, label="CGE interneuron"),
@@ -247,7 +247,7 @@ for name, df in [
     cge_rank = list(sc_means.index).index("CGE interneuron") + 1
     print(f"  CGE rank among {len(sc_means)} superclusters: {cge_rank}")
 
-print(f"\nSpearman rho (full vs rm NDD61, 461 cell types):  {rho61:.4f}")
-print(f"Spearman rho (full vs rm NDD285, 461 cell types): {rho285:.4f}")
+print(f"\nSpearmans' R (full vs rm NDD61, 461 cell types):  {rho61:.4f}")
+print(f"Spearmans' R (full vs rm NDD285, 461 cell types): {rho285:.4f}")
 print(f"Gene overlap: SCZ ∩ NDD61 = 1 (GRIN2A), SCZ ∩ NDD285 = 8")
 print("\n" + "=" * 60)

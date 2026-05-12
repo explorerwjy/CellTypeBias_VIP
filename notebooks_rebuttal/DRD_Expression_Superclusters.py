@@ -322,53 +322,82 @@ def style_supercluster_labels(ax, highlight_sc="CGE interneuron"):
 
 # %%
 # Plot all 5 DRD genes as a 1×5 layout with shared y-axis order
-# Compute shared sort order: mean of per-gene median across all 5 DRDs
-neur_clusters = [c for c in Neur_idx if c in Anno.index]
+# Use raw TPM expression for the x-axis in this figure.
+tpm = pd.read_csv(
+    PROJ_DIR / "dat" / "ExpMats" / DATA_FILES["tpm"],
+    index_col=0,
+)
+tpm.columns = [int(c) for c in tpm.columns]
+TPM_XLABEL = AXIS_LABELS["tpm"]
+
+# Compute shared sort order: mean of per-gene median TPM across all 5 DRDs
+neur_clusters = [c for c in Neur_idx if c in Anno.index and c in tpm.columns]
 _tmp_df = pd.DataFrame({
     "cluster": neur_clusters,
     "Supercluster": [Anno.loc[c, "Supercluster"] for c in neur_clusters],
 })
-# For each DRD gene, get median spec per supercluster; then average across genes
+# For each DRD gene, get median TPM per supercluster; then average across genes
 _medians = {}
 for gname, eid in DRD_GENES.items():
-    _s = spec.loc[eid, neur_clusters]
+    _s = tpm.loc[eid, neur_clusters]
     _tmp_df[gname] = _s.values
     _medians[gname] = _tmp_df.groupby("Supercluster")[gname].median()
 _median_df = pd.DataFrame(_medians)
 shared_sc_order = _median_df.mean(axis=1).sort_values(ascending=True).index.tolist()
 
+# Increase base font size by 50%
+LABEL_FONTSIZE = 18   # xlabels
+TITLE_FONTSIZE = 21   # main plot title
+SUPTITLE_FONTSIZE = 24
+TICK_FONTSIZE = 15
+YLABEL_FONTSIZE = 15
+
 fig, axes = plt.subplots(1, 5, figsize=(36, 8), sharey=False)
 
 for idx, (gene_name, entrez_id) in enumerate(DRD_GENES.items()):
     ax = axes[idx]
-    gene_spec = spec.loc[entrez_id]
+    gene_tpm = tpm.loc[entrez_id]
     plot_gene_spec_by_supercluster(
-        gene_spec, gene_name, Anno, Neur_idx,
+        gene_tpm, gene_name, Anno, Neur_idx,
         highlight_sc="CGE interneuron", ax=ax,
         sc_order=shared_sc_order,
-        ref_line=REF_LINE[MODE], xlabel=XLABEL,
+        ref_line=REF_LINE["tpm"], xlabel=TPM_XLABEL,
     )
-    # Set x-axis to show the data range with padding
-    neur_vals = gene_spec[[c for c in spec.columns if c in cluster_to_sc]].values
+    # Set x-axis to show the TPM range with padding
+    neur_vals = gene_tpm[[c for c in tpm.columns if c in cluster_to_sc]].values
     xmin_val, xmax_val = np.percentile(neur_vals, [1, 99])
     pad = (xmax_val - xmin_val) * 0.15
-    ax.set_xlim(xmin_val - pad, xmax_val + pad)
+    ax.set_xlim(max(0, xmin_val - pad), xmax_val + pad)
     # Only show y-labels on the leftmost panel
     if idx > 0:
         ax.set_yticklabels([])
         ax.set_ylabel("")
+    # Adjust x/y label font size and title
+    ax.set_xlabel(TPM_XLABEL, fontsize=LABEL_FONTSIZE)
+    ax.set_title(gene_name, fontsize=TITLE_FONTSIZE, fontweight="bold")
+    ax.tick_params(axis="x", labelsize=TICK_FONTSIZE)
+    ax.tick_params(axis="y", labelsize=TICK_FONTSIZE)
+    for label in ax.get_xticklabels():
+        label.set_fontsize(TICK_FONTSIZE)
+    if idx == 0:
+        try:
+            ax.set_ylabel(ax.get_ylabel(), fontsize=YLABEL_FONTSIZE)
+            for label in ax.get_yticklabels():
+                label.set_fontsize(TICK_FONTSIZE)
+        except Exception:
+            pass
 
-fig.suptitle("Dopamine Receptor Specificity — Individual Cell Type Clusters",
-             fontsize=16, fontweight="bold", y=1.01)
-fig.tight_layout()
+# fig.suptitle(
+#     "Dopamine Receptor TPM Expression — Individual Cell Type Clusters",
+#     fontsize=SUPTITLE_FONTSIZE, fontweight="bold", y=1.01
+# )
+# fig.tight_layout()
 
 # Style labels on leftmost panel (only one with visible labels)
 style_supercluster_labels(axes[0], "CGE interneuron")
 
-fig.savefig(FIG_DIR / "DRD_per_cluster_all5.pdf", transparent=True, dpi=300,
-            bbox_inches="tight")
-fig.savefig(FIG_DIR / "DRD_per_cluster_all5.png", transparent=True, dpi=300,
-            bbox_inches="tight")
+fig.savefig(FIG_DIR / "DRD_per_cluster_all5.pdf", transparent=True, dpi=300, bbox_inches="tight")
+fig.savefig(FIG_DIR / "DRD_per_cluster_all5.png", transparent=True, dpi=300, bbox_inches="tight")
 plt.show()
 
 # %%

@@ -415,7 +415,7 @@ for label, old_file, new_file in comparisons:
 
     print(f"\n{label}:")
     print(f"  Genes in common: {len(merged)}")
-    print(f"  Spearman rho: {rho:.3f}")
+    print(f"  Spearmans' R: {rho:.3f}")
     print(f"  Max rank change: {merged['RankChange'].abs().max()}")
 
     # Flag genes with > 50% weight reduction

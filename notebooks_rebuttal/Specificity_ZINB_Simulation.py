@@ -839,7 +839,7 @@ print("\n--- Per-cell-type comparison (P10 expression) ---")
 rho_max, p_max = stats.spearmanr(
     validation_df["sim_max_spec"], validation_df["emp_max_spec"]
 )
-print(f"Spearman(sim_max, emp_max): ρ = {rho_max:.3f}, p = {p_max:.2e}")
+print(f"Spearmans' R (sim_max, emp_max): ρ = {rho_max:.3f}, p = {p_max:.2e}")
 
 # Neuronal vs non-neuronal
 print("\nNeuronal vs Non-neuronal (P10 expression):")
@@ -866,7 +866,7 @@ print(f"\nOverlap in top 20: {len(overlap)}/20 ({len(overlap)/20:.0%})")
 
 # frac_clipped validation
 rho_fc2, p_fc2 = stats.spearmanr(val_df["sim_noise"], val_df["frac_clipped"])
-print(f"\nSpearman(sim_noise at P25, frac_clipped): ρ = {rho_fc2:.3f}, p = {p_fc2:.2e}")
+print(f"\nSpearmans' R (sim_noise at P25, frac_clipped): ρ = {rho_fc2:.3f}, p = {p_fc2:.2e}")
 
 # %% [markdown]
 # ## Summary
@@ -896,4 +896,4 @@ print(f"\nSpearman(sim_noise at P25, frac_clipped): ρ = {rho_fc2:.3f}, p = {p_f
 #
 # 6. **Simulation predictions match empirical data**: Cell types predicted to have the
 #    highest specificity inflation are the same ones with the highest empirical max
-#    specificity and highest `frac_clipped`, with strong Spearman correlation.
+#    specificity and highest `frac_clipped`, with strong Spearmans' R.

@@ -670,7 +670,7 @@ plt.show()
 # **Approach**: Using DANDI 000008 M1 patch-seq data, we extract paired
 # electrophysiology (analysis.csv) and single-cell RNA-seq (exon counts)
 # for VIP interneurons. We then correlate each gene's expression with
-# rise slope and AP width using Spearman rank correlation.
+# rise slope and AP width using Spearmans' R.
 #
 # **Genes tested**:
 # - 22q11.2 region: Dgcr8, Tbx1, Comt, Prodh, Sept5, Ranbp1, Crkl,
@@ -839,13 +839,13 @@ plt.savefig(EPHYS_DIR / "figures" / "Fig_22q_GeneDetection_VIP.png",
 plt.show()
 
 # %% [markdown]
-# ### 10b. Spearman Correlations: Gene Expression vs AP Features
+# ### 10b. Spearmans' R Values: Gene Expression vs AP Features
 #
-# For each gene, compute Spearman rho and p-value against rise slope
+# For each gene, compute Spearmans' R and p-value against rise slope
 # and AP width. Apply FDR correction across all tests.
 
 # %%
-# Compute Spearman correlations
+# Compute Spearmans' R values
 results = []
 for gene in ALL_GENES:
     if gene not in vip_paired.columns:
@@ -884,7 +884,7 @@ if len(corr_df) > 0:
     _, corr_df["q_value"], _, _ = multipletests(corr_df["p_value"], method="fdr_bh")
 
 # Display results
-print("\nSpearman Correlations: Gene Expression vs AP Features (M1 VIP)")
+print("\nSpearmans' R Values: Gene Expression vs AP Features (M1 VIP)")
 print("=" * 95)
 print(f"{'Gene':<12} {'Feature':<20} {'rho':<8} {'p-value':<12} "
       f"{'q-value':<12} {'n':<6} {'det%':<8} {'Sig':<5}")
@@ -973,8 +973,8 @@ ax.axhline(n_22q_in_heatmap - 0.5, color="gray", linewidth=1, linestyle="--")
 ax.axhline(n_22q_in_heatmap + n_na_in_heatmap - 0.5, color="gray",
            linewidth=1, linestyle="--")
 
-plt.colorbar(im, ax=ax, label="Spearman rho", shrink=0.6)
-ax.set_title("Gene Expression vs AP Features\n(M1 VIP, Spearman correlation)",
+plt.colorbar(im, ax=ax, label="Spearmans' R", shrink=0.6)
+ax.set_title("Gene Expression vs AP Features\n(M1 VIP, Spearmans' R)",
              fontsize=11)
 plt.tight_layout()
 plt.savefig(EPHYS_DIR / "figures" / "Fig_22q_Corr_Heatmap_VIP.png",
@@ -1090,7 +1090,7 @@ for i, feat in enumerate(["Rise Slope (V/s)", "AP Width (ms)"]):
 
     ax.set_yticks(range(len(colors_group)))
     ax.set_yticklabels(list(colors_group.keys()), fontsize=9)
-    ax.set_xlabel("|Spearman rho|", fontsize=10)
+    ax.set_xlabel("|Spearmans' R|", fontsize=10)
     ax.set_title(feat, fontsize=11)
     ax.axvline(0, color="gray", linewidth=0.5)
     sns.despine(ax=ax)
@@ -1145,7 +1145,7 @@ if len(corr_log_df) > 0:
     )
 
 # Compare raw vs log1p correlations
-print("\nRaw vs log1p-normalized Spearman correlations:")
+print("\nRaw vs log1p-normalized Spearmans' R values:")
 print("=" * 85)
 print(f"{'Gene':<12} {'Feature':<20} {'rho_raw':<10} {'rho_log':<10} "
       f"{'p_raw':<12} {'p_log':<12}")
@@ -1747,7 +1747,7 @@ if bridge_sorted:
 # show expression profile similarity with these targets beyond cell-class identity.
 #
 # **Methodology**: Pearson partial correlation on class-adjusted OLS residuals (not
-# "partial Spearman" -- OLS residualization destroys rank structure). Stouffer's signed z
+# "partial Spearmans' R" -- OLS residualization destroys rank structure). Stouffer's signed z
 # for family-level collapsing. Permutation null for overall convergence.
 #
 # See spec: `docs/superpowers/specs/2026-04-01-22q-ephys-channel-convergence-design.md`
@@ -1876,7 +1876,7 @@ print(f"Neuronal positional indices in SpecMat: {len(neuron_idx)}")
 # %% [markdown]
 # ---
 # ## 13. Expression Profile Similarity: Tiers 1–3
-# Tier 1: Raw Spearman across neurons — initial screen
+# Tier 1: Raw Spearmans' R across neurons — initial screen
 # Tier 2: Pearson partial (cell-class corrected) — primary test
 # Tier 3: CGE only (n=21) — directional confirmation with BCa CIs
 
@@ -1897,7 +1897,7 @@ n_fam_hits = (fam_df["q_family"] < 0.05).sum() if len(fam_df) > 0 else 0
 
 print("=== Profile Similarity: Mean-Centered Matrix ===")
 print(f"Total pairs tested: {len(pair_df)}")
-print(f"Tier 1 (raw Spearman p < 0.05): {n_tier1_hits}")
+print(f"Tier 1 (raw Spearmans' R p < 0.05): {n_tier1_hits}")
 print(f"Tier 2 (partial r, q < 0.05):   {n_tier2_hits}")
 print(f"Family-level (q < 0.05):         {n_fam_hits}")
 
@@ -1984,7 +1984,7 @@ from scipy.stats import spearmanr, norm
 
 
 def bca_ci_spearman(x, y, n_boot=2000, alpha=0.05, seed=42):
-    """BCa (bias-corrected accelerated) bootstrap 95% CI on Spearman rho."""
+    """BCa (bias-corrected accelerated) bootstrap 95% CI on Spearmans' R."""
     rng = np.random.default_rng(seed)
     n = len(x)
     rho_obs, _ = spearmanr(x, y)
@@ -2027,7 +2027,7 @@ def bca_ci_spearman(x, y, n_boot=2000, alpha=0.05, seed=42):
 cge_positional = [i for i, c in enumerate(SpecMat.columns) if c in cge_idx]
 cge_cols = [SpecMat.columns[i] for i in cge_positional]
 
-print(f"=== Tier 3: CGE-only Spearman with BCa CIs (n={len(cge_cols)}) ===\n")
+print(f"=== Tier 3: CGE-only Spearmans' R with BCa CIs (n={len(cge_cols)}) ===\n")
 
 sig_fam_entries = fam_df[fam_df["q_family"] < 0.05] if len(fam_df) > 0 else fam_df
 
@@ -2117,14 +2117,14 @@ if len(pair_df) > 0:
 
     fig, axes = plt.subplots(1, 2, figsize=(14, 8))
 
-    # Left: Tier 1 raw Spearman
+    # Left: Tier 1 raw Spearmans' R
     sns.heatmap(
         pivot_rho, ax=axes[0], cmap="RdBu_r", center=0,
         vmin=-0.6, vmax=0.6, linewidths=0.3, linecolor="white",
-        cbar_kws={"shrink": 0.6, "label": "Spearman rho"},
+        cbar_kws={"shrink": 0.6, "label": "Spearmans' R"},
         xticklabels=True, yticklabels=True,
     )
-    axes[0].set_title("Tier 1: Raw Spearman rho")
+    axes[0].set_title("Tier 1: Raw Spearmans' Rs' R")
     axes[0].set_xlabel("Target gene")
     axes[0].set_ylabel("22q source gene")
     axes[0].tick_params(axis="x", rotation=90, labelsize=7)
@@ -2145,7 +2145,7 @@ if len(pair_df) > 0:
 
     fig.suptitle(
         "22q x Channel/Scaffold Profile Similarity\n"
-        "Tier 1 (raw Spearman) vs Tier 2 (Pearson partial, cell-class corrected)",
+        "Tier 1 (raw Spearmans' R) vs Tier 2 (Pearson partial, cell-class corrected)",
         fontsize=12, y=1.02,
     )
     fig.tight_layout()

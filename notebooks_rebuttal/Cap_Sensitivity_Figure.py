@@ -21,7 +21,7 @@
 # capping threshold across a range of levels (1x, 1.5x, 2x, 2.5x, 3x, 5x).
 #
 # **Key conclusions:**
-# - At 1x, signal is over-compressed (Spearman rho drops).
+# - At 1x, signal is over-compressed (Spearmans' R drops).
 # - At 1.5x--3x, results are highly stable (rho > 0.95).
 # - The default 2x cap preserves biological signal while preventing
 #   technical inflation from low-UMI cell types.
@@ -151,10 +151,10 @@ print("\nTop 5 at cap=2x:")
 print(sc_bias_df.sort_values(sort_col, ascending=False).head())
 
 # %% [markdown]
-# ## Panel B: Spearman correlation vs cap=2x
+# ## Panel B: Spearmans' R vs cap=2x
 
 # %%
-# For each disorder and cap level, compute Spearman rho (cell-type-level)
+# For each disorder and cap level, compute Spearmans' R (cell-type-level)
 # between EFFECT at that cap and EFFECT at cap=2x
 ref_cap = 2.0
 corr_results = {}
@@ -287,7 +287,7 @@ def fmt_xaxis(ax):
 def shade_optimal(ax):
     ax.axvspan(1.5, 3.0, color="#e0f2fe", alpha=0.35, zorder=0)
 
-# ===== Panel A: Spearman correlation =====
+# ===== Panel A: Spearmans' R =====
 ax = axes[0]
 shade_optimal(ax)
 
@@ -299,7 +299,7 @@ for disorder in corr_df.columns:
             markersize=7, lw=2.2, label=disorder, zorder=3)
 
 fmt_xaxis(ax)
-ax.set_ylabel("Spearman ρ vs. cap = 2×", fontsize=11)
+ax.set_ylabel("Spearmans' R vs. cap = 2×", fontsize=11)
 ax.set_ylim(min(corr_df.values.min() - 0.03, 0.35), 1.01)
 ax.legend(fontsize=9, frameon=True, framealpha=0.9, edgecolor="none",
           loc="lower left", handlelength=1.5)

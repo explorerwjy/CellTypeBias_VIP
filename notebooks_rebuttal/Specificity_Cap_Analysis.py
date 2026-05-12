@@ -125,10 +125,10 @@ U, p_mw = stats.mannwhitneyu(neur_frac, nonneur_frac, alternative="less")
 print(f"Mann-Whitney U (neuronal < non-neuronal): U={U:.0f}, p={p_mw:.2e}")
 
 rho_umi, p_umi = stats.spearmanr(ct_stats["Total_UMI"], ct_stats["frac_clipped"])
-print(f"Spearman(Total UMI, frac_clipped): ρ={rho_umi:.3f}, p={p_umi:.2e}")
+print(f"Spearmans' R (Total UMI, frac_clipped): ρ={rho_umi:.3f}, p={p_umi:.2e}")
 
 rho_cells, p_cells = stats.spearmanr(ct_stats["N_cells"], ct_stats["frac_clipped"])
-print(f"Spearman(N cells, frac_clipped): ρ={rho_cells:.3f}, p={p_cells:.2e}")
+print(f"Spearmans' R (N cells, frac_clipped): ρ={rho_cells:.3f}, p={p_cells:.2e}")
 
 # %% [markdown]
 # ## Main Figure (1×2)

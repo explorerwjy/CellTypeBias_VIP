@@ -23,7 +23,7 @@
 # **Panel layout (3 rows × 2 columns):**
 # - **A**: Empirical specificity inflation vs UMI depth (the problem)
 # - **B**: NB simulation — max specificity by expression level × UMI group (the mechanism)
-# - **C**: Spearman ρ across cap levels for 3 disorders (robustness)
+# - **C**: Spearmans' R across cap levels for 3 disorders (robustness)
 # - **D**: Supercluster rank across cap levels (neuronal vs non-neuronal divergence)
 # - **E**: Neuronal fraction in top-N: capped vs TDEP uncapped (external validation)
 # - **F**: Leave-one-out stability: capped vs uncapped (single-gene dominance)
@@ -152,7 +152,7 @@ for col in ["frac_clipped", "max_spec", "Total_UMI", "N_cells"]:
 
 neur_mask = ct_stats["is_neuronal"]
 rho_umi, p_umi = stats.spearmanr(ct_stats["Total_UMI"], ct_stats["frac_clipped"])
-print(f"Spearman(Total UMI, frac_clipped): ρ = {rho_umi:.3f}, p = {p_umi:.2e}")
+print(f"Spearmans' R (Total UMI, frac_clipped): ρ = {rho_umi:.3f}, p = {p_umi:.2e}")
 print(f"Neuronal: {neur_mask.sum()}, Non-neuronal: {(~neur_mask).sum()}")
 
 # %% [markdown]
@@ -353,9 +353,9 @@ for disorder, gw_dict in gw_dicts.items():
     print(f"{disorder}: computed bias at {len(CAP_LEVELS)} cap levels")
 
 # %%
-# Panel C: Spearman correlation vs cap=2x
+# Panel C: Spearmans' R vs cap=2x
 # NOTE: AnnotateCTDat sorts by EFFECT descending, so indices differ across cap levels.
-# Must align by cell type ID before computing Spearman correlation.
+# Must align by cell type ID before computing Spearmans' R.
 corr_results = {}
 for disorder in gw_dicts:
     ref_df = bias_all[disorder][ref_cap].set_index(bias_all[disorder][ref_cap].index)
@@ -367,7 +367,7 @@ for disorder in gw_dicts:
         corr_results[disorder][cap] = rho
 
 corr_df = pd.DataFrame(corr_results)
-print("Spearman ρ vs cap=2×:")
+print("Spearmans' R vs cap=2×:")
 print(corr_df.round(4))
 
 # %%
@@ -509,7 +509,7 @@ for disorder, gw in loo_gw.items():
 
 # %%
 # LOO summary
-print("\nLOO Stability Summary (Spearman ρ vs full gene set)")
+print("\nLOO Stability Summary (Spearmans' R vs full gene set)")
 print("=" * 70)
 for disorder in loo_gw:
     for spec_label in ["Capped (2×)", "TDEP (uncapped)"]:
@@ -520,15 +520,40 @@ for disorder in loo_gw:
 
 # %% [markdown]
 # ---
-# ## Assemble Figure S4
+# ## Standalone Panels
+#
+# Each cell below renders ONE panel as its own figure for flexible placement
+# in the document. Files are saved as `FigS4_panel{X}.pdf` (and `.png`) under
+# `FIG_DIR`. Run all the data-prep cells above first.
 
 # %%
-fig, axes = plt.subplots(4, 2, figsize=(14, 21), dpi=150)
+# Shared per-panel style — tweak once for all panels
+PANEL_FIGSIZE = (5.5, 4.2)
+PANEL_DPI = 150
+SAVE_DPI = 300
 
+
+def _save_panel(fig, letter, tight_layout_rect=None):
+    # Hide matplotlib axis title artist (panel labels added in layout software).
+    for ax in fig.axes:
+        ax.set_title("")
+        ax.title.set_visible(False)
+    if tight_layout_rect is None:
+        fig.tight_layout()
+    else:
+        fig.tight_layout(rect=tight_layout_rect)
+    fig.savefig(FIG_DIR / f"FigS4_panel{letter}.pdf",
+                dpi=SAVE_DPI, transparent=True, bbox_inches="tight")
+    fig.savefig(FIG_DIR / f"FigS4_panel{letter}.png",
+                dpi=SAVE_DPI, transparent=True, bbox_inches="tight")
+    print(f"Saved Panel {letter}")
+
+
+# %%
 # ============================================================
 # Panel A: Empirical specificity inflation vs UMI depth
 # ============================================================
-ax = axes[0, 0]
+fig, ax = plt.subplots(figsize=PANEL_FIGSIZE, dpi=PANEL_DPI)
 
 ax.scatter(ct_stats.loc[neur_mask, "Total_UMI"],
            ct_stats.loc[neur_mask, "frac_clipped"],
@@ -549,12 +574,15 @@ ax.legend(fontsize=9, framealpha=0.8, loc="upper right")
 ax.text(0.03, 0.97, f"ρ = {rho_umi:.3f}\np = {p_umi:.1e}",
         transform=ax.transAxes, ha="left", va="top", fontsize=10,
         bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8))
-ax.set_title("A", fontweight="bold", loc="left", fontsize=16, pad=8)
 
+_save_panel(fig, "A")
+plt.show()
+
+# %%
 # ============================================================
 # Panel B: NB simulation — max specificity by expr × UMI group
 # ============================================================
-ax = axes[0, 1]
+fig, ax = plt.subplots(figsize=PANEL_FIGSIZE, dpi=PANEL_DPI)
 
 umi_group_colors = ["#dc2626", "#f59e0b", "#2563eb"]
 for g_idx in range(3):
@@ -570,12 +598,15 @@ ax.set_yscale("log")
 ax.set_xlabel("Gene expression level (percentile)")
 ax.set_ylabel("Max simulated specificity")
 ax.legend(fontsize=8.5, framealpha=0.8, loc="upper right")
-ax.set_title("B", fontweight="bold", loc="left", fontsize=16, pad=8)
 
+_save_panel(fig, "B")
+plt.show()
+
+# %%
 # ============================================================
-# Panel C: Spearman ρ across cap levels
+# Panel C: Spearmans' R across cap levels
 # ============================================================
-ax = axes[1, 0]
+fig, ax = plt.subplots(figsize=PANEL_FIGSIZE, dpi=PANEL_DPI)
 
 disorder_colors = {"SCZ": "#2563eb", "ASD (HIQ)": "#dc2626", "DDD": "#16a34a"}
 disorder_markers = {"SCZ": "o", "ASD (HIQ)": "s", "DDD": "D"}
@@ -597,16 +628,19 @@ ax.set_xticks(CAP_LEVELS)
 ax.set_xticklabels(cap_tick_labels, fontsize=9)
 ax.set_xscale("log")
 ax.set_xlabel("Specificity cap level (× mean)")
-ax.set_ylabel("Spearman ρ vs. cap = 2×")
+ax.set_ylabel("Spearmans' R vs. cap = 2×")
 ax.set_ylim(min(corr_df.values.min() - 0.05, 0.35), 1.02)
 ax.legend(fontsize=9, frameon=True, framealpha=0.9, edgecolor="none",
           loc="lower left", handlelength=1.5)
-ax.set_title("C", fontweight="bold", loc="left", fontsize=16, pad=8)
 
+_save_panel(fig, "C")
+plt.show()
+
+# %%
 # ============================================================
 # Panel D: Supercluster rank across cap levels (SCZ)
 # ============================================================
-ax = axes[1, 1]
+fig, ax = plt.subplots(figsize=(4,4), dpi=PANEL_DPI)
 
 sc_style = {
     "CGE interneuron":      {"color": "#e11d48", "marker": "o", "ls": "-",  "lw": 2.2},
@@ -643,17 +677,24 @@ ax.set_xscale("log")
 ax.set_xlabel("Specificity cap level (× mean)")
 ax.set_ylabel("Supercluster rank (1 = highest bias)")
 ax.invert_yaxis()
-ax.set_title("D", fontweight="bold", loc="left", fontsize=16, pad=8)
 
-leg = ax.legend(fontsize=8, frameon=True, framealpha=0.9, edgecolor="none",
-                loc="lower right", ncol=2, columnspacing=0.8, handlelength=1.5,
-                title="Neuronal          Non-neuronal", title_fontsize=8)
+leg = ax.legend(
+    fontsize=8, frameon=True, facecolor="white", edgecolor="0.5",
+    framealpha=0.95, fancybox=True,
+    loc="upper left", bbox_to_anchor=(0.2, 1.2),
+    ncol=3, columnspacing=0.8, handlelength=1.5,
+    #title="Neuronal          Non-neuronal", title_fontsize=8,
+)
 leg._legend_box.align = "left"
 
+# _save_panel(fig, "D", tight_layout_rect=[0, 0, 0.72, 1])
+plt.show()
+
+# %%
 # ============================================================
 # Panel E: Neuronal fraction — capped vs TDEP uncapped
 # ============================================================
-ax = axes[2, 0]
+fig, ax = plt.subplots(figsize=(3.5, 4), dpi=PANEL_DPI)
 
 DISORDERS_E = ["ASD", "SCZ", "DDD"]
 disorder_colors_e = {"ASD": "#2166AC", "SCZ": "#B2182B", "DDD": "#1B7837"}
@@ -672,25 +713,29 @@ for disorder in DISORDERS_E:
             alpha=0.6, label=f"{disorder} (TDEP)", zorder=3)
 
 expected_frac = len(Neur_idx) / (len(Neur_idx) + len(NonNeur_idx))
-ax.axhline(expected_frac, color="gray", linestyle=":", linewidth=1.2, zorder=1,
-           label=f"Expected ({expected_frac:.0%})")
+# ax.axhline(expected_frac, color="gray", linestyle=":", linewidth=1.2, zorder=1,
+#            label=f"Expected ({expected_frac:.0%})")
 
-ax.set_xlabel("Top-N cutoff")
+ax.set_xlabel("Top N Ranking")
 ax.set_ylabel("Fraction neuronal")
 ax.set_ylim(-0.05, 1.08)
 ax.set_xticks(cutoffs)
-ax.legend(fontsize=7.5, loc="lower right", framealpha=0.9, ncol=2)
-ax.set_title("E", fontweight="bold", loc="left", fontsize=16, pad=8)
+ax.legend(fontsize=7.0, loc="lower right", framealpha=0.9, ncol=2)
 
+_save_panel(fig, "E")
+plt.show()
+
+# %%
 # ============================================================
-# Panel F: LOO stability violins
+# Panel F: LOO stability violins (ASD only, capped vs uncapped)
 # ============================================================
-ax = axes[2, 1]
+fig, ax = plt.subplots(figsize=(3, 5), dpi=PANEL_DPI)
 
 cap_color = "#2166AC"
 uncap_color = "#B2182B"
 
-loo_disorders = ["SCZ", "ASD"]
+loo_disorders = ["ASD"]
+
 positions = []
 all_rhos = []
 all_colors = []
@@ -729,7 +774,7 @@ for i, (pos_i, rhos, color) in enumerate(zip(positions, all_rhos, all_colors)):
 ax.axhline(1.0, color="gray", linestyle="--", linewidth=0.8, alpha=0.6)
 ax.set_xticks(positions)
 ax.set_xticklabels(xtick_labels, fontsize=9)
-ax.set_ylabel("Spearman ρ (LOO vs full)")
+ax.set_ylabel("Spearmans' R (LOO vs full)")
 
 all_rhos_flat = np.concatenate(all_rhos)
 ymin = min(all_rhos_flat.min() - 0.015, 0.90)
@@ -740,30 +785,35 @@ legend_elems = [
     Patch(facecolor=uncap_color, alpha=0.5, label="TDEP (uncapped)"),
 ]
 ax.legend(handles=legend_elems, fontsize=9, loc="lower left", framealpha=0.8)
-ax.set_title("F", fontweight="bold", loc="left", fontsize=16, pad=8)
 
-# ============================================================
-# Panels G & H: Worst-case gene rank scatter (ASD, SLC6A1)
-# Capped (G) vs Uncapped (H) — same gene removal
-# ============================================================
+_save_panel(fig, "F")
+plt.show()
+
+# %% [markdown]
+# ### Panels G & H: Worst-case gene rank scatter — ASD
+#
+# Find the gene whose removal causes the largest rank rearrangement under TDEP
+# uncapped specificity, then show the same gene removal under capped (G) vs
+# uncapped (H). Capped clusters tightly on the diagonal; uncapped scatters off.
+
+# %%
+# Identify worst-case ASD gene from TDEP uncapped LOO (shared by G & H)
 NEUR_COLOR = "#D04040"
 NONNEUR_COLOR = "#3070B0"
 
-# Use ASD as the example disorder
 disorder_gh = "ASD"
 loo_tdep_gh = loo_results[disorder_gh]["TDEP (uncapped)"]
 loo_cap_gh = loo_results[disorder_gh]["Capped (2×)"]
 
-# Find worst gene from TDEP uncapped
-rhos_uncap_gh = loo_tdep_gh["rhos"]
-worst_idx_uncap = np.argmin(rhos_uncap_gh)
+worst_idx_uncap = int(np.argmin(loo_tdep_gh["rhos"]))
 worst_gene_gh = loo_tdep_gh["genes"][worst_idx_uncap]
 
 HGNC, _, _, Entrez2Symbol = LoadGeneINFO()
-worst_symbol_gh = Entrez2Symbol.get(worst_gene_gh,
-                                     Entrez2Symbol.get(int(worst_gene_gh), str(worst_gene_gh)))
+worst_symbol_gh = Entrez2Symbol.get(
+    worst_gene_gh,
+    Entrez2Symbol.get(int(worst_gene_gh), str(worst_gene_gh)),
+)
 
-# Max TDEP fold-enrichment for this gene
 gene_id_gh = int(worst_gene_gh) if int(worst_gene_gh) in tdep_fold.index else worst_gene_gh
 if gene_id_gh in tdep_fold.index:
     max_spec_gh = tdep_fold.loc[gene_id_gh].max()
@@ -773,55 +823,66 @@ else:
     max_spec_gh = np.nan
     max_ct_name_gh = "?"
 
-# Find same gene in capped LOO
-cap_gene_list = loo_cap_gh["genes"]
-worst_idx_cap = cap_gene_list.index(worst_gene_gh) if worst_gene_gh in cap_gene_list else None
+cap_gene_list_gh = loo_cap_gh["genes"]
+worst_idx_cap = cap_gene_list_gh.index(worst_gene_gh) if worst_gene_gh in cap_gene_list_gh else None
+print(f"ASD worst gene: {worst_symbol_gh} (Entrez {worst_gene_gh}), "
+      f"max TDEP fold = {max_spec_gh:.1f}× in {max_ct_name_gh}")
 
-for col_idx, (panel_label, spec_label, loo_data, idx) in enumerate([
-    ("G", "Capped (2×)", loo_cap_gh, worst_idx_cap),
-    ("H", "TDEP (uncapped)", loo_tdep_gh, worst_idx_uncap),
-]):
-    ax = axes[3, col_idx]
 
-    full_bias_gh = loo_data["full_bias"]
-    loo_bias_gh = loo_data["loo_biases"][idx]
-    rho_gh = loo_data["rhos"][idx]
+def plot_worst_gene_panel(letter, spec_label, loo_data, idx,
+                           disorder_label, worst_symbol, max_spec):
+    """Render one worst-case gene rank scatter as a standalone panel."""
+    #fig, ax = plt.subplots(figsize=PANEL_FIGSIZE, dpi=PANEL_DPI)
+    fig, ax = plt.subplots(figsize=(4.5,4), dpi=PANEL_DPI)
+    full_bias = loo_data["full_bias"]
+    loo_bias = loo_data["loo_biases"][idx]
+    rho_val = loo_data["rhos"][idx]
 
-    common_cts_gh = full_bias_gh.index.intersection(loo_bias_gh.index)
-    rank_full_gh = full_bias_gh.loc[common_cts_gh, "EFFECT"].rank(ascending=False)
-    rank_loo_gh = loo_bias_gh.loc[common_cts_gh, "EFFECT"].rank(ascending=False)
-    neur_mask_gh = np.array([int(ct) in Neur_idx for ct in common_cts_gh])
+    common_cts = full_bias.index.intersection(loo_bias.index)
+    rank_full = full_bias.loc[common_cts, "EFFECT"].rank(ascending=False)
+    rank_loo = loo_bias.loc[common_cts, "EFFECT"].rank(ascending=False)
+    nm = np.array([int(ct) in Neur_idx for ct in common_cts])
 
-    ax.scatter(rank_full_gh.values[neur_mask_gh], rank_loo_gh.values[neur_mask_gh],
+    ax.scatter(rank_full.values[nm], rank_loo.values[nm],
                color=NEUR_COLOR, alpha=0.4, s=16, label="Neuronal", zorder=3)
-    ax.scatter(rank_full_gh.values[~neur_mask_gh], rank_loo_gh.values[~neur_mask_gh],
+    ax.scatter(rank_full.values[~nm], rank_loo.values[~nm],
                color=NONNEUR_COLOR, alpha=0.5, s=16, label="Non-neuronal", zorder=4)
 
-    max_rank_gh = max(rank_full_gh.max(), rank_loo_gh.max())
-    ax.plot([1, max_rank_gh], [1, max_rank_gh], "k--", linewidth=0.8, alpha=0.5)
+    max_rank = max(rank_full.max(), rank_loo.max())
+    ax.plot([1, max_rank], [1, max_rank], "k--", linewidth=0.8, alpha=0.5)
 
     ax.set_xlabel("Rank (all genes)")
-    ax.set_ylabel(f"Rank (remove {worst_symbol_gh})")
-    ax.set_title(panel_label, fontweight="bold", loc="left", fontsize=16, pad=8)
-
-    # Subtitle with details
-    subtitle = (f"ASD {spec_label}: remove {worst_symbol_gh} "
-                f"(max spec = {max_spec_gh:.0f}×, ρ = {rho_gh:.3f})")
-    ax.text(0.5, 1.0, subtitle, transform=ax.transAxes, ha="center", va="bottom",
-            fontsize=10, style="italic")
+    ax.set_ylabel(f"Rank (remove {worst_symbol})")
     ax.legend(fontsize=8, loc="upper left", framealpha=0.8)
 
-# ============================================================
-# Save
-# ============================================================
-fig.tight_layout(h_pad=2.5, w_pad=2.0)
+    _save_panel(fig, letter)
+    plt.show()
+    return rho_val
 
-fig.savefig(FIG_DIR / "FigS4_specificity_cap.pdf",
-            dpi=300, transparent=True, bbox_inches="tight")
-fig.savefig(FIG_DIR / "FigS4_specificity_cap.png",
-            dpi=300, transparent=True, bbox_inches="tight")
-plt.show()
-print(f"\nFigure S4 saved to {FIG_DIR}")
+
+# %%
+# Panel G: ASD Capped (2×)
+plot_worst_gene_panel(
+    letter="G",
+    spec_label="Capped (2×)",
+    loo_data=loo_cap_gh,
+    idx=worst_idx_cap,
+    disorder_label="ASD",
+    worst_symbol=worst_symbol_gh,
+    max_spec=max_spec_gh,
+)
+
+# %%
+# Panel H: ASD TDEP (uncapped)
+plot_worst_gene_panel(
+    letter="H",
+    spec_label="TDEP (uncapped)",
+    loo_data=loo_tdep_gh,
+    idx=worst_idx_uncap,
+    disorder_label="ASD",
+    worst_symbol=worst_symbol_gh,
+    max_spec=max_spec_gh,
+)
 
 # %% [markdown]
 # ---
@@ -838,7 +899,7 @@ print(f"Clip threshold (2× mean): {clip_threshold:.4f}")
 total_vals = spec_unclip.values.size
 total_clipped = np.sum(spec_unclip.values > clip_threshold)
 print(f"Values exceeding cap: {total_clipped:,} / {total_vals:,} ({100*total_clipped/total_vals:.2f}%)")
-print(f"Spearman(UMI depth, frac_clipped): ρ = {rho_umi:.3f}, p = {p_umi:.1e}")
+print(f"Spearmans' R (UMI depth, frac_clipped): ρ = {rho_umi:.3f}, p = {p_umi:.1e}")
 
 neur_frac_mean = ct_stats.loc[neur_mask, "frac_clipped"].mean()
 nonneur_frac_mean = ct_stats.loc[~neur_mask, "frac_clipped"].mean()
@@ -866,99 +927,99 @@ for disorder in loo_disorders:
 
 # %% [markdown]
 # ---
-# ## Bonus: Worst-Case Gene Rank Scatter — Capped vs Uncapped (not in Figure S4)
+# ### Panels I & J: Worst-case gene rank scatter — SCZ
 #
-# For each disorder, find the gene whose removal causes the largest rank
-# rearrangement under uncapped specificity, then show the same gene removal
-# under capped specificity side by side.
-#
-# **Layout (2 rows × 2 columns):**
-# - Top row: SCZ (worst gene = CACNA1G)
-# - Bottom row: ASD (worst gene = SLC6A1)
-# - Left column: Capped (2×) — dots should cluster tightly on the diagonal
-# - Right column: Uncapped — dots scatter widely off the diagonal
+# Same logic as G & H but for SCZ. Add to the figure if they look good.
 
 # %%
-HGNC, _, _, Entrez2Symbol = LoadGeneINFO()
+# Identify worst-case SCZ gene from TDEP uncapped LOO (shared by I & J)
+disorder_ij = "SCZ"
+loo_tdep_ij = loo_results[disorder_ij]["TDEP (uncapped)"]
+loo_cap_ij = loo_results[disorder_ij]["Capped (2×)"]
 
-NEUR_COLOR = "#D04040"
-NONNEUR_COLOR = "#3070B0"
+worst_idx_uncap_ij = int(np.argmin(loo_tdep_ij["rhos"]))
+worst_gene_ij = loo_tdep_ij["genes"][worst_idx_uncap_ij]
 
-fig_bonus, axes_bonus = plt.subplots(2, 2, figsize=(13, 12), dpi=150)
+worst_symbol_ij = Entrez2Symbol.get(
+    worst_gene_ij,
+    Entrez2Symbol.get(int(worst_gene_ij), str(worst_gene_ij)),
+)
 
-for row_idx, disorder_b in enumerate(loo_disorders):
-    # Identify worst gene from TDEP LOO
-    loo_tdep_b = loo_results[disorder_b]["TDEP (uncapped)"]
-    rhos_tdep_b = loo_tdep_b["rhos"]
-    worst_idx_tdep = np.argmin(rhos_tdep_b)
-    worst_gene = loo_tdep_b["genes"][worst_idx_tdep]
-    worst_symbol = Entrez2Symbol.get(worst_gene, Entrez2Symbol.get(int(worst_gene), str(worst_gene)))
+gene_id_ij = int(worst_gene_ij) if int(worst_gene_ij) in tdep_fold.index else worst_gene_ij
+if gene_id_ij in tdep_fold.index:
+    max_spec_ij = tdep_fold.loc[gene_id_ij].max()
+    max_ct_ij = tdep_fold.loc[gene_id_ij].idxmax()
+    max_ct_name_ij = Anno.loc[int(max_ct_ij), "Supercluster"] if int(max_ct_ij) in Anno.index else "?"
+else:
+    max_spec_ij = np.nan
+    max_ct_name_ij = "?"
 
-    # Max TDEP fold-enrichment for this gene
-    gene_id = int(worst_gene) if int(worst_gene) in tdep_fold.index else worst_gene
-    if gene_id in tdep_fold.index:
-        max_spec_gene = tdep_fold.loc[gene_id].max()
-        max_ct = tdep_fold.loc[gene_id].idxmax()
-        max_ct_name = Anno.loc[int(max_ct), "Supercluster"] if int(max_ct) in Anno.index else "?"
-    else:
-        max_spec_gene = np.nan
-        max_ct_name = "?"
+cap_gene_list_ij = loo_cap_ij["genes"]
+worst_idx_cap_ij = cap_gene_list_ij.index(worst_gene_ij) if worst_gene_ij in cap_gene_list_ij else None
+print(f"SCZ worst gene: {worst_symbol_ij} (Entrez {worst_gene_ij}), "
+      f"max TDEP fold = {max_spec_ij:.1f}× in {max_ct_name_ij}")
 
-    # Find same gene index in capped LOO
-    loo_cap = loo_results[disorder_b]["Capped (2×)"]
-    cap_gene_list = loo_cap["genes"]
-    if worst_gene in cap_gene_list:
-        worst_idx_cap = cap_gene_list.index(worst_gene)
-    else:
-        worst_idx_cap = None
+# %%
+# Panel I: SCZ Capped (2×)
+plot_worst_gene_panel(
+    letter="I",
+    spec_label="Capped (2×)",
+    loo_data=loo_cap_ij,
+    idx=worst_idx_cap_ij,
+    disorder_label="SCZ",
+    worst_symbol=worst_symbol_ij,
+    max_spec=max_spec_ij,
+)
 
-    print(f"\n{disorder_b}: worst gene = {worst_symbol} (Entrez {worst_gene}), "
-          f"max TDEP spec = {max_spec_gene:.1f}× in {max_ct_name}")
+# %%
+# Panel J: SCZ TDEP (uncapped)
+plot_worst_gene_panel(
+    letter="J",
+    spec_label="TDEP (uncapped)",
+    loo_data=loo_tdep_ij,
+    idx=worst_idx_uncap_ij,
+    disorder_label="SCZ",
+    worst_symbol=worst_symbol_ij,
+    max_spec=max_spec_ij,
+)
 
-    for col_idx, (spec_label, loo_data, idx) in enumerate([
-        ("Capped (2×)", loo_cap, worst_idx_cap),
-        ("TDEP (uncapped)", loo_tdep_b, worst_idx_tdep),
-    ]):
-        ax = axes_bonus[row_idx, col_idx]
+# %% [markdown]
+# ---
+# ### Supplement: Distribution of specificity values (uncapped vs TDEP)
+#
+# **Left:** All gene × cell-type entries in this study’s uncapped specificity matrix (`HumanCT.TPM…clip100`; effectively no cap). Histogram uses a **log-scaled** x-axis because the distribution is heavy-tailed (max ≫ mean).
+#
+# **Right:** All entries in the TDEP `cluster.specificity_matrix_entrez.csv` matrix — per–cell-type **expression proportions** (each gene sums to 1 across cell types). This is the raw “specificity matrix” used for TDEP analyses elsewhere in this notebook (e.g. fold = proportion × *n* cell types).
 
-        if idx is None:
-            ax.text(0.5, 0.5, "Gene not found", transform=ax.transAxes,
-                    ha="center", va="center")
-            continue
+# %%
+# Supplement: specificity value distributions — uncapped (this study) vs TDEP matrix
+fig, axes = plt.subplots(1, 2, figsize=(11, 4.2))
 
-        full_bias = loo_data["full_bias"]
-        loo_bias = loo_data["loo_biases"][idx]
-        rho_val = loo_data["rhos"][idx]
+vals_ours = np.asarray(spec_unclip.values, dtype=float).ravel()
+vals_ours = vals_ours[np.isfinite(vals_ours)]
 
-        # Align by cell type index and compute ranks
-        common_cts = full_bias.index.intersection(loo_bias.index)
-        rank_full = full_bias.loc[common_cts, "EFFECT"].rank(ascending=False)
-        rank_loo = loo_bias.loc[common_cts, "EFFECT"].rank(ascending=False)
-        neur_mask_b = np.array([int(ct) in Neur_idx for ct in common_cts])
+vals_tdep = np.asarray(tdep_spec.values, dtype=float).ravel()
+vals_tdep = vals_tdep[np.isfinite(vals_tdep)]
 
-        ax.scatter(rank_full.values[neur_mask_b], rank_loo.values[neur_mask_b],
-                   color=NEUR_COLOR, alpha=0.4, s=16, label="Neuronal", zorder=3)
-        ax.scatter(rank_full.values[~neur_mask_b], rank_loo.values[~neur_mask_b],
-                   color=NONNEUR_COLOR, alpha=0.5, s=16, label="Non-neuronal", zorder=4)
+# Left: uncapped HumanCT specificity (normal x)
+ax0 = axes[0]
+ax0.hist(vals_ours, bins=100, density=True, color="#2166AC", alpha=0.85)
+ax0.set_xlabel("Specificity (uncapped)")
+ax0.set_ylabel("Density")
+ax0.axvline(np.mean(vals_ours), color="k", ls="--", lw=1, alpha=0.55)
 
-        max_rank = max(rank_full.max(), rank_loo.max())
-        ax.plot([1, max_rank], [1, max_rank], "k--", linewidth=0.8, alpha=0.5)
+# Right: TDEP matrix (per–cell-type proportions)
+ax1 = axes[1]
+ax1.hist(vals_tdep, bins=100, density=True, color="#B2182B", alpha=0.85, range=(0, 1))
+ax1.set_xlabel("Cell-type proportion (TDEP matrix)")
+ax1.set_ylabel("Density")
+ax1.axvline(np.mean(vals_tdep)*2, color="k", ls="--", lw=1, alpha=0.55)
 
-        ax.set_xlabel("Rank (all genes)")
-        ax.set_ylabel(f"Rank (remove {worst_symbol})")
-        ax.set_title(
-            f"{disorder_b} — {spec_label}\n"
-            f"Remove {worst_symbol} (ρ = {rho_val:.3f})",
-            fontsize=11,
-        )
-        ax.legend(fontsize=8, loc="upper left", framealpha=0.8)
-
-        print(f"  {spec_label}: LOO ρ = {rho_val:.4f}")
-
-fig_bonus.tight_layout(h_pad=3, w_pad=2.5)
-fig_bonus.savefig(FIG_DIR / "worst_gene_rank_scatter.pdf",
-                  dpi=300, transparent=True, bbox_inches="tight")
-fig_bonus.savefig(FIG_DIR / "worst_gene_rank_scatter.png",
-                  dpi=300, transparent=True, bbox_inches="tight")
+fig.tight_layout()
+SAVE_DPI = 300
+fig.savefig(FIG_DIR / "FigS4_specificity_distributions.pdf", dpi=SAVE_DPI, transparent=True, bbox_inches="tight")
+fig.savefig(FIG_DIR / "FigS4_specificity_distributions.png", dpi=SAVE_DPI, transparent=True, bbox_inches="tight")
+print(f"Saved {FIG_DIR / 'FigS4_specificity_distributions.pdf'}")
 plt.show()
-print(f"Saved to {FIG_DIR / 'worst_gene_rank_scatter.pdf'}")
+
+# %%

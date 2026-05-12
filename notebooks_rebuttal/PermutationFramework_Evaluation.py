@@ -814,7 +814,7 @@ if len(cap_results) > 1:
         print(f"Saved Panel B to {FIG_DIR / 'FigS_perm4b_uncapped_control.pdf'}")
 
     # Summary table of correlations
-    print("\nSpearman correlation of bias (EFFECT) vs cap=2.0 (default):")
+    print("\nSpearmans' R of bias (EFFECT) vs cap=2.0 (default):")
     corr_rows = []
     all_other_caps = moderate_caps + uncapped_cap
     for alt_cap in all_other_caps:
@@ -847,7 +847,7 @@ else:
 #    significance criteria.
 #
 # 2. **Bias estimates are highly correlated** between random and matched nulls
-#    (Spearman rho > 0.95), confirming that the signal is driven by biology,
+#    (Spearmans' R > 0.95), confirming that the signal is driven by biology,
 #    not confounders.
 #
 # 3. **Over-stringent matching (PropWeight, gene-by-gene) kills genuine signal**
