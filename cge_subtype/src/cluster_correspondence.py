@@ -39,14 +39,14 @@ def compute_pseudobulk(expr: pd.DataFrame, labels: pd.Series) -> pd.DataFrame:
 
 
 # ---------------------------------------------------------------------------
-# Round 2: Spearman correlation + RBH
+# Round 2: Spearmans' R + RBH
 # ---------------------------------------------------------------------------
 
 def compute_spearman_corr_matrix(
     mouse_centroids: pd.DataFrame,
     human_centroids: pd.DataFrame,
 ) -> pd.DataFrame:
-    """Compute Spearman correlation between all mouse and human cluster centroids.
+    """Compute Spearmans' R between all mouse and human cluster centroids.
 
     Only genes present in both datasets (shared genes) are used.
 
@@ -60,7 +60,7 @@ def compute_spearman_corr_matrix(
     Returns
     -------
     pd.DataFrame
-        (n_mouse_clusters) x (n_human_clusters) Spearman correlation matrix.
+        (n_mouse_clusters) x (n_human_clusters) Spearmans' R matrix.
         Index = mouse cluster labels, columns = human cluster labels.
     """
     shared_genes = mouse_centroids.columns.intersection(human_centroids.columns)
@@ -105,7 +105,7 @@ def find_reciprocal_best_hits(
     corr_matrix: pd.DataFrame,
     threshold: float | None = None,
 ) -> pd.DataFrame:
-    """Find reciprocal best hit (RBH) pairs from a Spearman correlation matrix.
+    """Find reciprocal best hit (RBH) pairs from a Spearmans' R matrix.
 
     A pair (mouse_cluster, human_cluster) is an RBH when:
     - human_cluster is the best-matching human cluster for mouse_cluster, AND
@@ -114,7 +114,7 @@ def find_reciprocal_best_hits(
     Parameters
     ----------
     corr_matrix : pd.DataFrame
-        (n_mouse) x (n_human) Spearman correlation matrix.
+        (n_mouse) x (n_human) Spearmans' R matrix.
         Index = mouse cluster labels, columns = human cluster labels.
     threshold : float or None, optional
         Minimum correlation required for a pair to be marked ``is_rbh=True``.
@@ -175,7 +175,7 @@ def determine_rbh_threshold(
     Parameters
     ----------
     corr_matrix : pd.DataFrame
-        (n_mouse) x (n_human) Spearman correlation matrix.
+        (n_mouse) x (n_human) Spearmans' R matrix.
     method : str
         Currently only ``"permutation"`` is supported.
     n_perm : int
@@ -271,7 +271,7 @@ def _normalize_cols_metaneighbor(M: np.ndarray) -> np.ndarray:
     np.ndarray
         Same shape; each column has been replaced by its gene ranks (average
         ties), then mean-centered and L2-normalized so that the inner product
-        of two columns equals their Spearman correlation.
+        of two columns equals their Spearmans' R.
     """
     M = np.asarray(M, dtype=float)
     # Rank gene expression within each cell (rank down each column)

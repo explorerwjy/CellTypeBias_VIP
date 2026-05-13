@@ -58,7 +58,7 @@ class TestComputePseudobulk:
 
 
 # ---------------------------------------------------------------------------
-# Round 2: Spearman correlation + RBH
+# Round 2: Spearmans' R + RBH
 # ---------------------------------------------------------------------------
 
 class TestSpearmanCorrMatrix:

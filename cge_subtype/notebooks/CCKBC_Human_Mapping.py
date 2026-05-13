@@ -461,11 +461,11 @@ if "22q_bias" in convergent_df.columns and convergent_df["22q_bias"].notna().any
     plt.savefig(FIG_DIR / "22q_bias_cckbc_comparison.pdf", transparent=True)
     plt.show()
 
-    # Spearman correlation: CCKBC fraction vs 22q bias across clusters
+    # Spearmans' R: CCKBC fraction vs 22q bias across clusters
     valid = convergent_df[["mouse_cckbc_fraction", "22q_bias"]].dropna()
     if len(valid) >= 5:
         rho, pval = stats.spearmanr(valid["mouse_cckbc_fraction"], valid["22q_bias"])
-        print(f"\nSpearman correlation (CCKBC fraction vs 22q bias): rho={rho:.3f}, p={pval:.4f}")
+        print(f"\nSpearmans' R (CCKBC fraction vs 22q bias): rho={rho:.3f}, p={pval:.4f}")
 
         fig, ax = plt.subplots(figsize=(6, 5))
         fig.patch.set_alpha(0)
@@ -481,7 +481,7 @@ if "22q_bias" in convergent_df.columns and convergent_df["22q_bias"].notna().any
 
         ax.set_xlabel("Mouse CCKBC fraction")
         ax.set_ylabel("22q mutation bias")
-        ax.set_title(f"CCKBC fraction vs 22q bias (Spearman rho={rho:.3f}, p={pval:.3f})")
+        ax.set_title(f"CCKBC fraction vs 22q bias (Spearmans' R={rho:.3f}, p={pval:.3f})")
         plt.tight_layout()
         plt.savefig(FIG_DIR / "cckbc_fraction_vs_22q_bias.pdf", transparent=True)
         plt.show()

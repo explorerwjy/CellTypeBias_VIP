@@ -7,7 +7,7 @@ Steps:
 3. Load existing classification data for marker evidence (CCK+, SNCG+)
 4. Build evidence table and classify via classify_clusters()
 5. Compute 22q bias per cluster per gene set using HumanCT_AvgZ_Weighted
-6. Group comparisons (Mann-Whitney U) and Spearman correlation
+6. Group comparisons (Mann-Whitney U) and Spearmans' R
 7. Save results to cge_subtype/results/updated_22q_bias/
 """
 
@@ -430,7 +430,7 @@ for gs_name in gw_22q_files.keys():
     valid_mask = ~np.isnan(all_bias) & ~np.isnan(all_conf)
     if valid_mask.sum() >= 4:
         rho, pval = spearmanr(all_conf[valid_mask], all_bias[valid_mask])
-        print(f"  Spearman (CCKBC confidence vs 22q bias): rho={rho:.3f}, p={pval:.4f}, N={valid_mask.sum()}")
+        print(f"  Spearmans' R (CCKBC confidence vs 22q bias): rho={rho:.3f}, p={pval:.4f}, N={valid_mask.sum()}")
         stats_records.append({
             "gene_set": gs_name,
             "test": "Spearman_confidence_vs_bias",
@@ -450,7 +450,7 @@ for gs_name in gw_22q_files.keys():
     valid_mask2 = ~np.isnan(harm_frac) & ~np.isnan(bias_vals)
     if valid_mask2.sum() >= 4:
         rho2, pval2 = spearmanr(harm_frac[valid_mask2], bias_vals[valid_mask2])
-        print(f"  Spearman (Harmony CCKBC frac vs 22q bias): rho={rho2:.3f}, p={pval2:.4f}, N={valid_mask2.sum()}")
+        print(f"  Spearmans' R (Harmony CCKBC frac vs 22q bias): rho={rho2:.3f}, p={pval2:.4f}, N={valid_mask2.sum()}")
         stats_records.append({
             "gene_set": gs_name,
             "test": "Spearman_harmonyFrac_vs_bias",

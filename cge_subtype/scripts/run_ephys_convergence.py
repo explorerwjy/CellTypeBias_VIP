@@ -348,11 +348,11 @@ else:
 
 
 # ---------------------------------------------------------------------------
-# Step 7. Per-cluster Spearman correlation of mean ephys profiles
+# Step 7. Per-cluster Spearmans' R of mean ephys profiles
 # ---------------------------------------------------------------------------
 
 print("\n" + "=" * 70)
-print("Step 7: Per-cluster Spearman correlation (mouse vs human mean profiles)")
+print("Step 7: Per-cluster Spearmans' R (mouse vs human mean profiles)")
 print("=" * 70)
 
 bio_cols = [c for c in BIO_FEATURES if c in feat_cols]
@@ -365,7 +365,7 @@ for cl in sorted(dual_clusters):
     n_mouse = mouse_mask.sum()
     n_human = human_mask.sum()
 
-    # Use BIO_FEATURES centroids for Spearman correlation
+    # Use BIO_FEATURES centroids for Spearmans' R
     mouse_centroid = features_zscored.loc[mouse_mask, bio_cols].mean()
     human_centroid = features_zscored.loc[human_mask, bio_cols].mean()
 
@@ -407,7 +407,7 @@ mean_rho = results_df["spearman_rho"].mean()
 mean_dist = results_df["euclidean_distance"].mean()
 
 print(f"\n  Summary across {len(results_df)} dual-species clusters:")
-print(f"    Mean Spearman rho: {mean_rho:.3f}")
+print(f"    Mean Spearmans' R: {mean_rho:.3f}")
 print(f"    Clusters with positive rho: {n_pos} / {len(results_df)}")
 print(f"    Clusters with rho > 0 and p < 0.05: {n_sig}")
 print(f"    Mean Euclidean distance: {mean_dist:.3f}")
@@ -472,9 +472,9 @@ with open(out_summary, "w") as fh:
         interp = "Not significant: no detectable cross-species cluster similarity"
     fh.write(f"Interpretation: {interp}\n\n")
 
-    fh.write("--- Per-Cluster Spearman Correlations ---\n")
+    fh.write("--- Per-Cluster Spearmans' R Values ---\n")
     fh.write(f"Features used: BIO_FEATURES ({len(bio_cols)} features)\n")
-    fh.write(f"Mean Spearman rho across {len(results_df)} dual-species clusters: {mean_rho:.3f}\n")
+    fh.write(f"Mean Spearmans' R across {len(results_df)} dual-species clusters: {mean_rho:.3f}\n")
     fh.write(f"Clusters with rho > 0: {n_pos} / {len(results_df)}\n")
     fh.write(f"Clusters with rho > 0 AND p < 0.05: {n_sig}\n")
     fh.write(f"Mean Euclidean distance (z-scored full features): {mean_dist:.3f}\n\n")

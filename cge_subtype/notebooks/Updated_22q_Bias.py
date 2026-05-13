@@ -337,7 +337,7 @@ print("NOTE: cge_full is a placeholder. Populate CGE_COL_INDICES to enable bias 
 #             cge_full[gs_name],
 #             nan_policy="omit",
 #         )
-#         print(f"  {gs_name}: Spearman rho={rho:.3f}, p={pval:.4e}")
+#         print(f"  {gs_name}: Spearmans' R={rho:.3f}, p={pval:.4e}")
 
 # %% [markdown]
 # ## 8. Sensitivity Analysis

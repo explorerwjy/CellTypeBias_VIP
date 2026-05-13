@@ -159,7 +159,7 @@ print(mapping_df[["cckbc_frac_harmony", "cckbc_frac_scvi", "n_harmony", "n_scvi"
 # Concordance between Harmony and scVI
 both = mapping_df[(mapping_df["n_harmony"] > 0) & (mapping_df["n_scvi"] > 0)]
 rho, p = spearmanr(both["cckbc_frac_harmony"], both["cckbc_frac_scvi"])
-print(f"Harmony-scVI concordance: Spearman rho={rho:.3f}, p={p:.2e}, N={len(both)} clusters")
+print(f"Harmony-scVI concordance: Spearmans' R={rho:.3f}, p={p:.2e}, N={len(both)} clusters")
 
 fig, ax = plt.subplots(figsize=(5, 5))
 fig.patch.set_alpha(0); ax.patch.set_alpha(0)
@@ -171,7 +171,7 @@ for cl in both.index:
 ax.plot([0, 1], [0, 1], "k--", alpha=0.3)
 ax.set_xlabel("CCKBC fraction (scVI)")
 ax.set_ylabel("CCKBC fraction (Harmony)")
-ax.set_title(f"Cross-species mapping concordance\nSpearman rho={rho:.2f}, p={p:.2e}")
+ax.set_title(f"Cross-species mapping concordance\nSpearmans' R={rho:.2f}, p={p:.2e}")
 plt.tight_layout()
 plt.savefig(str(CGE_DIR / "results" / "fig_harmony_scvi_concordance.pdf"), transparent=True)
 plt.show()
@@ -260,7 +260,7 @@ ephys_stats.index = ephys_stats.index.astype(int)
 combined = mapping_df.join(ephys_stats, how="inner")
 valid = combined[combined["n_ephys"] >= 3]
 rho_eh, p_eh = spearmanr(valid["ephys_score"], valid["cckbc_frac_harmony"])
-print(f"Ephys score vs Harmony CCKBC frac: Spearman rho={rho_eh:.3f}, p={p_eh:.4f}, N={len(valid)} clusters")
+print(f"Ephys score vs Harmony CCKBC frac: Spearmans' R={rho_eh:.3f}, p={p_eh:.4f}, N={len(valid)} clusters")
 
 fig, ax = plt.subplots(figsize=(5, 5))
 fig.patch.set_alpha(0); ax.patch.set_alpha(0)
@@ -270,7 +270,7 @@ for cl in valid.index:
                 fontsize=8, ha="left")
 ax.set_xlabel("CCKBC fraction (Harmony transcriptomic mapping)")
 ax.set_ylabel("CCKBC ephys score (signature transfer)")
-ax.set_title(f"Transcriptomic-ephys convergence\nSpearman rho={rho_eh:.2f}, p={p_eh:.3f}")
+ax.set_title(f"Transcriptomic-ephys convergence\nSpearmans' R={rho_eh:.2f}, p={p_eh:.3f}")
 plt.tight_layout()
 plt.savefig(str(CGE_DIR / "results" / "fig_ephys_harmony_convergence.pdf"), transparent=True)
 plt.show()
@@ -1016,7 +1016,7 @@ for cl in x.index:
 ax.set_xlabel("CCKBC Fraction (Harmony Mapping)", fontsize=10)
 ax.set_ylabel("Mutation Bias (EFFECT)", fontsize=10)
 ax.set_title("CCKBC Fraction vs 22q Deletion Bias", fontsize=11, fontweight="bold")
-ax.text(0.02, 0.97, f"Spearman ρ = {rho:.2f}, P = {p_corr:.3f}\nn = {len(x)} clusters",
+ax.text(0.02, 0.97, f"Spearmans' R = {rho:.2f}, P = {p_corr:.3f}\nn = {len(x)} clusters",
         transform=ax.transAxes, fontsize=9, va="top",
         bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8))
 
@@ -1045,7 +1045,7 @@ print(f"Saved: {FIGURES_DIR / 'FigSX_CCKBC_22q_bias.pdf'}")
 # - Mouse CCKBCs map consistently to human clusters 277–281 via both
 #   Harmony and scVI cross-species integration.
 # - Ephys signature transfer independently confirms these clusters as most CCKBC-like
-#   (Spearman rho with Harmony fraction, p<0.05).
+#   (Spearmans' R with Harmony fraction, p<0.05).
 # - 22q11.2 deletion bias: imputed CCKBC vs VIP+ (ISI) clusters show
 #   no significant difference (MWU P = 0.37–0.63 across gene sets).
 # - VIP expression status, not CCKBC identity, drives 22q bias.
