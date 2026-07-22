@@ -36,7 +36,7 @@ HGNC, ENSID2Entrez, GeneSymbol2Entrez, Entrez2Symbol = LoadGeneINFO()
 # %%
 # === Configuration flags ===
 FORCE_RERUN = False       # Set True to recompute even if cache exists
-SHOW_UNWEIGHTED = False   # Set True to show unweighted profiles
+SHOW_UNWEIGHTED = True    # Set True to show unweighted profiles
 
 import pickle
 _CACHE_DIR = PROJ_DIR / "results" / "figures" / "plot_data"
@@ -141,8 +141,9 @@ def plot_gene_set_correlation(
     dpi=120,
     color_corr='#1f77b4',
     color_pval='#d62728',
-    legend_loc='center left',
-    legend_bbox_to_anchor=(1.02, 0.5),
+    show_legend=True,
+    legend_loc='upper center',
+    legend_bbox_to_anchor=(0.5, -0.18),
     legend_position=None,
     legend_fontsize=10,
     legend_kwargs=None,
@@ -237,9 +238,13 @@ def plot_gene_set_correlation(
         _leg_loc, _leg_bbox = legend_loc, legend_bbox_to_anchor
 
     if ax1 is None or ax2 is None:
-        fig, ax1 = plt.subplots(figsize=figsize, dpi=dpi)
+        # constrained_layout reserves room for the (possibly outside-axes) legend
+        # and both twin y-axis labels automatically — no manual margin tuning.
+        fig, ax1 = plt.subplots(figsize=figsize, dpi=dpi, layout="constrained")
+        _own_fig = True
     else:
         fig = ax1.figure
+        _own_fig = False
 
     # Plot correlation
     ax1.plot(GeneIdx_top, Corr_top, color=color_corr, linewidth=2, marker='o', markersize=4, label=corr_label)
@@ -270,29 +275,40 @@ def plot_gene_set_correlation(
     ax2.tick_params(axis='y', labelcolor=color_pval)
     ax2.yaxis.set_major_locator(mticker.MaxNLocator(integer=True))
 
-    lines_1, labels_1 = ax1.get_legend_handles_labels()
-    lines_2, labels_2 = ax2.get_legend_handles_labels()
-    _lk = dict(fontsize=legend_fontsize)
-    if _leg_bbox is not None:
-        _lk["bbox_to_anchor"] = _leg_bbox
-        _lk.update(frameon=True, framealpha=0.96, edgecolor="0.85")
-    else:
-        _lk["frameon"] = False
-    if legend_kwargs:
-        _lk.update(legend_kwargs)
-    ax1.legend(lines_1 + lines_2, labels_1 + labels_2, loc=_leg_loc, **_lk)
+    # Legend is optional: for the 2x2 assembly we suppress the per-panel legend
+    # and use a single standalone legend figure (see the "Standalone legend" cell)
+    # that can be positioned freely. When show_legend=True with a below-axes
+    # anchor, use a taller figsize (e.g. (6, 5)) so the long right ylabel fits.
+    if show_legend:
+        lines_1, labels_1 = ax1.get_legend_handles_labels()
+        lines_2, labels_2 = ax2.get_legend_handles_labels()
+        _lk = dict(fontsize=legend_fontsize)
+        if _leg_bbox is not None:
+            _lk["bbox_to_anchor"] = _leg_bbox
+            _lk.update(frameon=True, framealpha=0.96, edgecolor="0.85")
+        else:
+            # In-axes legend: keep a light, semi-transparent frame so it stays
+            # readable where it sits over/near the curves.
+            _lk.update(frameon=True, framealpha=0.9, edgecolor="0.85")
+        if legend_kwargs:
+            _lk.update(legend_kwargs)
+        ax1.legend(lines_1 + lines_2, labels_1 + labels_2, loc=_leg_loc, **_lk)
 
     # Publication style tweaks
-    fig.tight_layout(pad=2)
     for spine in ax1.spines.values():
         spine.set_linewidth(1.2)
     for spine in ax2.spines.values():
         spine.set_linewidth(1.2)
-    if subplots_adjust_right is not None:
-        _adj_r = subplots_adjust_right
-    else:
-        _adj_r = 0.72 if _leg_bbox is not None else 0.88
-    plt.subplots_adjust(top=0.95, right=_adj_r)
+    # Own figures use constrained_layout (set at creation); only fall back to
+    # manual margins when plotting onto caller-supplied axes.
+    if not _own_fig:
+        if subplots_adjust_right is not None:
+            _adj_r = subplots_adjust_right
+        elif _leg_bbox is not None and _leg_bbox[0] > 1.0:
+            _adj_r = 0.72   # legend anchored outside on the right — make room
+        else:
+            _adj_r = 0.88   # in-axes/below-axes legend — leave room for right ylabel
+        plt.subplots_adjust(top=0.95, right=_adj_r)
     if title is not None:
         ax1.set_title(title, fontsize=14, pad=10)
     if show:
@@ -310,11 +326,12 @@ _fig_scz, _, _ = plot_gene_set_correlation(
     pval_label=r"$-\log_{10}$(max p-value of Included Genes)",
     Corr_unweighted=Corr_SCZ_unweighted if SHOW_UNWEIGHTED else None,
     corr_unweighted_label="Bias Correlation (Unweighted)",
+    show_legend=False,
     show=False,
 )
 _figdir = str(PROJ_DIR / "results" / "figures") + "/"
 os.makedirs(_figdir, exist_ok=True)
-_fig_scz.savefig(_figdir + "gene_sweep_SCZ.png", dpi=300, bbox_inches='tight', transparent=True, facecolor='none')
+_fig_scz.savefig(_figdir + "gene_sweep_SCZ.png", dpi=300, transparent=True, facecolor='none')
 plt.show()
 
 # %% [markdown]
@@ -474,9 +491,10 @@ _fig_hiq, _, _ = plot_gene_set_correlation(
     pval_label=r"$-\log_{10}$(max p-value of Included Genes)",
     Corr_unweighted=Corr_HIQ_unweighted if SHOW_UNWEIGHTED else None,
     corr_unweighted_label="Bias Correlation (Unweighted)",
+    show_legend=False,
     show=False,
 )
-_fig_hiq.savefig(_figdir + "gene_sweep_ASD_woID.png", dpi=300, bbox_inches='tight', transparent=True, facecolor='none')
+_fig_hiq.savefig(_figdir + "gene_sweep_ASD_woID.png", dpi=300, transparent=True, facecolor='none')
 plt.show()
 
 _fig_liq, _, _ = plot_gene_set_correlation(
@@ -488,9 +506,10 @@ _fig_liq, _, _ = plot_gene_set_correlation(
     pval_label=r"$-\log_{10}$(max p-value of Included Genes)",
     Corr_unweighted=Corr_LIQ_unweighted if SHOW_UNWEIGHTED else None,
     corr_unweighted_label="Bias Correlation (Unweighted)",
+    show_legend=False,
     show=False,
 )
-_fig_liq.savefig(_figdir + "gene_sweep_ASD_wID.png", dpi=300, bbox_inches='tight', transparent=True, facecolor='none')
+_fig_liq.savefig(_figdir + "gene_sweep_ASD_wID.png", dpi=300, transparent=True, facecolor='none')
 plt.show()
 
 # %% [markdown]
@@ -566,9 +585,48 @@ _fig_ddd, _, _ = plot_gene_set_correlation(
     pval_label=r"$-\log_{10}$(max p-value of Included Genes)",
     Corr_unweighted=Corr_DDD_unweighted if SHOW_UNWEIGHTED else None,
     corr_unweighted_label="Bias Correlation (Unweighted)",
+    show_legend=False,
     show=False,
 )
-_fig_ddd.savefig(_figdir + "gene_sweep_DDD.png", dpi=300, bbox_inches='tight', transparent=True, facecolor='none')
+_fig_ddd.savefig(_figdir + "gene_sweep_DDD.png", dpi=300, transparent=True, facecolor='none')
+plt.show()
+
+# %% [markdown]
+# ## Standalone legend
+#
+# All four gene-sweep panels (SCZ / ASD w/o ID / ASD w/ ID / DDD) share the same
+# series, so the per-panel legends are suppressed (`show_legend=False`). This cell
+# renders the shared legend as its own transparent figure so it can be positioned
+# freely when assembling the 2x2 composite.
+
+# %%
+from matplotlib.lines import Line2D
+
+_legend_entries = [
+    Line2D([0], [0], color='#1f77b4', lw=2, marker='o', markersize=6,
+           label="Bias Correlation"),
+]
+if SHOW_UNWEIGHTED:
+    _legend_entries.append(
+        Line2D([0], [0], color='#2ca02c', lw=2, marker='^', markersize=6,
+               linestyle='--', label="Bias Correlation (Unweighted)")
+    )
+_legend_entries.append(
+    Line2D([0], [0], color='#d62728', lw=2, marker='s', markersize=6,
+           label=r"$-\log_{10}$(max p-value of Included Genes)")
+)
+
+# Put the legend on a hidden axes (a figure with only fig.legend() and no axes
+# does not render inline in Jupyter).
+_fig_leg, _ax_leg = plt.subplots(figsize=(5, 1.2), dpi=120)
+_fig_leg.patch.set_alpha(0)
+_ax_leg.axis('off')
+_leg = _ax_leg.legend(
+    handles=_legend_entries, loc='center', frameon=True, framealpha=0.96,
+    edgecolor="0.85", fontsize=11, ncol=1,
+)
+_fig_leg.savefig(_figdir + "gene_sweep_legend.png", dpi=300,
+                 bbox_inches='tight', transparent=True, facecolor='none')
 plt.show()
 
 # %% [markdown]

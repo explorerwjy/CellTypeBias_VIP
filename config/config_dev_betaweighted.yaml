@@ -1,0 +1,87 @@
+# ============================================================================
+# Dev config for NegCtrl β-vs-uniform sensitivity analysis
+# Plan: docs/plans/2026-05-13-negctrl-beta-vs-uniform.md
+# Output: results/dev_negctrl_beta/
+# ============================================================================
+
+ProjDIR: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP"
+results_base: "results/dev_negctrl_beta"
+
+# ---------------------------------------------------------------------------
+# Gene sets: 17 dev gene-weight files in dat/GeneWeights/_dev_betaweighted/
+# ---------------------------------------------------------------------------
+gene_sets:
+  # NegCtrl β-weighted (8) — abs(BETA Burden) from raw genebass, same Entrez IDs
+  # as production NegCtrl_*.gw.csv files (which use uniform w=1)
+  NegCtrl_HDL_beta:
+    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/_dev_betaweighted/NegCtrl_HDL_beta.gw.csv"
+  NegCtrl_Alanine_beta:
+    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/_dev_betaweighted/NegCtrl_Alanine_beta.gw.csv"
+  NegCtrl_HbA1c_beta:
+    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/_dev_betaweighted/NegCtrl_HbA1c_beta.gw.csv"
+  NegCtrl_T2D_beta:
+    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/_dev_betaweighted/NegCtrl_T2D_beta.gw.csv"
+  NegCtrl_IBD_beta:
+    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/_dev_betaweighted/NegCtrl_IBD_beta.gw.csv"
+  NegCtrl_RBC_beta:
+    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/_dev_betaweighted/NegCtrl_RBC_beta.gw.csv"
+  NegCtrl_Parkinson_beta:
+    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/_dev_betaweighted/NegCtrl_Parkinson_beta.gw.csv"
+  NegCtrl_Alzheimer_beta:
+    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/_dev_betaweighted/NegCtrl_Alzheimer_beta.gw.csv"
+
+  # Disorder uniform mirror (3) — same Entrez IDs as production, weights=1
+  ASD_All_uniform:
+    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/_dev_betaweighted/ASD_All_uniform.gw.csv"
+  SCZ_uniform:
+    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/_dev_betaweighted/SCZ_uniform.gw.csv"
+  DDD_61_uniform:
+    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/_dev_betaweighted/DDD_61_uniform.gw.csv"
+
+  # Cognition uniform mirror (6) — same Entrez IDs as production VNR/EDU/RT, weights=1
+  VNR_Pos_uniform:
+    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/_dev_betaweighted/VNR_Pos_uniform.gw.csv"
+  VNR_Neg_uniform:
+    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/_dev_betaweighted/VNR_Neg_uniform.gw.csv"
+  EDU_Pos_uniform:
+    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/_dev_betaweighted/EDU_Pos_uniform.gw.csv"
+  EDU_Neg_uniform:
+    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/_dev_betaweighted/EDU_Neg_uniform.gw.csv"
+  RT_Pos_uniform:
+    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/_dev_betaweighted/RT_Pos_uniform.gw.csv"
+  RT_Neg_uniform:
+    geneweights: "/home/jw3514/Work/CellType_Psy/CellTypeBias_VIP/dat/GeneWeights/_dev_betaweighted/RT_Neg_uniform.gw.csv"
+
+# ---------------------------------------------------------------------------
+# Analysis type: only Centering (production default)
+# ---------------------------------------------------------------------------
+analysis_types:
+  Centering: "dat/ExpMats/HumanCT.TPM.0.1.Filt.Spec.clip.lowexp.cut1e4.mean_centered.csv"
+
+# Number of null simulations per set
+n_random_weights: 10000
+
+# Parallel processes (per global rules)
+n_processes: 10
+
+# ---------------------------------------------------------------------------
+# Matching configurations: random + production matched (Best1000)
+# ---------------------------------------------------------------------------
+matching_configs:
+  random:
+    sampling_mode: "random"
+    seed: 42
+
+  matched:
+    sampling_mode: "set_level_matched"
+    set_level_matched_sampling:
+      matching_variables: ["n_CDS_bases", "WB", "mean_phastCons"]
+      use_propensity: false
+      use_best_of_n: true
+      n_candidates: 1000
+      use_percentile: true
+      max_distance: 0.15
+      max_attempts: 1000
+      use_ks_test: false
+      ks_threshold: 0.3
+      seed: 42

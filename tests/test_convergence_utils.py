@@ -173,11 +173,11 @@ class TestPearsonPartial:
         gene_a.iloc[25:] += 5.0
         gene_b.iloc[25:] += 5.0
 
-        # Raw Spearman rho should be > 0.3 (class-driven)
+        # Raw Spearmans' Rs' R should be > 0.3 (class-driven)
         from scipy.stats import spearmanr
         raw_rho, _ = spearmanr(gene_a, gene_b)
         assert abs(raw_rho) > 0.3, (
-            f"Expected raw Spearman rho > 0.3, got {raw_rho}"
+            f"Expected raw Spearmans' Rs' R > 0.3, got {raw_rho}"
         )
 
         # Pearson partial should have lower absolute correlation

@@ -290,7 +290,7 @@ def run_profile_similarity(spec_mat, source_ids, target_ids, target_families,
     """Run full profile similarity analysis (Tiers 1-2) with family collapsing.
 
     For every source x target gene pair, computes:
-      - Tier 1: Spearman rho on raw specificity profiles
+      - Tier 1: Spearmans' R on raw specificity profiles
       - Tier 2: Pearson r on OLS residuals (controlling for cell class)
 
     Results are FDR-corrected and collapsed to families via Stouffer's
@@ -360,7 +360,7 @@ def run_profile_similarity(spec_mat, source_ids, target_ids, target_families,
             tgt_raw = spec_scope.loc[tgt_id]
             tgt_resid = resid_cache[tgt_id]
 
-            # Tier 1: Spearman on raw specificity
+            # Tier 1: Spearmans' R on raw specificity
             rho_raw, p_raw = spearmanr(src_raw.values, tgt_raw.values)
 
             # Tier 2: Pearson on cached residuals

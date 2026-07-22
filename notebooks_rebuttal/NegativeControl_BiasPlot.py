@@ -8,6 +8,10 @@
 #       format_name: percent
 #       format_version: '1.3'
 #       jupytext_version: 1.19.1
+#   kernelspec:
+#     display_name: gencic
+#     language: python
+#     name: python3
 # ---
 
 # %% [markdown]
@@ -194,15 +198,15 @@ BIAS_ADDP_DIR = PROJ_DIR / "results" / "main_results" / "random" / "Centering"
 cge_datasets = {
     "VNR-":     pd.read_csv(BIAS_ADDP_DIR / "UKBB_VNR_Neg_bias_addP.csv", index_col=0),
     "VNR+":     pd.read_csv(BIAS_ADDP_DIR / "UKBB_VNR_Pos_bias_addP.csv", index_col=0),
-    "HDL":      pd.read_csv(BIAS_ADDP_DIR / "NegCtrl_HDL_bias_addP.csv", index_col=0),
+    "HDL-C":    pd.read_csv(BIAS_ADDP_DIR / "NegCtrl_HDL_bias_addP.csv", index_col=0),
     "Alanine":  pd.read_csv(BIAS_ADDP_DIR / "NegCtrl_Alanine_bias_addP.csv", index_col=0),
-    "RBC":      pd.read_csv(BIAS_ADDP_DIR / "NegCtrl_RBC_bias_addP.csv", index_col=0),
     "IBD":      pd.read_csv(BIAS_ADDP_DIR / "NegCtrl_IBD_bias_addP.csv", index_col=0),
 }
 
 CT = "CGE interneuron"
-test_pairs = [("VNR-", "VNR+"), ("VNR-", "HDL"), ("VNR-", "Alanine"),
-              ("VNR-", "RBC"), ("VNR-", "IBD")]
+# RBC dropped for consistency with the Fig S7 negative-control set.
+test_pairs = [("VNR-", "VNR+"), ("VNR-", "HDL-C"), ("VNR-", "Alanine"),
+              ("VNR-", "IBD")]
 
 # Compute on-the-fly Mann-Whitney + BH-FDR over the 5 specified pairs
 _CT_idx = Anno[Anno["Supercluster"] == CT].index.values
@@ -239,7 +243,7 @@ plt.rcParams["font.family"] = "Arial"
 plt.rcParams["font.size"] = 13
 
 # Taller figure to accommodate 5 stacked brackets
-fig, ax = plt.subplots(figsize=(6.5, 7.5), dpi=300, facecolor="none")
+fig, ax = plt.subplots(figsize=(6.5, 4.5), dpi=300, facecolor="none")
 fig.patch.set_alpha(0.0)
 ax.patch.set_alpha(0.0)
 
@@ -317,3 +321,5 @@ fig.savefig(FIGURES_DIR / "FigR_CGE_VNR_vs_NegCtrls.png",
             dpi=300, bbox_inches="tight", transparent=True)
 print(f"Saved: {FIGURES_DIR / 'FigR_CGE_VNR_vs_NegCtrls.pdf'}")
 plt.show()
+
+# %%

@@ -72,3 +72,8 @@ dev_notebooks/
 
 # Private Claude Code instructions (kept local, not pushed to GitHub)
 CLAUDE.md
+
+# Claude Code local state & runtime logs
+.claude/
+logs/
+output.png

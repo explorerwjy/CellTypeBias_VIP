@@ -107,8 +107,8 @@ def plot_correlation_scatter_mouseCT(df1, df2, name1, name2, effect_col1="EFFECT
     plt.ylabel(name2, fontsize=22)
     plt.legend(fontsize=15, loc="upper left")
 
-    # Calculate and add Spearman correlation
-    # Calculate Spearman correlations
+    # Calculate and add Spearmans' R
+    # Calculate Spearmans' R values
     all_spearman, _ = spearmanr(values1, values2)
     neur_spearman, _ = spearmanr(values1[~non_neur_mask], values2[~non_neur_mask])
     non_neur_spearman, _ = spearmanr(values1[non_neur_mask], values2[non_neur_mask])
@@ -759,8 +759,8 @@ def plot_correlation_scatter_mouseCT(df1, df2, name1, name2, effect_col1="EFFECT
     plt.ylabel(name2, fontsize=22)
     plt.legend(fontsize=15, loc="upper left")
 
-    # Calculate and add Spearman correlation
-    # Calculate Spearman correlations
+    # Calculate and add Spearmans' R
+    # Calculate Spearmans' R values
     all_spearman, _ = spearmanr(values1, values2)
     neur_spearman, _ = spearmanr(values1[~non_neur_mask], values2[~non_neur_mask])
     non_neur_spearman, _ = spearmanr(values1[non_neur_mask], values2[non_neur_mask])

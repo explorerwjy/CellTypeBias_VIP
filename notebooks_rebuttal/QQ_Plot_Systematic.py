@@ -9,9 +9,9 @@
 #       format_version: '1.3'
 #       jupytext_version: 1.19.1
 #   kernelspec:
-#     display_name: Python (gencic)
+#     display_name: gencic
 #     language: python
-#     name: gencic
+#     name: python3
 # ---
 
 # %% [markdown]
@@ -89,16 +89,42 @@ NEG_CTRL_SETS = OrderedDict([
     ("IBD", "NegCtrl_IBD"),
 ])
 
+# --- Figure S7 (paper): 9 panels = 3x3. Drops ASD (all), 22q11.2 del, and
+# HDL cholesterol per reviewer request. Shows Random + production Best-of-1000
+# only; the n_candidates sensitivity (500/1000/2000) is a separate panel below.
+S7_GENE_SETS = OrderedDict([
+    ("SCZ", "SCZ"),
+    ("ASD w/o ID", "ASD_HIQ"),
+    ("ASD with ID", "ASD_LIQ"),
+    ("DDD", "DDD_61"),
+    ("UKBB VNR+", "UKBB_VNR_Pos"),
+    ("UKBB VNR-", "UKBB_VNR_Neg"),
+    ("HDL cholesterol", "NegCtrl_HDL"),
+    ("Alanine", "NegCtrl_Alanine"),
+    ("IBD", "NegCtrl_IBD"),
+])
+# RBC dropped (β-weighted RBC shows non-neuronal inflation → invites reviewer
+# questions); HDL used instead (conservative/deflated → no false positives).
+S7_NEG_CTRL_LABELS = {"HDL cholesterol", "Alanine", "IBD"}
+
+# S7 encoding (per reviewer): COLOR = neuronal (blue) / non-neuronal (red);
+# MARKER = null model (circle = random, triangle = matched). Colors in this
+# style dict are unused when color_by_neuron=True — only the marker matters.
+S7_METHOD_STYLE = {
+    "Random":       {"marker": "o", "zorder": 3},
+    "Best-of-1000": {"marker": "^", "zorder": 4},
+}
+
 ANALYSIS = "Centering"
 
 # Style
 METHOD_STYLE = {
-    "Random":       {"color": "#aaaaaa", "marker": "o", "zorder": 2},
+    "Random":       {"color": "#999999", "marker": "o", "zorder": 2},
     "Gene-by-gene": {"color": "#e67e22", "marker": "s", "zorder": 3},
     "Rejection":    {"color": "#f1c40f", "marker": "D", "zorder": 3},
-    "Best-of-500":  {"color": "#93c5fd", "marker": "o", "zorder": 4},   # light blue
-    "Best-of-1000": {"color": "#2563eb", "marker": "o", "zorder": 5},   # mid blue (production)
-    "Best-of-2000": {"color": "#1e3a8a", "marker": "o", "zorder": 4},   # dark blue
+    "Best-of-500":  {"color": "#E69F00", "marker": "o", "zorder": 4},   # orange (Okabe-Ito)
+    "Best-of-1000": {"color": "#0072B2", "marker": "o", "zorder": 5},   # blue (production)
+    "Best-of-2000": {"color": "#009E73", "marker": "o", "zorder": 4},   # green
     "PropWeight":   {"color": "#16a34a", "marker": "^", "zorder": 3},
     "SIS":          {"color": "#9b59b6", "marker": "v", "zorder": 3},
 }
@@ -134,6 +160,7 @@ print(f"Loaded {n_loaded} p-value vectors "
 # %%
 def qq_plot(pvals_dict, gene_sets, method_style, figsize=None, title=None,
             neg_ctrl_labels=None, ncols=None, neuron_dict=None,
+            color_by_neuron=False, neuron_color="#1f77b4", nonneuron_color="#d62728",
             legend_fontsize=16, label_fontsize=20, title_fontsize=17,
             tick_fontsize=13):
     """
@@ -200,7 +227,21 @@ def qq_plot(pvals_dict, gene_sets, method_style, figsize=None, title=None,
             base_color = style.get("color", "grey")
             base_zorder = style.get("zorder", 2)
 
-            if neuron_dict is not None and method in neuron_dict and gs_label in neuron_dict[method]:
+            if color_by_neuron and neuron_dict is not None and method in neuron_dict and gs_label in neuron_dict[method]:
+                # COLOR = neuronal (blue) vs non-neuronal (red); MARKER = null model
+                neur_mask = neuron_dict[method][gs_label][sort_idx]
+                mk = style.get("marker", "o")
+                ax.scatter(
+                    neg_log_exp[neur_mask], neg_log_obs[neur_mask],
+                    s=22, alpha=0.75, linewidths=0.3, edgecolors="white",
+                    color=neuron_color, marker=mk, zorder=base_zorder,
+                )
+                ax.scatter(
+                    neg_log_exp[~neur_mask], neg_log_obs[~neur_mask],
+                    s=22, alpha=0.75, linewidths=0.3, edgecolors="white",
+                    color=nonneuron_color, marker=mk, zorder=base_zorder,
+                )
+            elif neuron_dict is not None and method in neuron_dict and gs_label in neuron_dict[method]:
                 neur_mask = neuron_dict[method][gs_label][sort_idx]
 
                 # Neuronal cells: circles
@@ -259,36 +300,58 @@ def qq_plot(pvals_dict, gene_sets, method_style, figsize=None, title=None,
     fig.supylabel("Observed $-\\log_{10}(p)$",
                   fontsize=label_fontsize, fontweight="bold", x=0.02)
 
-    legend_handles, legend_labels = axes[0, 0].get_legend_handles_labels()
-    fig.legend(
-        legend_handles,
-        legend_labels,
-        loc="center left",
-        bbox_to_anchor=(0.86, 0.5),
-        fontsize=legend_fontsize,
-        markerscale=1.5,
-        frameon=True,
-        framealpha=0.9,
-        facecolor="white",
-        edgecolor="#d0d0d0",
-        labelcolor="black",
-    )
+    if color_by_neuron:
+        from matplotlib.lines import Line2D
+        legend_handles = [
+            Line2D([0], [0], marker="o", linestyle="", markerfacecolor=neuron_color,
+                   markeredgecolor="white", markersize=11, label="Neuronal"),
+            Line2D([0], [0], marker="o", linestyle="", markerfacecolor=nonneuron_color,
+                   markeredgecolor="white", markersize=11, label="Non-neuronal"),
+        ]
+        for _m in pvals_dict:
+            _mk = method_style.get(_m, {}).get("marker", "o")
+            _lbl = "Random null" if _m == "Random" else (f"{_m} matched" if "Best" in _m else _m)
+            legend_handles.append(
+                Line2D([0], [0], marker=_mk, linestyle="", markerfacecolor="#777777",
+                       markeredgecolor="white", markersize=11, label=_lbl))
+        fig.legend(
+            handles=legend_handles, loc="center left", bbox_to_anchor=(0.86, 0.5),
+            fontsize=legend_fontsize, frameon=True, framealpha=0.9,
+            facecolor="white", edgecolor="#d0d0d0", labelcolor="black",
+        )
+    else:
+        legend_handles, legend_labels = axes[0, 0].get_legend_handles_labels()
+        fig.legend(
+            legend_handles,
+            legend_labels,
+            loc="center left",
+            bbox_to_anchor=(0.86, 0.5),
+            fontsize=legend_fontsize,
+            markerscale=1.5,
+            frameon=True,
+            framealpha=0.9,
+            facecolor="white",
+            edgecolor="#d0d0d0",
+            labelcolor="black",
+        )
 
     fig.subplots_adjust(hspace=0.32, wspace=0.22,
                         left=0.08, right=0.82, bottom=0.09)
     return fig
 
 
-# Main figure: disorders only
-fig = qq_plot(pvals, GENE_SETS, METHOD_STYLE, neuron_dict=is_neuron,
-              title="Cell-Type Bias P-value QQ Plots")
+# Figure S7 (paper): 3x3 grid. COLOR = neuronal (blue) / non-neuronal (red);
+# MARKER = null model (circle = random, triangle = matched Best-of-1000).
+fig = qq_plot(pvals, S7_GENE_SETS, S7_METHOD_STYLE, ncols=3,
+              neg_ctrl_labels=S7_NEG_CTRL_LABELS, neuron_dict=is_neuron,
+              color_by_neuron=True, title=None)
 
-fig.savefig(FIG_DIR / "FigS_QQ_plot.pdf", dpi=300, transparent=True,
+fig.savefig(FIG_DIR / "FigS7_QQ_main.pdf", dpi=300, transparent=True,
             bbox_inches="tight")
-fig.savefig(FIG_DIR / "FigS_QQ_plot.png", dpi=300, transparent=True,
+fig.savefig(FIG_DIR / "FigS7_QQ_main.png", dpi=300, transparent=True,
             bbox_inches="tight")
 plt.show()
-print(f"Saved to {FIG_DIR / 'FigS_QQ_plot.pdf'}")
+print(f"Saved to {FIG_DIR / 'FigS7_QQ_main.pdf'}")
 
 # %% [markdown]
 # ## QQ Plot — With Negative Controls
@@ -355,9 +418,9 @@ pvals_sens = {m: pvals_all[m] for m in SENSITIVITY_METHODS if m in pvals_all}
 is_neuron_sens = {m: is_neuron_all[m] for m in SENSITIVITY_METHODS if m in is_neuron_all}
 
 fig_sens = qq_plot(
-    pvals_sens, ALL_GENE_SETS, METHOD_STYLE,
-    neg_ctrl_labels=set(NEG_CTRL_SETS.keys()),
-    ncols=4, neuron_dict=is_neuron_sens,
+    pvals_sens, S7_GENE_SETS, METHOD_STYLE,
+    neg_ctrl_labels=S7_NEG_CTRL_LABELS,
+    ncols=3, neuron_dict=None,
     title="QQ Plot — Sensitivity to n_candidates (Best-of-N matched null)",
 )
 

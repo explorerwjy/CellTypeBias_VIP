@@ -242,358 +242,13 @@ plt.show()
 print(f"Saved: {FIG_DIR}FigureS2.pdf")
 
 # %% [markdown]
-# ---
-# ## Figure S4 — Specificity Capping Validation & Noise from Low Expression
+# ## Figure S4 — Specificity Capping Validation
 #
-# | Panel | Content | Source |
-# |-------|---------|--------|
-# | A | Empirical specificity inflation by UMI depth | `Specificity_Cap_Analysis.ipynb` |
-# | B | NB simulation: sampling noise inflates specificity | `Specificity_ZINB_Simulation.ipynb` |
-# | C | Cap sensitivity sweep (1x–10x) | `Cap_Sensitivity_Figure.ipynb` |
-
-# %%
-# --- S4 Data Loading ---
-# Load unclipped specificity matrix (clip100 is effectively unclipped)
-from scipy.stats import gaussian_kde
-spec_unclip = pd.read_csv(
-    str(PROJ_DIR / "dat/ExpMats/HumanCT.TPM.0.1.Filt.Spec.clip100.0.lowexp.cut1e4.csv"), index_col=0)
-spec_unclip.columns = [int(c) for c in spec_unclip.columns]
-clip_threshold = np.mean(spec_unclip.values.flatten()) * 2
-mean_spec = np.mean(spec_unclip.values.flatten())
-print(f"Clip threshold (2x mean): {clip_threshold:.4f}")
-
-# Compute per-cell-type clipping statistics
-ct_stats = pd.DataFrame(index=Anno.index)
-for ct in ct_stats.index:
-    vals = spec_unclip[ct].values
-    ct_stats.loc[ct, "frac_clipped"] = np.mean(vals > clip_threshold)
-    ct_stats.loc[ct, "max_spec"] = np.max(vals)
-ct_stats["Total_UMI"] = Anno["Total UMI"]
-ct_stats["Supercluster"] = Anno["Supercluster"]
-ct_stats["is_neuronal"] = ct_stats.index.isin(Neur_idx)
-for col in ["frac_clipped", "max_spec", "Total_UMI"]:
-    ct_stats[col] = pd.to_numeric(ct_stats[col])
-neur_mask_cap = ct_stats["is_neuronal"]
-
-from scipy import stats as sp_stats
-rho_umi, p_umi = sp_stats.spearmanr(ct_stats["Total_UMI"], ct_stats["frac_clipped"])
-
-# %% [markdown]
-# ### Panel A — Total UMI vs Fraction of Genes Exceeding Cap
-
-# %%
-fig, ax = plt.subplots(figsize=(7, 6))
-ax.scatter(ct_stats.loc[neur_mask_cap, "Total_UMI"], ct_stats.loc[neur_mask_cap, "frac_clipped"],
-           color="red", alpha=0.5, s=30, edgecolors="white", lw=0.3, label="Neuronal", zorder=3)
-ax.scatter(ct_stats.loc[~neur_mask_cap, "Total_UMI"], ct_stats.loc[~neur_mask_cap, "frac_clipped"],
-           color="blue", alpha=0.6, s=30, edgecolors="white", lw=0.3, label="Non-neuronal", zorder=4)
-ax.set_xscale("log")
-ax.set_xlabel("Total UMI per cell type", fontsize=12)
-ax.set_ylabel("Fraction of genes exceeding cap", fontsize=12)
-ax.legend(fontsize=10, framealpha=0.8)
-ax.text(0.97, 0.97, f"ρ = {rho_umi:.3f}\np = {p_umi:.1e}",
-        transform=ax.transAxes, ha="right", va="top", fontsize=10,
-        bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8))
-for spine in ["top", "right"]:
-    ax.spines[spine].set_visible(False)
-fig.savefig(FIG_DIR + "FigS4_A.png", dpi=300, bbox_inches="tight", transparent=True, facecolor='none')
-plt.show()
-
-# %% [markdown]
-# ### Panel B — Specificity Distribution: Example Cell Types
-
-# %%
-# Pick example cell types spanning UMI range
-vasc_ct = ct_stats.loc[(ct_stats["Supercluster"] == "Vascular") & ~neur_mask_cap].sort_values("Total_UMI").index[0]
-astro_cts = ct_stats.loc[ct_stats["Supercluster"] == "Astrocyte"]
-astro_ct = astro_cts.sort_values("Total_UMI").iloc[len(astro_cts)//2].name
-cge_cts = ct_stats.loc[(ct_stats["Supercluster"] == "CGE interneuron") & neur_mask_cap]
-cge_ct = cge_cts.sort_values("Total_UMI").iloc[len(cge_cts)//2].name
-large_neur_ct = ct_stats.loc[neur_mask_cap].sort_values("Total_UMI").index[-1]
-
-examples = [
-    (vasc_ct, "darkblue", f"Vascular (UMI={ct_stats.loc[vasc_ct, 'Total_UMI']:.0f})"),
-    (astro_ct, "#7B68EE", f"Astrocyte (UMI={ct_stats.loc[astro_ct, 'Total_UMI']:.0f})"),
-    (cge_ct, "salmon", f"CGE IN (UMI={ct_stats.loc[cge_ct, 'Total_UMI']:.0f})"),
-    (large_neur_ct, "red", f"Neuron (UMI={ct_stats.loc[large_neur_ct, 'Total_UMI']:.0f})"),
-]
-
-fig, ax = plt.subplots(figsize=(7, 6))
-for ct, color, label in examples:
-    vals = spec_unclip[ct].values
-    vals_pos = vals[vals > 0.01]
-    log_vals = np.log10(vals_pos)
-    kde = gaussian_kde(log_vals, bw_method=0.15)
-    x_grid = np.linspace(np.log10(0.01), np.log10(max(vals_pos.max(), 100) * 1.1), 500)
-    ax.plot(10**x_grid, kde(x_grid), color=color, lw=2, label=label)
-    ax.fill_between(10**x_grid, kde(x_grid), alpha=0.12, color=color)
-ax.axvline(x=clip_threshold, color="black", ls="--", lw=1.5, alpha=0.7, label=f"Cap = {clip_threshold:.1f}")
-ax.set_xscale("log")
-ax.set_xlabel("Specificity (fold-enrichment)", fontsize=12)
-ax.set_ylabel("Density", fontsize=12)
-ax.legend(fontsize=8, framealpha=0.8, loc="upper right")
-for spine in ["top", "right"]:
-    ax.spines[spine].set_visible(False)
-fig.savefig(FIG_DIR + "FigS4_B.png", dpi=300, bbox_inches="tight", transparent=True, facecolor='none')
-plt.show()
-
-# %% [markdown]
-# ### Panel C — ZINB Simulation: Max Specificity by Expression × UMI
-#
-# Pre-computed by `Specificity_ZINB_Simulation.ipynb`; loaded from saved data.
-
-# %%
-import pickle
-PLOT_DATA_DIR = str(PROJ_DIR / "results/figures/plot_data/") + "/"
-with open(PLOT_DATA_DIR + "zinb_data.pkl", "rb") as f:
-    zinb_data = pickle.load(f)
-
-zinb_sweep = zinb_data["sweep_results"]
-zinb_pcts = zinb_data["expression_percentiles"]
-zinb_ct_ids = zinb_data["ct_ids"]
-zinb_clip = zinb_data["clip_threshold"]
-total_umis_zinb = np.array([Anno.loc[ct, "Total UMI"] for ct in zinb_ct_ids])
-
-# Heatmap: max specificity by expression level x UMI bin
-n_umi_bins = 8
-umi_bin_edges = np.logspace(np.log10(total_umis_zinb.min() * 0.9),
-                            np.log10(total_umis_zinb.max() * 1.1), n_umi_bins + 1)
-umi_bin_labels = [f"{umi_bin_edges[i]:.0f}-{umi_bin_edges[i+1]:.0f}" for i in range(n_umi_bins)]
-
-heatmap_data = np.zeros((len(zinb_pcts), n_umi_bins))
-for i, pct in enumerate(zinb_pcts):
-    res = zinb_sweep[pct]
-    for j in range(n_umi_bins):
-        mask = (res["total_umi"] >= umi_bin_edges[j]) & (res["total_umi"] < umi_bin_edges[j+1])
-        heatmap_data[i, j] = res.loc[mask, "max_spec"].median() if mask.sum() > 0 else np.nan
-
-from matplotlib.colors import LogNorm
-fig, ax = plt.subplots(figsize=(8, 5))
-im = ax.imshow(heatmap_data, aspect="auto", cmap="YlOrRd",
-    norm=LogNorm(vmin=max(1, np.nanmin(heatmap_data[heatmap_data > 0])),
-                 vmax=np.nanmax(heatmap_data)), origin="lower")
-for i in range(len(zinb_pcts)):
-    for j in range(n_umi_bins):
-        val = heatmap_data[i, j]
-        if not np.isnan(val):
-            tc = "white" if val > np.nanmax(heatmap_data) * 0.3 else "black"
-            ax.text(j, i, f"{val:.0f}" if val >= 10 else f"{val:.1f}",
-                    ha="center", va="center", fontsize=7, color=tc, fontweight="bold")
-ax.set_xticks(range(n_umi_bins))
-ax.set_xticklabels(umi_bin_labels, rotation=45, ha="right", fontsize=7)
-ax.set_yticks(range(len(zinb_pcts)))
-ax.set_yticklabels([f"P{p}" for p in zinb_pcts], fontsize=9)
-ax.set_xlabel("Total UMI per cell type")
-ax.set_ylabel("Gene expression level (percentile)")
-fig.colorbar(im, ax=ax, shrink=0.8, label="Median of max simulated specificity")
-fig.savefig(FIG_DIR + "FigS4_C.png", dpi=300, bbox_inches="tight", transparent=True, facecolor='none')
-plt.show()
-
-# %% [markdown]
-# ### Panel D — ZINB: Expression Level × UMI Group → Max Specificity
-
-# %%
-umi_tercile_edges = np.percentile(total_umis_zinb, [0, 33, 67, 100])
-umi_group_names = [f"Low UMI (<{umi_tercile_edges[1]:.0f})",
-                   f"Mid UMI ({umi_tercile_edges[1]:.0f}-{umi_tercile_edges[2]:.0f})",
-                   f"High UMI (>{umi_tercile_edges[2]:.0f})"]
-umi_group_colors = ["#dc2626", "#f59e0b", "#2563eb"]
-
-fig, ax = plt.subplots(figsize=(7, 5))
-for g_idx in range(3):
-    max_specs, p95_specs = [], []
-    for pct in zinb_pcts:
-        res = zinb_sweep[pct]
-        mask = ((res["total_umi"] >= umi_tercile_edges[g_idx]) &
-                (res["total_umi"] < umi_tercile_edges[g_idx + 1]))
-        if g_idx == 2:
-            mask = mask | (res["total_umi"] >= umi_tercile_edges[g_idx])
-        max_specs.append(res.loc[mask, "max_spec"].max() if mask.sum() > 0 else np.nan)
-        p95_specs.append(res.loc[mask, "p95_spec"].max() if mask.sum() > 0 else np.nan)
-    ax.plot(zinb_pcts, max_specs, color=umi_group_colors[g_idx], marker="o",
-            markersize=6, lw=2.5, label=umi_group_names[g_idx], zorder=5)
-    ax.fill_between(zinb_pcts, p95_specs, max_specs, color=umi_group_colors[g_idx], alpha=0.1)
-ax.axhline(y=1.0, color="gray", ls="--", lw=1.5, alpha=0.7, label="True specificity (1.0)")
-ax.axhline(y=zinb_clip, color="black", ls=":", lw=1.5, alpha=0.7, label=f"Cap ({zinb_clip:.1f})")
-ax.set_yscale("log")
-ax.set_xlabel("Gene expression level (percentile)", fontsize=12)
-ax.set_ylabel("Max simulated specificity", fontsize=12)
-ax.legend(fontsize=8, framealpha=0.8, loc="upper right")
-for spine in ["top", "right"]:
-    ax.spines[spine].set_visible(False)
-fig.savefig(FIG_DIR + "FigS4_D.png", dpi=300, bbox_inches="tight", transparent=True, facecolor='none')
-plt.show()
-
-# %% [markdown]
-# ### Panel E — ZINB: P95 Specificity vs UMI by Expression Level
-
-# %%
-from statsmodels.nonparametric.smoothers_lowess import lowess
-
-show_pcts = [10, 25, 50, 75, 90, 95]
-colors_pct = plt.cm.plasma(np.linspace(0.1, 0.9, len(show_pcts)))
-
-fig, ax = plt.subplots(figsize=(7, 5))
-for i, pct in enumerate(show_pcts):
-    res = zinb_sweep[pct]
-    ax.scatter(res["total_umi"], res["p95_spec"], color=colors_pct[i], alpha=0.3, s=12,
-               edgecolors="none", label=f"P{pct}", zorder=3 + i)
-    pos_mask = res["p95_spec"].values > 0.01
-    if pos_mask.sum() > 10:
-        log_umi = np.log10(res["total_umi"].values[pos_mask])
-        log_spec = np.log10(res["p95_spec"].values[pos_mask])
-        smooth = lowess(log_spec, log_umi, frac=0.4, return_sorted=True)
-        ax.plot(10**smooth[:, 0], 10**smooth[:, 1], color=colors_pct[i], lw=2.5, zorder=10 + i)
-ax.axhline(y=1.0, color="gray", ls="--", lw=1.5, alpha=0.7)
-ax.axhline(y=zinb_clip, color="black", ls=":", lw=1.5, alpha=0.5, label=f"Cap ({zinb_clip:.1f})")
-ax.set_xscale("log")
-ax.set_yscale("log")
-ax.set_xlabel("Total UMI per cell type", fontsize=12)
-ax.set_ylabel("P95 simulated specificity", fontsize=12)
-ax.legend(fontsize=8, framealpha=0.8, title="Expr. level", title_fontsize=8, loc="upper right")
-for spine in ["top", "right"]:
-    ax.spines[spine].set_visible(False)
-fig.savefig(FIG_DIR + "FigS4_E.png", dpi=300, bbox_inches="tight", transparent=True, facecolor='none')
-plt.show()
-
-# %% [markdown]
-# ### Panel F — Cap Sensitivity: Spearmans' R vs Cap=2x
-
-# %%
-# Load gene weights for cap sensitivity analysis
-gw_files_cap = {
-    "SCZ": str(PROJ_DIR / "dat/GeneWeights/SCZ.top61.nopLI.LGD_Dmis_SameWeight.exclude_Mis2.gw"),
-    "ASD (HIQ)": str(PROJ_DIR / "dat/GeneWeights/HIQ.top61.nopLI.LGD_Dmis_SameWeight.bgmr.gw"),
-    "DDD": str(PROJ_DIR / "dat/GeneWeights/DDD.top61.gw.bgmr.csv"),
-}
-gw_dicts_cap = {label: Fil2Dict(fpath) for label, fpath in gw_files_cap.items()}
-
-CAP_LEVELS = [1.0, 1.5, 2.0, 2.5, 3.0, 5.0, 10.0]
-ref_cap = 2.0
-
-# Compute bias at each cap level
-bias_all_cap = {}
-for disorder, gw_dict in gw_dicts_cap.items():
-    bias_all_cap[disorder] = {}
-    for cap in CAP_LEVELS:
-        threshold = mean_spec * cap
-        spec_clipped = spec_unclip.clip(lower=0, upper=threshold)
-        bias_df = HumanCT_AvgZ_Weighted(spec_clipped, gw_dict)
-        bias_df = AnnotateCTDat(bias_df, Anno)
-        bias_all_cap[disorder][cap] = bias_df
-
-# Spearmans' R vs cap=2x
-corr_results_cap = {}
-for disorder in gw_dicts_cap.keys():
-    ref_bias = bias_all_cap[disorder][ref_cap]["EFFECT"]
-    corr_results_cap[disorder] = {}
-    for cap in CAP_LEVELS:
-        other_bias = bias_all_cap[disorder][cap]["EFFECT"]
-        common = ref_bias.index.intersection(other_bias.index)
-        rho, _ = sp_stats.spearmanr(ref_bias.loc[common], other_bias.loc[common])
-        corr_results_cap[disorder][cap] = rho
-corr_df_cap = pd.DataFrame(corr_results_cap)
-
-# %%
-disorder_colors = {"SCZ": "#2563eb", "ASD (HIQ)": "#dc2626", "DDD": "#16a34a"}
-disorder_markers = {"SCZ": "o", "ASD (HIQ)": "s", "DDD": "D"}
-
-fig, ax = plt.subplots(figsize=(7, 5))
-ax.axvspan(1.5, 3.0, color="#e0f2fe", alpha=0.35, zorder=0)
-for disorder in corr_df_cap.columns:
-    ax.plot(CAP_LEVELS, corr_df_cap[disorder].values, color=disorder_colors[disorder],
-            marker=disorder_markers[disorder], markersize=7, lw=2.2, label=disorder, zorder=3)
-ax.set_xticks(CAP_LEVELS)
-ax.set_xticklabels([f"{c}×" for c in CAP_LEVELS], fontsize=9)
-ax.set_xlabel("Specificity cap level (× mean)", fontsize=11)
-ax.axvline(x=ref_cap, color="gray", ls="--", lw=1, alpha=0.4, zorder=1)
-ax.set_ylabel("Spearmans' R vs. cap = 2×", fontsize=11)
-ax.set_ylim(min(corr_df_cap.values.min() - 0.03, 0.35), 1.01)
-ax.legend(fontsize=9, frameon=True, framealpha=0.9, loc="lower left")
-for spine in ["top", "right"]:
-    ax.spines[spine].set_visible(False)
-fig.savefig(FIG_DIR + "FigS4_F.png", dpi=300, bbox_inches="tight", transparent=True, facecolor='none')
-plt.show()
-
-# %% [markdown]
-# ### Panel G — Cap Sensitivity: Supercluster Bias Profiles Across Cap Levels
-
-# %%
-panel_scs = ["Medium spiny neuron", "CGE interneuron", "MGE interneuron",
-             "Vascular", "Microglia", "Astrocyte", "Ependymal"]
-sc_style = {
-    "CGE interneuron":      {"color": "#e11d48", "marker": "o", "ls": "-",  "lw": 2.5},
-    "MGE interneuron":      {"color": "#7c3aed", "marker": "s", "ls": "-",  "lw": 2.5},
-    "Medium spiny neuron":  {"color": "#0891b2", "marker": "D", "ls": "-",  "lw": 2.5},
-    "Vascular":             {"color": "#64748b", "marker": "v", "ls": "--", "lw": 1.8},
-    "Microglia":            {"color": "#92400e", "marker": "^", "ls": "--", "lw": 1.8},
-    "Astrocyte":            {"color": "#d97706", "marker": "P", "ls": "--", "lw": 1.8},
-    "Ependymal":            {"color": "#6b7280", "marker": "X", "ls": "--", "lw": 1.8},
-}
-sc_short = {"CGE interneuron": "CGE IN", "MGE interneuron": "MGE IN",
-            "Medium spiny neuron": "MSN", "Vascular": "Vascular",
-            "Microglia": "Microglia", "Astrocyte": "Astrocyte", "Ependymal": "Ependymal"}
-
-# Compute supercluster mean bias across cap levels (SCZ)
-sc_disorder_bias = {}
-for sc in panel_scs:
-    for disorder in ["SCZ"]:
-        key = f"{sc} | {disorder}"
-        sc_disorder_bias[key] = [bias_all_cap[disorder][cap].loc[
-            bias_all_cap[disorder][cap]["Supercluster"] == sc, "EFFECT"].mean() for cap in CAP_LEVELS]
-sc_disorder_df = pd.DataFrame(sc_disorder_bias, index=CAP_LEVELS)
-
-fig, ax = plt.subplots(figsize=(7, 5))
-ax.axvspan(1.5, 3.0, color="#e0f2fe", alpha=0.35, zorder=0)
-for sc in panel_scs:
-    key = f"{sc} | SCZ"
-    sty = sc_style[sc]
-    ax.plot(CAP_LEVELS, sc_disorder_df[key].values, color=sty["color"], marker=sty["marker"],
-            markersize=5, lw=sty["lw"], ls=sty["ls"], label=sc_short[sc], zorder=3)
-ax.set_xticks(CAP_LEVELS)
-ax.set_xticklabels([f"{c}×" for c in CAP_LEVELS], fontsize=9)
-ax.set_xlabel("Specificity cap level (× mean)", fontsize=11)
-ax.axvline(x=ref_cap, color="gray", ls="--", lw=1, alpha=0.4, zorder=1)
-ax.set_ylabel("Mean supercluster bias", fontsize=11)
-ax.legend(fontsize=7.5, frameon=True, framealpha=0.9, loc="lower right", ncol=2)
-for spine in ["top", "right"]:
-    ax.spines[spine].set_visible(False)
-fig.savefig(FIG_DIR + "FigS4_G.png", dpi=300, bbox_inches="tight", transparent=True, facecolor='none')
-plt.show()
-
-# %% [markdown]
-# ### Panel H — Cap Sensitivity: Supercluster Rank Stability
-
-# %%
-sc_rank_data = {}
-for disorder in ["SCZ"]:
-    sc_rank_data[disorder] = {}
-    for cap in CAP_LEVELS:
-        df = bias_all_cap[disorder][cap]
-        sc_means = df.groupby("Supercluster")["EFFECT"].mean().sort_values(ascending=False)
-        for rank_i, (sc_name, _) in enumerate(sc_means.items(), 1):
-            if sc_name not in sc_rank_data[disorder]:
-                sc_rank_data[disorder][sc_name] = {}
-            sc_rank_data[disorder][sc_name][cap] = rank_i
-
-fig, ax = plt.subplots(figsize=(7, 5))
-ax.axvspan(1.5, 3.0, color="#e0f2fe", alpha=0.35, zorder=0)
-for sc in panel_scs:
-    sty = sc_style[sc]
-    ranks = [sc_rank_data["SCZ"][sc][cap] for cap in CAP_LEVELS]
-    ax.plot(CAP_LEVELS, ranks, color=sty["color"], marker=sty["marker"], markersize=5,
-            lw=sty["lw"], ls=sty["ls"], label=sc_short[sc], zorder=3)
-ax.set_xticks(CAP_LEVELS)
-ax.set_xticklabels([f"{c}×" for c in CAP_LEVELS], fontsize=9)
-ax.set_xlabel("Specificity cap level (× mean)", fontsize=11)
-ax.axvline(x=ref_cap, color="gray", ls="--", lw=1, alpha=0.4, zorder=1)
-ax.invert_yaxis()
-ax.set_ylabel("Supercluster rank (1 = highest bias)", fontsize=11)
-ax.legend(fontsize=7.5, frameon=True, framealpha=0.9, loc="lower right", ncol=2)
-for spine in ["top", "right"]:
-    ax.spines[spine].set_visible(False)
-fig.savefig(FIG_DIR + "FigS4_H.png", dpi=300, bbox_inches="tight", transparent=True, facecolor='none')
-plt.show()
+# **Moved (2026-07-01).** Fig S4 is now generated by the canonical
+# `notebooks_rebuttal/FigS4_Specificity_Cap.py` (2-panel: specificity
+# inflation vs library size + mutation-bias robustness to cap level).
+# The prior inline 8-panel version (incl. ZINB/TDEP exploratory panels)
+# was removed; those analyses now live in `dev_notebooks/specificity_cap/`.
 
 # %% [markdown]
 # ## Figure S5 — Impact of Number of Genes on Mutation Bias Analysis
@@ -702,7 +357,7 @@ plt.show()
 # %%
 total_genes = gene_expansion['total_genes']
 disorders_exp = gene_expansion['disorders']
-disorder_order = [("SCZ", "#ff7f0e", "E"), ("ASD with ID", "#1f77b4", "F"), ("DDD", "#2ca02c", "G")]
+disorder_order = [("SCZ", "#ff7f0e", "E"), ("ASD", "#1f77b4", "F"), ("DDD", "#2ca02c", "G")]
 
 fig, axes = plt.subplots(1, 3, figsize=(18, 5), dpi=120, sharey=True)
 for ax, (disorder_name, color, panel_label) in zip(axes, disorder_order):
@@ -794,7 +449,7 @@ with save_panel(FIG_DIR + "FigS7_E.png"):
 #
 # | Panel | Content | Source |
 # |-------|---------|--------|
-# | A | Non-brain trait bias (HDL, IBD, ALT) | `NegativeControl_BiasPlot.ipynb` |
+# | A | Non-brain trait bias (HDL, Alanine, RBC, IBD) | `NegativeControl_BiasPlot.ipynb` |
 # | B | SCZ protective-direction (OR < 1) bias | `SCZ_Protective_BiasPlot.ipynb` |
 #
 # CGE signal is specific to psychiatric risk genes; absent in non-brain traits
@@ -807,6 +462,7 @@ _matched_dir = str(PROJ_DIR / "results/main_results/matched_WB_mean_phastCons_n_
 HDL_Pval = pd.read_csv(_matched_dir + "NegCtrl_HDL_bias_addP.csv", index_col=0)
 IBD_Pval = pd.read_csv(_matched_dir + "NegCtrl_IBD_bias_addP.csv", index_col=0)
 ALT_Pval = pd.read_csv(_matched_dir + "NegCtrl_Alanine_bias_addP.csv", index_col=0)
+RBC_Pval = pd.read_csv(_matched_dir + "NegCtrl_RBC_bias_addP.csv", index_col=0)
 SCZ_Protect_Pval = pd.read_csv(_matched_dir + "SCZ_protect_bias_addP.csv", index_col=0)
 
 # Compute bias inline from gene weights (consistent with pipeline)
@@ -817,14 +473,15 @@ _exp_mat.columns = _exp_mat.columns.astype(int)
 HDL_Bias = AnnotateCTDat(HumanCT_AvgZ_Weighted(_exp_mat, Fil2Dict(_gw_dir + "NegCtrl_HDL.gw.csv")), Anno)
 IBD_Bias = AnnotateCTDat(HumanCT_AvgZ_Weighted(_exp_mat, Fil2Dict(_gw_dir + "NegCtrl_IBD.gw.csv")), Anno)
 ALT_Bias = AnnotateCTDat(HumanCT_AvgZ_Weighted(_exp_mat, Fil2Dict(_gw_dir + "NegCtrl_Alanine.gw.csv")), Anno)
+RBC_Bias = AnnotateCTDat(HumanCT_AvgZ_Weighted(_exp_mat, Fil2Dict(_gw_dir + "NegCtrl_RBC.gw.csv")), Anno)
 SCZ_Protect_Bias = AnnotateCTDat(HumanCT_AvgZ_Weighted(_exp_mat, Fil2Dict(_gw_dir + "SCZ.top61.protect.gw")), Anno)
 
 # %% [markdown]
 # ### Panel A — Non-brain trait bias (EFFECT)
 
 # %%
-fig, axes = plt.subplots(1, 3, figsize=(24, 8), facecolor="none")
-for ax, (bias_df, name) in zip(axes, [(HDL_Bias, "HDL Cholesterol"), (IBD_Bias, "IBD"), (ALT_Bias, "Alanine AT")]):
+fig, axes = plt.subplots(1, 4, figsize=(32, 8), facecolor="none")
+for ax, (bias_df, name) in zip(axes, [(HDL_Bias, "HDL Cholesterol"), (ALT_Bias, "Alanine AT"), (RBC_Bias, "Red Blood Cell"), (IBD_Bias, "IBD")]):
     ax.patch.set_alpha(0)
     SuperClusterBias_BoxPlot(bias_df, name, ax=ax)
 fig.patch.set_alpha(0)
@@ -836,8 +493,8 @@ plt.show()
 # ### Panel B — Non-brain trait significance (-logP)
 
 # %%
-fig, axes = plt.subplots(1, 3, figsize=(24, 8), facecolor="none")
-for ax, (pval_df, name) in zip(axes, [(HDL_Pval, "HDL Cholesterol"), (IBD_Pval, "IBD"), (ALT_Pval, "Alanine AT")]):
+fig, axes = plt.subplots(1, 4, figsize=(32, 8), facecolor="none")
+for ax, (pval_df, name) in zip(axes, [(HDL_Pval, "HDL Cholesterol"), (ALT_Pval, "Alanine AT"), (RBC_Pval, "Red Blood Cell"), (IBD_Pval, "IBD")]):
     ax.patch.set_alpha(0)
     SuperClusterBias_BoxPlot(pval_df, name, EffectCol="-logP", fdr_cut=0.1, ax=ax)
 fig.patch.set_alpha(0)
